@@ -22,7 +22,7 @@ function initApiKey() {
   if (saved) { _activeApiKey = saved; updateHeaderKeyStatus(); }
   else { setTimeout(() => openApiModal(), 500); }
 }
-function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; updateApiKeyStrength(f.value); renderSavedKeysList(); }
+function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; f.type = 'password'; const btn = document.getElementById('key-toggle'); if (btn) btn.innerHTML = '&#128065;'; updateApiKeyStrength(f.value); renderSavedKeysList(); }
 function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'img-modal') setTimeout(setupCropEvents, 100); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function handleModalBackdropClick(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
@@ -87,14 +87,23 @@ function openHelpModal() {
 function toggleKeyVisibility() { const f = document.getElementById('api-key-field'); const btn = document.getElementById('key-toggle'); if (f.type === 'password') { f.type = 'text'; btn.innerHTML = '&#128683;'; } else { f.type = 'password'; btn.innerHTML = '&#128065;'; } }
 function updateApiKeyStrength(val) {
   const bar = document.getElementById('key-strength-bar'); const fill = document.getElementById('key-strength-fill'); const lbl = document.getElementById('key-strength-label');
-  if (!val) { bar.style.display = 'none'; return; }
-  bar.style.display = 'block';
+  const wrap = document.getElementById('api-key-field-wrap'); const check = document.getElementById('api-key-check'); const field = document.getElementById('api-key-field');
+  if (wrap) { wrap.classList.remove('has-key'); if (check) check.style.display = 'none'; }
+  if (field) field.classList.remove('api-key-valid');
+  if (!val) { if (bar) bar.style.display = 'none'; return; }
+  if (bar) bar.style.display = 'block';
   let s = 0;
   if (val.startsWith('AIza')) s += 50; if (val.length >= 35) s += 30; if (val.length >= 39) s += 20;
-  fill.style.width = s + '%';
-  if (s >= 100) { fill.style.background = 'linear-gradient(90deg,#34d399,#10b981)'; lbl.textContent = '✓ 유효한 형식'; lbl.style.color = '#34d399'; }
-  else if (s >= 50) { fill.style.background = 'linear-gradient(90deg,var(--warning),#f59e0b)'; lbl.textContent = '⚠ 확인 필요'; lbl.style.color = 'var(--warning)'; }
-  else { fill.style.background = 'linear-gradient(90deg,var(--danger),#ef4444)'; lbl.textContent = '✗ AIza로 시작'; lbl.style.color = 'var(--danger)'; }
+  if (fill) fill.style.width = s + '%';
+  if (s >= 100) {
+    if (fill) fill.style.background = 'linear-gradient(90deg,#34d399,#10b981)';
+    if (lbl) { lbl.textContent = '✓ 유효한 형식'; lbl.style.color = '#34d399'; }
+    if (wrap) wrap.classList.add('has-key'); if (check) check.style.display = 'block'; if (field) field.classList.add('api-key-valid');
+  } else if (s >= 50) {
+    if (fill) fill.style.background = 'linear-gradient(90deg,var(--warning),#f59e0b)'; if (lbl) { lbl.textContent = '⚠ 확인 필요'; lbl.style.color = 'var(--warning)'; }
+  } else {
+    if (fill) fill.style.background = 'linear-gradient(90deg,var(--danger),#ef4444)'; if (lbl) { lbl.textContent = '✗ AIza로 시작'; lbl.style.color = 'var(--danger)'; }
+  }
 }
 function renderSavedKeysList() {
   const keys = loadSavedKeys(); const section = document.getElementById('saved-keys-section'); const list = document.getElementById('saved-keys-list');
@@ -105,3 +114,9 @@ function renderSavedKeysList() {
 function selectSavedKey(i) { const keys = loadSavedKeys(); if (!keys[i]) return; _activeApiKey = keys[i]; localStorage.setItem(LS_ACTIVE_KEY, _activeApiKey); document.getElementById('api-key-field').value = _activeApiKey; updateApiKeyStrength(_activeApiKey); renderSavedKeysList(); updateHeaderKeyStatus(); if (typeof showToast === 'function') showToast('✅ 키 선택됨'); }
 function deleteSavedKey(i) { const keys = loadSavedKeys(); const del = keys[i]; keys.splice(i, 1); saveKeysList(keys); if (del === _activeApiKey) { _activeApiKey = keys[0] || ''; localStorage.setItem(LS_ACTIVE_KEY, _activeApiKey); updateHeaderKeyStatus(); } renderSavedKeysList(); }
 function applyApiKey() { const val = document.getElementById('api-key-field').value.trim(); if (!val) { if (typeof showToast === 'function') showToast('⚠️ API 키를 입력하세요'); return; } _activeApiKey = val; localStorage.setItem(LS_ACTIVE_KEY, val); if (document.getElementById('save-key-checkbox').checked) { const keys = loadSavedKeys(); if (!keys.includes(val)) { keys.unshift(val); if (keys.length > 5) keys.pop(); saveKeysList(keys); } } updateHeaderKeyStatus(); closeModal('api-modal'); if (typeof showToast === 'function') showToast('✅ API 키 적용됨'); }
+
+function syncApiKeyFromStorage() {
+  _activeApiKey = localStorage.getItem(LS_ACTIVE_KEY) || '';
+  updateHeaderKeyStatus();
+}
+if (typeof window !== 'undefined') window.syncApiKeyFromStorage = syncApiKeyFromStorage;

@@ -85,6 +85,8 @@ function buildWorkspaceSnapshot() {
         sources, presentationScript,
         references: ReferenceStore.getAll(),
         aiImgHistory: typeof _aiImgHistory !== 'undefined' ? _aiImgHistory : [],
+        pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fileName && fileName.toLowerCase().endsWith('.pdf'))
+            ? Array.from(new Uint8Array(window._pdfArrayBuffer)) : undefined,
     };
 }
 
@@ -169,6 +171,14 @@ function applyWorkspaceSnapshot(snap) {
     if (rawText && typeof enableMainBtns === 'function') enableMainBtns();
     if (typeof renderLeftPanel === 'function') renderLeftPanel();
     if (typeof renderRefsPanel === 'function') renderRefsPanel();
+    if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+    if (snap.pdfData && snap.pdfData.length && snap.fileName && snap.fileName.toLowerCase().endsWith('.pdf')) {
+        try {
+            const arr = new Uint8Array(snap.pdfData);
+            window._pdfArrayBuffer = arr.slice(0).buffer;
+            if (typeof loadPdfPreview === 'function') loadPdfPreview(arr.slice(0).buffer, snap.fileName);
+        } catch (err) { console.warn('[restore PDF]', err); }
+    }
 }
 
 function _markDirty() { if (rawText || slides.length) scheduleAutosave(); }

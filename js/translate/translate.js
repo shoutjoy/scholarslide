@@ -6,7 +6,9 @@
   'use strict';
 
   function getSource(target) {
-    return target === 'summary' ? (window.summaryText || '') : (window.rawText || '');
+    if (target === 'summary') return (typeof window.getSummaryText === 'function' ? window.getSummaryText() : window.summaryText) || '';
+    if (target === 'raw' && typeof window.getRawTextWithReferences === 'function') return window.getRawTextWithReferences();
+    return (typeof window.getRawText === 'function' ? window.getRawText() : window.rawText) || '';
   }
   function getTranslated(target) {
     return target === 'summary' ? (window._translatedSummary || '') : (window._translatedRaw || '');
@@ -42,32 +44,35 @@
     }
     const label = target === 'summary' ? '요약' : '원문';
 
-    if (window.showGlobalProgress) window.showGlobalProgress('🌐 ' + label + ' 번역 중...', 10, '🌐');
+    if (window.showJobProgress) window.showJobProgress('translation', '🌐 ' + label + ' 번역 중...', 10, '🌐');
     let _prog = 10;
     const _pt = setInterval(function () {
       if (_prog < 85) {
         _prog += Math.random() * 4;
-        if (window.updateGlobalProgress) window.updateGlobalProgress(_prog);
+        if (window.updateJobProgress) window.updateJobProgress('translation', _prog);
       }
     }, 500);
 
     try {
-      const res = await window.callGemini(
-        '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n' + source.substring(0, 15000),
-        '전문 학술 번역가입니다.'
-      );
+      var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
+      var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
+      const res = await window.callGemini(userPrefix + source, systemInstruction);
       const text = res && res.text ? res.text : res;
       clearInterval(_pt);
-      if (window.updateGlobalProgress) window.updateGlobalProgress(100, '✅ ' + label + ' 번역 완료');
-      if (window.hideGlobalProgress) window.hideGlobalProgress(1500);
+      if (window.updateJobProgress) window.updateJobProgress('translation', 100, '✅ ' + label + ' 번역 완료');
+      if (window.hideJobProgress) window.hideJobProgress('translation', 1500);
 
       setTranslated(target, text);
       if (window.renderLeftPanel) window.renderLeftPanel();
-      openTranslationWindow(text, target, source);
+      if (typeof window.openTranslationViewer === 'function') {
+        window.openTranslationViewer(source, text, target === 'summary' ? '요약' : '원문');
+      } else {
+        openTranslationWindow(text, target, source);
+      }
       if (window.showToast) window.showToast('✅ 번역 완료 — 번역보기 버튼으로 다시 열 수 있습니다');
     } catch (e) {
       clearInterval(_pt);
-      if (window.hideGlobalProgress) window.hideGlobalProgress(500);
+      if (window.hideJobProgress) window.hideJobProgress('translation', 500);
       if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ 번역 실패: ' + e.message);
     }
   }
@@ -78,6 +83,7 @@
       if (window.showToast) window.showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
       return;
     }
+    if (typeof window.registerChildWindow === 'function') window.registerChildWindow(win);
     const label = target === 'summary' ? '요약' : '원문';
     const escapeHtml = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
     const esc = escapeHtml;
@@ -88,16 +94,60 @@
 
   function viewTranslation(target) {
     const text = getTranslated(target);
-    const src = target === 'summary' ? (window.summaryText || '') : (window.rawText || '');
+    const src = target === 'summary' ? (typeof window.getSummaryText === 'function' ? window.getSummaryText() : window.summaryText || '') : (typeof window.getRawTextWithReferences === 'function' ? window.getRawTextWithReferences() : (typeof window.getRawText === 'function' ? window.getRawText() : window.rawText || ''));
     if (!text) {
       if (window.showToast) window.showToast('⚠️ 아직 번역된 내용이 없습니다. 한국어 번역을 먼저 실행하세요.');
       return;
     }
-    openTranslationWindow(text, target, src);
+    if (typeof window.openTranslationViewer === 'function') {
+      window.openTranslationViewer(src, text, target === 'summary' ? '요약' : '원문');
+    } else {
+      openTranslationWindow(text, target, src);
+    }
+  }
+
+  /** 번역요약 시 사용. 원문(참고문헌 포함)을 한국어로 번역한 텍스트를 반환. 캐시 없으면 API 호출 후 캐시 저장. */
+  async function getRawTextForSummary() {
+    const raw = (typeof window.getRawTextWithReferences === 'function' ? window.getRawTextWithReferences() : null) || (typeof window.getRawText === 'function' ? window.getRawText() : window.rawText) || '';
+    if (!raw) return '';
+    if (window._translatedRaw) return window._translatedRaw;
+    var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
+    var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
+    const res = await window.callGemini(userPrefix + raw, systemInstruction);
+    const text = res && res.text ? res.text : res;
+    window._translatedRaw = text;
+    return text || '';
+  }
+
+  /** 번역 캐시가 있으면 반환, 없으면 번역 후 캐시 저장하고 반환. (창은 열지 않음) */
+  async function ensureTranslated(target) {
+    const cached = getTranslated(target);
+    if (cached) return cached;
+    const source = getSource(target);
+    if (!source) return '';
+    if (window.showJobProgress) window.showJobProgress('translation', '🌐 한국어 번역 중...', 10, '🌐');
+    let _prog = 10;
+    const _pt = setInterval(function () {
+      if (_prog < 85 && window.updateJobProgress) window.updateJobProgress('translation', _prog += Math.random() * 4);
+    }, 500);
+    try {
+      var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
+      var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
+      const res = await window.callGemini(userPrefix + source, systemInstruction);
+      const text = (res && res.text ? res.text : res) || '';
+      setTranslated(target, text);
+      if (window.renderLeftPanel) window.renderLeftPanel();
+      return text;
+    } finally {
+      clearInterval(_pt);
+      if (window.hideJobProgress) window.hideJobProgress('translation', 0);
+    }
   }
 
   window.askThenTranslate = askThenTranslate;
   window.translateContent = translateContent;
   window.openTranslationWindow = openTranslationWindow;
   window.viewTranslation = viewTranslation;
+  window.getRawTextForSummary = getRawTextForSummary;
+  window.ensureTranslated = ensureTranslated;
 })();

@@ -109,25 +109,14 @@ async function callGemini(prompt, systemInstruction = '', useSearch = false) {
 }
 
 async function generateImage(prompt) {
+  // ⑨ Use dedicated image API key input if set, otherwise fall back to active key
   let key; try { key = getImageApiKey(); } catch { return null; }
-  const modelId = typeof getImageModelId === 'function' ? getImageModelId() : 'gemini-2.5-flash-image';
-  const textPrompt = `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones.`;
-
-  // Try selected model first
-  if (modelId === 'imagen-4.0-generate-001') {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } })
-      });
-      if (res.ok) { const data = await res.json(); if (data.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`; }
-    } catch (e) { console.warn('[imagen-4]', e.message); }
-  } else {
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${key}`, {
+  // Attempt 1: gemini-2.0-flash-exp (image generation, more stable endpoint)
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: textPrompt }] }],
+        contents: [{ parts: [{ text: `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones.` }] }],
         generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
       })
     });
@@ -136,28 +125,23 @@ async function generateImage(prompt) {
       const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
       if (imgPart?.inlineData?.data) return `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
     }
-    } catch (e) { console.warn('[' + modelId + ']', e.message); }
-  }
-
-  // Fallbacks if selected model failed
-  const geminiFallbacks = ['gemini-2.0-flash-exp', 'gemini-2.5-flash-preview-image-generation', 'gemini-2.5-flash-image', 'gemini-2.5-flash-preview-image-generation'];
-  for (const fallback of geminiFallbacks) {
-    if (fallback === modelId) continue;
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallback}:generateContent?key=${key}`, {
+  } catch (e) { console.warn('[gemini-2.0-flash-exp]', e.message); }
+  // Attempt 2: gemini-2.5-flash-preview-image-generation
+  try {
+    const res2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-image-generation:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: textPrompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } })
-      });
-      if (res.ok) { const data = await res.json(); const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData); if (imgPart?.inlineData?.data) return `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`; }
-    } catch (e) { console.warn('[' + fallback + ']', e.message); }
-  }
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `Create a professional academic diagram for: ${prompt}` }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } })
+    });
+    if (res2.ok) { const data2 = await res2.json(); const imgPart = data2.candidates?.[0]?.content?.parts?.find(p => p.inlineData); if (imgPart?.inlineData?.data) return `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`; }
+  } catch (e2) { console.warn('[gemini-2.5-flash-img]', e2.message); }
+  // Attempt 3: imagen-4 (requires allowlist)
   try {
     const res3 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } })
     });
     if (res3.ok) { const data3 = await res3.json(); if (data3.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${data3.predictions[0].bytesBase64Encoded}`; }
-  } catch (e3) { console.warn('[imagen-4 fallback]', e3.message); }
+  } catch (e3) { console.warn('[imagen-4]', e3.message); }
   return null;
 }
 
@@ -176,14 +160,531 @@ async function refineImageAPI(base64, instruction) {
   return null;
 }
 
-// ensurePDFWorker, getPageTextWithLineBreaks, normalizeSentenceLineBreaks, handleFileUpload, loadFromTextInput, enableMainBtns,
-// extractReferencesSectionFromRawText, getReferencesOnlyText, getReferencesExpCount, openRefExpWindow → js/upload/file-upload.js
-// getRawTextWithReferences, resetTranslationCache, saveContent, _bgJobStart, _bgJobTick, _bgJobEnd, _cancelBgJob → js/features/refs-viewer.js
+/* =========================================================
+   PDF.JS
+   ========================================================= */
+function ensurePDFWorker() {
+  if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc)
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${window.pdfjsLib.version}/pdf.worker.min.js`;
+}
+
+/* =========================================================
+   FILE UPLOAD
+   ========================================================= */
+/** PDF 한 페이지 텍스트를 줄 단위로 추출. 1단/2단 공통: 항목을 읽기 순서(위→아래, 왼쪽→오른쪽)로 정렬 후 y 기준 줄바꿈. */
+function getPageTextWithLineBreaks(content) {
+  const items = content.items || [];
+  if (!items.length) return '';
+  const withPos = items.map(it => {
+    const t = it.transform;
+    const x = t && t[4] != null ? t[4] : 0;
+    const y = t && t[5] != null ? t[5] : 0;
+    return { str: it.str || '', x, y };
+  });
+  withPos.sort((a, b) => {
+    const yA = a.y, yB = b.y;
+    const yTolerance = 4;
+    if (Math.abs(yA - yB) > yTolerance) return yB - yA;
+    return a.x - b.x;
+  });
+  const lines = [];
+  let lastY = null;
+  const yTolerance = 5;
+  for (const it of withPos) {
+    const y = it.y;
+    if (lastY !== null && Math.abs(y - lastY) > yTolerance) lines.push('');
+    lastY = y;
+    const idx = lines.length - 1;
+    if (idx >= 0) lines[idx] = (lines[idx] ? lines[idx] + ' ' : '') + it.str;
+    else lines.push(it.str);
+  }
+  return lines.join('\n');
+}
+
+/** 문장 끝(. ! ?) 뒤에 줄바꿈 삽입해 가독성 개선 (한 덩어리로 된 텍스트용) */
+function normalizeSentenceLineBreaks(text) {
+  if (!text || !text.trim()) return text;
+  return text
+    .replace(/([.!?])\s+([A-Z가-힣])/g, '$1\n\n$2')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function handleFileUpload(e) {
+  const file = e.target.files[0]; if (!file) return;
+  fileName = file.name; showLoading('파일에서 텍스트 추출 중...', file.name, 20);
+  try {
+    ensurePDFWorker(); let text = '';
+    if (file.type === 'application/pdf') {
+      const buf = await file.arrayBuffer();
+      window._pdfArrayBuffer = buf.slice(0); // store for new window
+      loadPdfPreview(buf.slice(0), file.name);
+      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = getPageTextWithLineBreaks(content);
+        text += '\n\n--- ' + i + '페이지 ---\n\n' + pageText;
+        setProgress(Math.round(20 + (i / pdf.numPages) * 50));
+      }
+      text = text.replace(/^\n+/, '').trim();
+    } else if (file.name.endsWith('.docx')) {
+      const buf = await file.arrayBuffer();
+      const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+      text = result.value || '';
+      if (text && !text.includes('\n\n')) text = normalizeSentenceLineBreaks(text);
+      text = '--- 1페이지 ---\n\n' + text.trim();
+    } else {
+      text = await file.text();
+      if (text && !text.trim().includes('\n') && text.length > 80) text = normalizeSentenceLineBreaks(text);
+      if (text) text = '--- 1페이지 ---\n\n' + text.trim();
+    }
+    rawText = text;
+    if (typeof window.resetTranslationCache === 'function') window.resetTranslationCache();
+    showToast(`✅ 파일 로드 완료 (${(text.length / 1000).toFixed(1)}k 글자)`);
+    renderLeftPanel(); enableMainBtns();
+  } catch (err) { console.error(err); showToast('❌ 파일 처리 실패: ' + err.message); }
+  finally { hideLoading(); if (e.target) e.target.value = ''; }
+}
+
+function loadFromTextInput() {
+  const val = document.getElementById('text-paste-input')?.value?.trim();
+  if (!val) { showToast('⚠️ 텍스트를 입력하세요'); return; }
+  rawText = val; fileName = '직접입력.txt';
+  if (typeof window.resetTranslationCache === 'function') window.resetTranslationCache();
+  showToast('✅ 텍스트 로드 완료'); renderLeftPanel(); enableMainBtns();
+}
+
+function enableMainBtns() {
+  ['fetch-sources-btn', 'save-session-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+}
+
+/** 원문(rawText)에서 Reference/References/참고문헌/Bibliography 등 섹션 이후 내용을 찾아 문헌 단위로 분리한 텍스트 반환. REF EXP·문서 기준 개수 표시용. */
+function extractReferencesSectionFromRawText(sourceText) {
+  var raw = (typeof sourceText !== 'undefined' && sourceText != null) ? String(sourceText) : (typeof rawText !== 'undefined' ? rawText : '') || '';
+  if (!raw.trim()) return { text: '', count: 0, source: 'none' };
+  var section = '';
+
+  // 1) 블록 마커: --- 참고문헌 --- 등
+  var blockMarkers = [/---\s*참고문헌\s*---\s*\n?/gi, /---\s*References?\s*---\s*\n?/gi, /---\s*Bibliography\s*---\s*\n?/gi];
+  for (var i = 0; i < blockMarkers.length; i++) {
+    var m = raw.match(blockMarkers[i]);
+    if (m) {
+      section = raw.substring(m.index + m[0].length).trim();
+      break;
+    }
+  }
+
+  // 2) 줄 단위: "References", "참고문헌", "Reference", "Bibliography" 등 단독 줄 이후 전체
+  if (!section) {
+    var refSectionHeads = [
+      /^\s*References\s*$/im, /^\s*REFERENCES\s*$/m, /^\s*Reference\s*$/im,
+      /^\s*참고문헌\s*$/m, /^\s*참고\s*문헌\s*$/m,
+      /^\s*Bibliography\s*$/im, /^\s*BIBLIOGRAPHY\s*$/m,
+      /^\s*Reference\s+List\s*$/im, /^\s*Works?\s+Cited\s*$/im,
+      /^\s*References?\s+and\s+Notes\s*$/im
+    ];
+    for (var i = 0; i < refSectionHeads.length; i++) {
+      var m = raw.match(refSectionHeads[i]);
+      if (m) {
+        section = raw.substring(m.index + m[0].length).trim();
+        break;
+      }
+    }
+  }
+
+  if (!section) {
+    var lines = raw.split(/\n/);
+    var startIdx = -1;
+    for (var L = 0; L < lines.length; L++) {
+      var line = lines[L];
+      var trimmed = line.trim();
+      if (/^References?\s*$/i.test(trimmed) || /^참고\s*문헌\s*$/i.test(trimmed) || /^Bibliography\s*$/i.test(trimmed) ||
+          /^Reference\s+List\s*$/i.test(trimmed) || /^Works?\s+Cited\s*$/i.test(trimmed)) {
+        startIdx = L + 1;
+        break;
+      }
+    }
+    if (startIdx >= 0) section = lines.slice(startIdx).join('\n').trim();
+  }
+
+  if (!section) {
+    var refLine = raw.search(/\n\s*(?:References?|REFERENCES?|참고\s*문헌|Bibliography|BIBLIOGRAPHY)\s*\n/i);
+    if (refLine >= 0) {
+      var after = raw.substring(refLine + 1);
+      section = after.replace(/^\s*(?:References?|REFERENCES?|참고\s*문헌|Bibliography|BIBLIOGRAPHY)\s*\n?/i, '').trim();
+    }
+  }
+
+  if (!section || section.length < 20) return { text: '', count: 0, source: 'none' };
+  var reRefStart = /\n\s*(?=[A-Z][A-Za-z\-',\s&.]{2,120}\(\d{4}[a-z]?\)\s*\.)/g;
+  var parts = section.split(reRefStart);
+  var entries = [];
+  for (var j = 0; j < parts.length; j++) {
+    var entry = parts[j].replace(/^\s+|\s+$/g, '');
+    if (entry.length < 15) continue;
+    entry = entry.replace(/^(?:References?|REFERENCES?|참고\s*문헌|Bibliography|BIBLIOGRAPHY|Reference\s+List)\s*\n?/i, '');
+    if (/^References?\s*$/i.test(entry) || /^참고\s*문헌\s*$/i.test(entry) || /^Bibliography\s*$/i.test(entry)) continue;
+    if (/\(\d{4}[a-z]?\)\s*\./.test(entry)) entries.push(entry);
+  }
+  if (entries.length === 0 && section.length > 50 && /\(\d{4}[a-z]?\)/.test(section)) {
+    var fallback = section.split(/\n\s*\n+/);
+    for (var k = 0; k < fallback.length; k++) {
+      var e = fallback[k].trim();
+      if (e.length > 20 && /\(\d{4}[a-z]?\)/.test(e)) entries.push(e);
+    }
+  }
+  var text = entries.length ? entries.join('\n\n') : '';
+  return { text: text, count: entries.length, source: entries.length ? 'document' : 'none' };
+}
+
+/** 참고문헌만 문헌단위 줄바꿈으로 추출한 텍스트 반환 (REF EXP용). 문서에 References 섹션이 있으면 그걸 추출, 없으면 저장된 목록 사용. */
+function getReferencesOnlyText() {
+  var extracted = extractReferencesSectionFromRawText(typeof rawText !== 'undefined' ? rawText : '');
+  if (extracted.source === 'document' && extracted.count > 0)
+    return extracted.text;
+  if (typeof ReferenceStore === 'undefined' || !ReferenceStore.getAll) return '';
+  var refs = ReferenceStore.getAll();
+  if (!refs || !refs.length) return '';
+  var style = (document.getElementById('citation-style') && document.getElementById('citation-style').value) || 'APA';
+  return refs.map(function (r) { return (typeof formatCitation === 'function' ? formatCitation(r, style) : (r.authors + ' (' + r.year + '). ' + r.title + '.')); }).join('\n\n');
+}
+
+/** REF EXP 창에 표시할 참고문헌 개수·출처 (문서 추출 우선). */
+function getReferencesExpCount() {
+  var extracted = extractReferencesSectionFromRawText(typeof rawText !== 'undefined' ? rawText : '');
+  if (extracted.source === 'document' && extracted.count > 0)
+    return { count: extracted.count, label: '문서에서 추출' };
+  var refs = typeof ReferenceStore !== 'undefined' && ReferenceStore.getAll ? ReferenceStore.getAll() : [];
+  return { count: refs.length, label: '저장된 참고문헌' };
+}
+
+/** REF EXP: 참고문헌만 추출해 새 창에서 보기 (문헌단위 줄바꿈). 문서 References 섹션 우선 추출. */
+function openRefExpWindow() {
+  var text = getReferencesOnlyText();
+  var expCount = getReferencesExpCount();
+  if (!text) { showToast('⚠️ 추출된 참고문헌이 없습니다. 원문에 References 섹션이 있거나 참고문헌 탭에서 추가하세요.'); return; }
+  var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
+  if (!win) { showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
+  if (typeof window.setViewerContent !== 'function') window.setViewerContent = function (text, type) { if (type === 'raw') rawText = text; else if (type === 'summary') summaryText = text; else if (type === 'refs') return; if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof showToast === 'function') showToast('✅ 현재 상태 저장됨'); };
+  var contentRendered = buildViewerContentWithPages(text);
+  var escapedHtml = contentRendered.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
+  var rawJson = JSON.stringify(text);
+  var title = escapeHtml(fileName);
+  win.document.write(getTextViewerWindowHtml({
+    title: title,
+    subtitle: '📚 ' + expCount.label + ' (' + expCount.count + '편)',
+    pageTitle: '참고문헌 — ' + title,
+    contentHtml: escapedHtml,
+    rawTextJson: rawJson,
+    contentType: 'refs'
+  }));
+  win.document.close();
+}
+
+/** 원문 + 참고문헌(저장된 목록)을 하나의 텍스트로 반환. 번역 시 전체(참고문헌 포함)를 번역·표시하기 위함. */
+function getRawTextWithReferences() {
+  let t = typeof rawText !== 'undefined' ? rawText : (typeof window.getRawText === 'function' ? window.getRawText() : '') || '';
+  if (typeof ReferenceStore !== 'undefined' && ReferenceStore.getAll) {
+    const refs = ReferenceStore.getAll();
+    if (refs && refs.length) {
+      const style = (document.getElementById('citation-style') && document.getElementById('citation-style').value) || 'APA';
+      t += '\n\n--- 참고문헌 ---\n\n' + refs.map(r => (typeof formatCitation === 'function' ? formatCitation(r, style) : (r.authors + ' (' + r.year + '). ' + r.title + '.'))).join('\n\n');
+    }
+  }
+  return t;
+}
+
+/** 번역 캐시 초기화. 새 파일/텍스트 로드 시 호출되며, 다음 번역 시 원문 전체를 다시 번역하게 함. */
+function resetTranslationCache() {
+  if (typeof window !== 'undefined') {
+    window._translatedSummary = '';
+    window._translatedRaw = '';
+  }
+  if (typeof renderLeftPanel === 'function') renderLeftPanel();
+}
+if (typeof window !== 'undefined') {
+  window.getRawTextWithReferences = getRawTextWithReferences;
+  window.resetTranslationCache = resetTranslationCache;
+}
+
+function saveContent(type) {
+  let content = '', ext = 'txt';
+  if (type === 'raw') { content = rawText; ext = 'txt'; }
+  else if (type === 'summary') { content = summaryText; ext = 'md'; }
+  else if (type === 'script') { content = presentationScript.map((s, i) => `## 슬라이드 ${i + 1}: ${slides[i]?.title || ''}\n\n${s}`).join('\n\n---\n\n'); ext = 'md'; }
+  if (!content) { showToast('⚠️ 저장할 내용이 없습니다'); return; }
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `scholarslide_${type}.${ext}`; a.click();
+  showToast(`✅ ${type} 저장됨`);
+}
+
+// Background image generation job state
+let _bgJob = { running: false, total: 0, done: 0, label: '' };
+
+function _bgJobStart(total, label) {
+  _bgJob = { running: true, total, done: 0, label };
+  _bgBarUpdate();
+}
+function _bgJobTick(done, label) {
+  _bgJob.done = done;
+  _bgJob.label = label || _bgJob.label;
+  _bgBarUpdate();
+}
+function _bgJobEnd(msg) {
+  _bgJob.running = false;
+  _bgBarUpdate();
+  if (msg) showToast(msg);
+}
+function _bgBarUpdate() {
+  let bar = document.getElementById('bg-job-bar');
+  if (!bar) return;
+  if (!_bgJob.running) {
+    bar.style.display = 'none';
+    hideGlobalProgress(800);
+    return;
+  }
+  bar.style.display = 'flex';
+  const pct = _bgJob.total > 0 ? Math.round((_bgJob.done / _bgJob.total) * 100) : 0;
+  bar.innerHTML = `
+    <span style="font-size:11px;color:var(--accent)">🎨 이미지 생성 중</span>
+    <span style="font-size:10px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0 8px">${escapeHtml(_bgJob.label)}</span>
+    <span style="font-size:10px;color:var(--text3);white-space:nowrap">${_bgJob.done}/${_bgJob.total}</span>
+    <div style="width:80px;height:4px;background:var(--border2);border-radius:2px;margin:0 8px;flex-shrink:0">
+      <div style="height:4px;background:var(--accent);border-radius:2px;width:${pct}%;transition:width 0.3s"></div>
+    </div>
+    <button onclick="_cancelBgJob()" style="font-size:10px;background:none;border:1px solid var(--border2);color:var(--text3);border-radius:4px;padding:1px 6px;cursor:pointer">중단</button>
+  `;
+  // 전역 진행률도 함께 업데이트
+  showGlobalProgress(`🎨 이미지 생성 중 (${_bgJob.done}/${_bgJob.total})`, pct, '🎨');
+}
+let _bgJobCancelled = false;
+function _cancelBgJob() { _bgJobCancelled = true; _bgJobEnd('⏹ 이미지 생성 중단됨'); }
 
 // Image generation state (for API key from input)
 let _imageApiKey = ''; // overrides _activeApiKey for image generation if set
 
-// Slide zoom / font scale / external presentation → js/ui/zoom-pres.js (changeSlideZoom, applySlideZoom, applySlideFontScale, openExternalPresentation, _setSlideZoom, _setSlideFontScale, getSlideFontScale)
+// Slide zoom state (보기 확대·축소, 50%~200%)
+let _slideZoom = 100; // percent
+
+// 슬라이드 내부 폰트 크기 (제목·불릿만, 30%~300%)
+let _slideFontScale = 100; // percent
+// storage.js applyWorkspaceSnapshot에서 복원 시 호출
+window._setSlideZoom = function (v) { _slideZoom = v; };
+window._setSlideFontScale = function (v) { _slideFontScale = v; };
+
+function changeSlideZoom(delta) {
+  _slideZoom = Math.max(50, Math.min(200, _slideZoom + delta));
+  applySlideZoom();
+}
+
+function applySlideZoom() {
+  const canvas = document.getElementById('slides-canvas');
+  const lbl = document.getElementById('slide-zoom-val');
+  const scale = _slideZoom / 100;
+  if (canvas) {
+    canvas.style.zoom = _slideZoom + '%';
+    // Firefox 등 zoom 미지원 브라우저용 fallback: transform으로 동일 효과
+    if (!supportsZoom()) {
+      canvas.style.zoom = '';
+      canvas.style.transform = `scale(${scale})`;
+      canvas.style.transformOrigin = 'top center';
+    } else {
+      canvas.style.transform = '';
+    }
+  }
+  if (lbl) lbl.textContent = _slideZoom + '%';
+}
+
+function supportsZoom() {
+  const el = document.createElement('div');
+  el.style.cssText = 'zoom: 1';
+  return el.style.zoom === '1' || el.style.zoom === 1;
+}
+
+function changeSlideFontScale(delta) {
+  _slideFontScale = Math.max(30, Math.min(300, _slideFontScale + delta));
+  applySlideFontScale();
+}
+
+function applySlideFontScale() {
+  const canvas = document.getElementById('slides-canvas');
+  const lbl = document.getElementById('slide-font-val');
+  const presLbl = document.getElementById('pres-font-val');
+  if (canvas) canvas.style.setProperty('--slide-font-scale', _slideFontScale / 100);
+  if (lbl) lbl.textContent = _slideFontScale + '%';
+  if (presLbl) presLbl.textContent = _slideFontScale + '%';
+}
+
+function changePresFontScale(delta) {
+  _slideFontScale = Math.max(30, Math.min(300, _slideFontScale + delta));
+  applySlideFontScale();
+  renderPresSlide();
+}
+
+function openExternalPresentation() {
+  if (!slides.length) { showToast('⚠️ 슬라이드가 없습니다'); return; }
+
+  const w = window.open('', '_blank', 'width=1280,height=800,resizable=yes,scrollbars=no');
+  if (!w) { showToast('⚠️ 팝업이 차단됨 — 팝업 허용 후 다시 시도하세요'); return; }
+
+  // 발표/외부발표에서도 마크다운·HTML 렌더링 적용을 위해 미리 렌더된 HTML 전달
+  const slidesForExt = slides.map(s => ({
+    ...s,
+    titleHtml: markdownToHtml(s.title),
+    bulletsHtml: (s.bullets || []).map(b => markdownToHtml(b))
+  }));
+  const slidesJSON = JSON.stringify(slidesForExt);
+  const scriptJSON = JSON.stringify(presentationScript);
+  const styleMode = slideStyle;
+  const startIdx = activeSlideIndex;
+  const fontScale = _slideFontScale / 100;
+
+  const html = `<!DOCTYPE html><html lang="ko"><head>
+<meta charset="UTF-8"/>
+<title>발표 — ScholarSlide AI</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;display:flex;flex-direction:column;height:100vh;overflow:hidden;font-family:'DM Sans',sans-serif,system-ui}
+.pres-area{flex:1;display:flex;align-items:center;justify-content:center;background:#111;overflow:hidden;position:relative}
+.pres-inner{position:relative;flex-shrink:0;transition:transform 0.2s ease}
+.pres-controls{display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 14px;background:rgba(10,12,20,0.98);border-top:1px solid #1e2332;flex-shrink:0;flex-wrap:wrap}
+.pb{background:rgba(79,142,247,0.18);border:1px solid rgba(79,142,247,0.35);color:#9ecbff;border-radius:8px;padding:5px 13px;font-size:12px;cursor:pointer;white-space:nowrap}
+.pb:hover{background:rgba(79,142,247,0.35)}
+.pb.sm{padding:5px 9px;font-size:13px;font-weight:700;min-width:30px}
+.counter{font-size:13px;color:#9ecbff;min-width:56px;text-align:center}
+.zv{font-size:10px;color:rgba(158,203,255,0.65);min-width:36px;text-align:center}
+.sep{width:1px;height:18px;background:rgba(79,142,247,0.2);flex-shrink:0}
+.notes{background:rgba(12,16,24,0.97);color:#a0aab8;font-size:12px;padding:7px 18px;line-height:1.6;display:none;border-top:1px solid #1e2332;max-height:110px;overflow-y:auto}
+.notes.show{display:block}
+</style>
+</head><body>
+<div class="pres-area" id="pres-area">
+  <div class="pres-inner" id="pres-inner"></div>
+</div>
+<div class="pres-controls">
+  <button class="pb" onclick="nav(-1)">◀ 이전</button>
+  <span class="counter" id="counter">1/1</span>
+  <button class="pb" onclick="nav(1)">다음 ▶</button>
+  <div class="sep"></div>
+  <button class="pb sm" onclick="chZoom(-10)" title="축소 (− 또는 Ctrl+9)">−</button>
+  <span class="zv" id="zv">100%</span>
+  <button class="pb sm" onclick="chZoom(+10)" title="확대 (+ 또는 Ctrl+0)">+</button>
+  <button class="pb" onclick="fitZoom()" title="화면에 맞추기 (F)">⊡ 맞추기</button>
+  <div class="sep"></div>
+  <button class="pb sm" onclick="chFontScale(-0.1)" title="폰트 줄이기">A−</button>
+  <span class="zv" id="fv">100%</span>
+  <button class="pb sm" onclick="chFontScale(0.1)" title="폰트 키우기">A+</button>
+  <div class="sep"></div>
+  <button class="pb" onclick="toggleNotes()">📝 노트</button>
+  <button class="pb" onclick="window.close()">✕ 닫기</button>
+</div>
+<div class="notes" id="notes"></div>
+<script>
+var SL=${slidesJSON};
+var SC=${scriptJSON};
+var SM="${styleMode}";
+var idx=${startIdx};
+var fontScale=${fontScale};
+var nv=false;
+var zoom=100;
+
+function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function applyZoom(){
+  var el=document.getElementById('pres-inner');
+  if(el) el.style.transform='scale('+(zoom/100)+')';
+  var zv=document.getElementById('zv');
+  if(zv) zv.textContent=zoom+'%';
+}
+function chZoom(d){ zoom=Math.max(25,Math.min(300,zoom+d)); applyZoom(); }
+function chFontScale(d){
+  fontScale=Math.max(0.3,Math.min(3,fontScale+d));
+  var fv=document.getElementById('fv');
+  if(fv) fv.textContent=Math.round(fontScale*100)+'%';
+  render();
+}
+function fitZoom(){
+  var area=document.getElementById('pres-area');
+  var inner=document.getElementById('pres-inner');
+  if(!area||!inner) return;
+  var aw=area.clientWidth-32, ah=area.clientHeight-32;
+  var iw=inner.offsetWidth||900, ih=inner.offsetHeight||506;
+  if(!iw||!ih) return;
+  zoom=Math.round(Math.max(25,Math.min(200,Math.min(aw/iw,ah/ih)*100)));
+  applyZoom();
+}
+
+function render(){
+  var s=SL[idx]; if(!s) return;
+  var inner=document.getElementById('pres-inner');
+  var area=document.getElementById('pres-area');
+  var baseW=Math.min((area.clientWidth||1200)*0.90, 1100);
+  var baseH=Math.round(baseW*9/16);
+  inner.style.width=baseW+'px';
+  inner.style.height=baseH+'px';
+  var isDark=SM==='dark'||s.isCover;
+  var bg=s.isCover?'background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)':isDark?'background:linear-gradient(135deg,#1a1a2e,#16213e)':'background:#fff';
+  var tc=isDark?'color:#e8f4fd':'color:#1a1a2e';
+  var bc=s.isCover?'color:#d8e4f0':(isDark?'color:#b8d4f0':'color:#333');
+  var dot=s.isCover?'display:none':'background:#4f8ef7';
+  var tMin=Math.round(18*fontScale), tMax=Math.round(40*fontScale), tVw=(3.2*fontScale).toFixed(1);
+  var bMin=Math.round(10*fontScale), bMax=Math.round(20*fontScale), bVw=(1.6*fontScale).toFixed(1);
+  var titleHtml=s.titleHtml!=null?s.titleHtml:escH(s.title);
+  var bulletsHtml=s.bulletsHtml||[];
+  var h='<div style="position:absolute;inset:0;padding:5% 6%;display:flex;flex-direction:column;'+bg+(s.isCover?';align-items:center;justify-content:center;text-align:center':'')+'">';
+  h+='<div style="position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;'+(s.isCover?'display:none':'')+'" ></div>';
+  h+='<div style="font-size:clamp('+tMin+'px,'+tVw+'vw,'+tMax+'px);font-weight:700;line-height:1.2;margin-bottom:4%;'+tc+(s.isCover?';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:18px;margin-bottom:14px':'')+'">'+titleHtml+'</div>';
+  h+='<div style="flex:1">';
+  if(bulletsHtml.length>0){
+    bulletsHtml.forEach(function(html){
+      h+='<div style="display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start"><div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;'+dot+'"></div>';
+      h+='<div style="font-size:clamp('+bMin+'px,'+bVw+'vw,'+bMax+'px);line-height:1.5;'+bc+'">'+html+'</div></div>';
+    });
+  } else {
+    (s.bullets||[]).forEach(function(b){
+      h+='<div style="display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start"><div style="width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;'+dot+'"></div>';
+      h+='<div style="font-size:clamp('+bMin+'px,'+bVw+'vw,'+bMax+'px);line-height:1.5;'+bc+'">'+escH(b)+'</div></div>';
+    });
+  }
+  h+='</div></div>';
+  if(s.imageUrl) h+='<img style="position:absolute;right:0;top:0;bottom:0;width:38%;object-fit:cover" src="'+s.imageUrl+'" alt=""/>';
+  inner.innerHTML=h;
+  document.getElementById('counter').textContent=(idx+1)+'/'+SL.length;
+  var nd=document.getElementById('notes');
+  nd.textContent=SC[idx]||s.notes||'';
+  if(nv) nd.classList.add('show'); else nd.classList.remove('show');
+  applyZoom();
+  var fv=document.getElementById('fv');
+  if(fv) fv.textContent=Math.round(fontScale*100)+'%';
+}
+function nav(d){ idx=Math.max(0,Math.min(SL.length-1,idx+d)); render(); }
+function toggleNotes(){ nv=!nv; document.getElementById('notes').classList.toggle('show',nv); }
+
+document.addEventListener('keydown',function(e){
+  if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();nav(1);}
+  else if(e.key==='ArrowLeft'){e.preventDefault();nav(-1);}
+  else if(e.ctrlKey&&e.key==='ArrowRight'){e.preventDefault();nav(1);}
+  else if(e.ctrlKey&&e.key==='ArrowLeft'){e.preventDefault();nav(-1);}
+  else if(e.key==='Escape') window.close();
+  else if(e.key==='n'||e.key==='N') toggleNotes();
+  else if(e.ctrlKey&&e.key==='9'){e.preventDefault();chZoom(-10);}
+  else if(e.ctrlKey&&e.key==='0'){e.preventDefault();chZoom(+10);}
+  else if(!e.ctrlKey&&(e.key==='+'||e.key==='=')) chZoom(+10);
+  else if(!e.ctrlKey&&e.key==='-') chZoom(-10);
+  else if(e.ctrlKey&&e.altKey&&(e.key==='+'||e.key==='=')){e.preventDefault();chFontScale(0.1);}
+  else if(e.ctrlKey&&e.altKey&&e.key==='-'){e.preventDefault();chFontScale(-0.1);}
+  else if(e.key==='f'||e.key==='F') fitZoom();
+});
+window.addEventListener('resize',function(){ render(); setTimeout(fitZoom,30); });
+render();
+setTimeout(fitZoom,60);
+<\/script>
+</body></html>`;
+
+  w.document.write(html);
+  w.document.close();
+}
 
 // ⑨ Image API key
 
@@ -195,9 +696,6 @@ function getImageApiKey() {
   throw new Error('NO_API_KEY');
 }
 
-const LS_IMAGE_MODEL = 'ss_image_model';
-function getImageModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_IMAGE_MODEL)) || 'gemini-2.5-flash-image'; }
-
 /* =========================================================
    DRAG & DROP
    ========================================================= */
@@ -206,18 +704,139 @@ function handleDragLeave() { document.getElementById('upload-drop-zone')?.classL
 function handleDrop(e) { e.preventDefault(); document.getElementById('upload-drop-zone')?.classList.remove('drag-over'); const file = e.dataTransfer.files[0]; if (!file) return; handleFileUpload({ target: { files: [file], value: '' } }); }
 
 /* =========================================================
-   LEFT PANEL → js/ui/left-panel.js (renderLeftPanel)
+   LEFT PANEL
    ========================================================= */
+function renderLeftPanel() {
+  const content = document.getElementById('left-content');
+  if (!rawText) {
+    content.innerHTML = `
+      <div class="upload-zone" id="upload-drop-zone" onclick="document.getElementById('file-input').click()"
+        ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave()">
+        <input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/>
+        <span class="upload-icon">📄</span><h3>논문 업로드</h3><p>PDF, DOCX, TXT · 드래그 앤 드롭</p>
+      </div>
+      <div class="text-input-zone">
+        <label class="label" style="margin-top:12px">또는 텍스트 직접 붙여넣기</label>
+        <textarea id="text-paste-input" placeholder="논문 본문을 여기에 붙여넣으세요..." rows="6"></textarea>
+        <button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="loadFromTextInput()">✅ 텍스트 로드</button>
+      </div>`;
+    return;
+  }
+  const customVal = document.getElementById('custom-instruction-val')?.value || '';
+  const slideCountVal = document.getElementById('slide-count-val')?.value || '12';
+  const slideGenType = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_type')) || 'precision';
+  let displayContent = '';
+  if (leftTab === 'summary') {
+    var subTab = (typeof window.getSummarySubTab === 'function' && window.getSummarySubTab()) || 'current';
+    var historyList = (typeof window.getSummaryHistory === 'function' && window.getSummaryHistory()) || [];
+    var subTabsHtml = '<div class="translate-row" style="margin-bottom:8px"><button type="button" class="btn btn-ghost btn-xs ' + (subTab === 'current' ? 'active' : '') + '" onclick="setSummarySubTab(\'current\'); renderLeftPanel();">현재 요약</button><button type="button" class="btn btn-ghost btn-xs ' + (subTab === 'history' ? 'active' : '') + '" onclick="setSummarySubTab(\'history\'); renderLeftPanel();">요약 히스토리</button></div>';
+    if (subTab === 'history') {
+      var listHtml = '';
+      if (historyList.length) {
+        listHtml += '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="clearSummaryHistory(); renderLeftPanel();">일괄 지우기</button></div>';
+        listHtml += '<div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">';
+        for (var hi = 0; hi < historyList.length; hi++) {
+          var h = historyList[hi];
+          var created = h.createdAt ? new Date(h.createdAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+          var styleLabel = (h.styleId || '') + (h.granularity ? ' · ' + (h.granularity === 'detail' ? '세밀한' : h.granularity === 'basic' ? '기본' : '핵심') : '');
+          listHtml += '<div class="summary-history-item" data-id="' + escapeHtml(h.id) + '" style="padding:8px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:8px" onclick="loadSummaryFromHistory(\'' + (h.id || '').replace(/'/g, "\\'") + '\')"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(h.fileName || '제목 없음') + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + escapeHtml(created) + (styleLabel ? ' · ' + escapeHtml(styleLabel) : '') + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); removeSummaryFromHistory(\'' + (h.id || '').replace(/'/g, "\\'") + '\'); renderLeftPanel();" title="삭제">&#x2715;</button></div>';
+        }
+        listHtml += '</div>';
+      } else {
+        listHtml = '<p style="font-size:12px;color:var(--text3);padding:12px 0">저장된 요약이 없습니다.</p>';
+      }
+      displayContent = subTabsHtml + listHtml;
+    } else {
+      displayContent = subTabsHtml + `<div class="translate-row">
+      <button class="btn btn-ghost btn-xs" onclick="askThenTranslate('summary')">🌐 한국어 번역</button>
+      ${window._translatedSummary ? `<button class="btn btn-xs" style="background:var(--accent);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;border:none" onclick="viewTranslation('summary')">📖 번역보기</button>` : ''}
+      <button class="btn btn-ghost btn-xs" onclick="saveContent('summary')">💾 저장</button>
+      ${summaryText ? '<button class="btn btn-ghost btn-xs" onclick="openSummaryWindow()">🔲 전체 보기</button>' : ''}
+      <button class="btn btn-ghost btn-xs" onclick="openRefExpWindow()" title="참고문헌만 추출하여 새 창에 보기">📚 REF EXP</button>
+    </div><div style="max-height:340px;overflow-y:auto;font-size:12px;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-top:6px">${summaryText ? escapeHtml(summaryText) : '<span style="color:var(--text3)">요약 버튼을 클릭하세요.</span>'}</div>`;
+    }
+  } else if (leftTab === 'raw') {
+    displayContent = `<div class="translate-row">
+      <button class="btn btn-ghost btn-xs" onclick="askThenTranslate('raw')">🌐 한국어 번역</button>
+      ${window._translatedRaw ? `<button class="btn btn-xs" style="background:var(--accent);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;border:none" onclick="viewTranslation('raw')">📖 번역보기</button>` : ''}
+      <button class="btn btn-ghost btn-xs" onclick="saveContent('raw')">💾 저장</button>
+      ${rawText.length > 5000 ? '<button class="btn btn-ghost btn-xs" onclick="openFullTextWindow()">🔲 전체 보기</button>' : ''}
+      <button class="btn btn-ghost btn-xs" onclick="openRefExpWindow()" title="참고문헌만 추출하여 새 창에 보기">📚 REF EXP</button>
+    </div><div style="font-size:10px;line-height:1.6;color:var(--text2);white-space:pre-wrap;font-family:var(--font-mono);max-height:340px;overflow-y:auto;margin-top:6px">${escapeHtml(rawText)}</div>`;
+  } else if (leftTab === 'script') {
+    if (!presentationScript.length) {
+      displayContent = `<div style="text-align:center;padding:24px 0"><p style="font-size:12px;color:var(--text2);margin-bottom:12px">슬라이드 원고를 생성하세요.</p><button class="btn btn-primary btn-sm" onclick="askThenGenerateScript()">📝 발표 원고 생성</button></div>`;
+    } else {
+      displayContent = `<div class="translate-row"><button class="btn btn-ghost btn-xs" onclick="saveContent('script')">💾 원고 저장</button></div>${presentationScript.map((s, i) => `<div class="script-slide-section"><div class="script-slide-label">슬라이드 ${i + 1}</div><div class="script-slide-title">${escapeHtml(slides[i]?.title || '')}</div><div class="script-slide-content">${escapeHtml(s)}</div></div>`).join('')}`;
+    }
+  }
+  const _isPdf = fileName.toLowerCase().endsWith('.pdf');
+  content.innerHTML = `
+    <div class="file-badge">
+      <span>${_isPdf ? '📄' : '📝'}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${escapeHtml(fileName)}</span>
+      <span class="file-size">${(rawText.length / 1000).toFixed(1)}k</span>
+      ${_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : ''}
+    </div>
+    <div style="margin-bottom:8px">
+      <label class="label">문체 설정</label>
+      <select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="font-size:11px">
+        <option value="academic-da" ${writingStyle === 'academic-da' ? 'selected' : ''}>학술체 (~이다)</option>
+        <option value="academic-im" ${writingStyle === 'academic-im' ? 'selected' : ''}>학술체 (~임, ~함)</option>
+        <option value="polite" ${writingStyle === 'polite' ? 'selected' : ''}>일반체 (존댓말)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+      <label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>
+      <input type="number" class="control" id="slide-count-val" value="${slideCountVal}" min="5" max="30" style="width:64px;text-align:center"/>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px">
+        <input type="checkbox" id="include-cover" checked style="accent-color:var(--accent)"/> 표지 포함
+      </label>
+    </div>
+    <div style="margin-bottom:8px">
+      <label class="label">슬라이드 생성 유형</label>
+      <select class="control" id="slide-gen-type" style="font-size:11px;width:100%" onchange="if(typeof localStorage!=='undefined')localStorage.setItem('ss_slide_gen_type',this.value)">
+        <option value="precision" ${slideGenType === 'precision' ? 'selected' : ''}>A. 정밀 요약형</option>
+        <option value="presentation" ${slideGenType === 'presentation' ? 'selected' : ''}>B. 발표 최적화형</option>
+        <option value="notebook" ${slideGenType === 'notebook' ? 'selected' : ''}>C. 노트북/학습형</option>
+      </select>
+    </div>
+    <div class="action-grid">
+      <button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📖</span>전체 요약</button>
+      <button class="action-card" onclick="askThenSummary('slides')"><span class="action-card-icon">🗂</span>슬라이드 생성</button>
+    </div>
+    <label class="label">커스텀 지시사항</label>
+    <textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력...">${customVal}</textarea>
+    <button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px" onclick="document.getElementById('file-input2').click()">📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>
+    <hr class="sep"/>${displayContent}`;
+}
 
-/* =========================================================
-   VIEWERS → js/ui/viewers.js (setSlideStyle, updateHeaderSlideMode, setWritingStyle, promoteSectionHeadings,
-     buildViewerContentWithPages, getTextViewerWindowHtml, getTranslationViewerWindowHtml, openTranslationViewer,
-     openKoreanViewWindow, openFullTextWindow, openSummaryWindow)
-   ========================================================= */
+function setSlideStyle(s) {
+  slideStyle = s;
+  if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+  renderLeftPanel();
+  if (slides.length) renderSlides();
+}
+function updateHeaderSlideMode() {
+  var lightBtn = document.getElementById('header-slide-mode-light');
+  var darkBtn = document.getElementById('header-slide-mode-dark');
+  if (lightBtn) lightBtn.classList.toggle('active', slideStyle === 'light');
+  if (darkBtn) darkBtn.classList.toggle('active', slideStyle === 'dark');
+}
+window.updateHeaderSlideMode = updateHeaderSlideMode;
+function setWritingStyle(s) {
+  writingStyle = s;
+  showToast(`✅ 문체: ${s === 'academic-da' ? '학술체 (~이다)' : s === 'academic-im' ? '학술체 (~임, ~함)' : '일반체 (존댓말)'}으로 설정됨 — 슬라이드 생성 시 적용됩니다`);
+}
 
-/* =========================================================
-   GENERATE SUMMARY / SLIDES — 구현은 js/slide-gen/slide-gen.js
-   ========================================================= */
+/** 논문 목차 형식 라인을 마크다운 헤딩(##)으로 승격 — 뷰어 목차에 반영 (Abstract, 1. Introduction, 2.1. Methods, 참고문헌 등) */
+function promoteSectionHeadings(text) {
+  if (!text || !text.trim()) return text;
+  var t = text
+    .replace(/^(Abstract|References?|CONCLUSIONS?|INTRODUCTION|참고문헌|결론|초록|서론|General discussion|Limitations, implications and future directions)\s*$/gim, '## $1')
+    .replace(/^(\d+(?:\.\d+)*\.\s+[^\n]+)$/gm, '## $1');
+  return t;
+}
 
 /** 원문/요약 뷰어용 HTML 생성: "--- N페이지 ---"가 있으면 섹션별로 id="page-N" 부여. 슬라이드 요약(Slide 1, Slide 2...)이면 id="page-Slide N"으로 구분하고 좌측 페이지는 슬라이드 번호로 표시 */
 function buildViewerContentWithPages(text) {
@@ -481,7 +1100,6 @@ function openTranslationViewer(originalText, translatedText, label) {
   };
   var win = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes');
   if (!win) { if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
-  if (typeof registerChildWindow === 'function') registerChildWindow(win);
   win.document.write(getTranslationViewerWindowHtml({ label: label || '원문' }));
   win.document.close();
 }
@@ -497,7 +1115,7 @@ async function openKoreanViewWindow(target) {
   var koreanText = '';
   if (typeof window.ensureTranslated === 'function') {
     koreanText = await window.ensureTranslated(target);
-    } else {
+  } else {
     koreanText = target === 'summary' ? (window._translatedSummary || '') : (window._translatedRaw || '');
   }
   if (!koreanText) {
@@ -509,7 +1127,6 @@ async function openKoreanViewWindow(target) {
     if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
     return;
   }
-  if (typeof registerChildWindow === 'function') registerChildWindow(win);
   var contentRendered = buildViewerContentWithPages(koreanText);
   var escapedHtml = contentRendered.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
   var rawJson = JSON.stringify(koreanText);
@@ -529,7 +1146,6 @@ async function openKoreanViewWindow(target) {
 function openFullTextWindow() {
   var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
   if (!win) { showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
-  if (typeof registerChildWindow === 'function') registerChildWindow(win);
   if (typeof window.getViewerRenderedContent !== 'function') window.getViewerRenderedContent = function (text) { return buildViewerContentWithPages(text); };
   if (typeof window.setViewerContent !== 'function') window.setViewerContent = function (text, type) { if (type === 'raw') rawText = text; else if (type === 'summary') summaryText = text; else if (type === 'refs') return; if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof showToast === 'function') showToast('✅ 현재 상태 저장됨'); };
   var contentRendered = buildViewerContentWithPages(rawText);
@@ -552,7 +1168,6 @@ function openSummaryWindow() {
   if (!summaryText) { showToast('⚠️ 요약 내용이 없습니다'); return; }
   var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
   if (!win) { showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
-  if (typeof registerChildWindow === 'function') registerChildWindow(win);
   var title = escapeHtml(fileName);
   var contentRendered = buildViewerContentWithPages(summaryText);
   var escapedHtml = contentRendered.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
@@ -602,6 +1217,9 @@ function selectSlide(index, fromThumb) {
   activeSlideIndex = index;
   document.querySelectorAll('.slide-wrapper').forEach((el, i) => el.classList.toggle('active', i === index));
   document.querySelectorAll('.thumb').forEach((el, i) => el.classList.toggle('active', i === index));
+  document.querySelectorAll('.slide-layer-selectable').forEach(function (el) { el.classList.remove('layer-selected'); });
+  document.querySelectorAll('.layer-toolbar').forEach(function (el) { el.style.display = 'none'; });
+  selectedLayer = null;
   updateDesignPanel();
   const el = document.getElementById(`sw-${index}`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -619,22 +1237,66 @@ function selectSlide(index, fromThumb) {
   } catch (e) { }
 }
 
-/** 텍스트 레이어(제목·불릿·텍스트창) 내용 전체 지우기 */
-function clearSlideTextLayer(slideIndex) {
+// ── 레이어 순서 조절 (위로/아래로) ─────────────────────
+let selectedLayer = null; // { slideIndex, layer: 'text'|'image' }
+
+function selectSlideLayer(slideIndex, layer, event) {
+  if (!event || !event.target) return;
+  if (event.target.closest('button, input, textarea, .youtube-resize-handle, .youtube-move-handle, .bullet-position-handle, .bullet-resize-handle, .slide-image-remove, .slide-extra-position-handle, .slide-extra-move-btn, .slide-extra-resize-handle, .bullet-rendered, .bullet-content, .title-position-handle, .title-size-handle')) return;
+  event.stopPropagation();
+  selectedLayer = { slideIndex, layer };
+  document.querySelectorAll('.slide-layer-selectable').forEach(function (el) { el.classList.remove('layer-selected'); });
+  document.querySelectorAll('.layer-toolbar').forEach(function (el) { el.style.display = 'none'; });
+  var wrap = document.getElementById('sw-' + slideIndex);
+  if (wrap) {
+    var sel = wrap.querySelector('[data-layer="' + layer + '"]');
+    if (sel) sel.classList.add('layer-selected');
+    var bar = document.getElementById('layer-toolbar-' + slideIndex);
+    if (bar) bar.style.display = 'flex';
+  }
+}
+
+function moveLayerUp(slideIndex) {
   if (!slides[slideIndex]) return;
-  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  var s = slides[slideIndex];
-  s.title = '새 슬라이드';
-  s.bullets = [];  /* 불릿 완전 제거 — 빈 placeholder도 안 보이게 */
-  s.extraText = '';
-  renderSlides();
-  selectSlide(slideIndex);
-  if (typeof _markDirty === 'function') _markDirty();
+  var slide = slides[slideIndex];
+  var order = slide.layerOrder || ['text', 'image'];
+  var idx = order.indexOf(selectedLayer && selectedLayer.slideIndex === slideIndex ? selectedLayer.layer : order[0]);
+  if (idx < 0 || idx >= order.length - 1) return;
+  var next = order[idx + 1];
+  order[idx + 1] = order[idx];
+  order[idx] = next;
+  slide.layerOrder = order;
+  applyLayerOrderToDom(slideIndex);
+}
+
+function moveLayerDown(slideIndex) {
+  if (!slides[slideIndex]) return;
+  var slide = slides[slideIndex];
+  var order = slide.layerOrder || ['text', 'image'];
+  var idx = order.indexOf(selectedLayer && selectedLayer.slideIndex === slideIndex ? selectedLayer.layer : order[0]);
+  if (idx <= 0) return;
+  var prev = order[idx - 1];
+  order[idx - 1] = order[idx];
+  order[idx] = prev;
+  slide.layerOrder = order;
+  applyLayerOrderToDom(slideIndex);
+}
+
+function applyLayerOrderToDom(slideIndex) {
+  var slide = slides[slideIndex];
+  if (!slide) return;
+  var order = slide.layerOrder || ['text', 'image'];
+  var wrap = document.getElementById('sw-' + slideIndex);
+  if (!wrap) return;
+  var textEl = wrap.querySelector('.slide-inner[data-layer="text"]');
+  var imageEl = wrap.querySelector('.slide-image-pane[data-layer="image"]');
+  if (textEl) textEl.style.zIndex = order.indexOf('text') >= 0 ? order.indexOf('text') : 0;
+  if (imageEl) imageEl.style.zIndex = order.indexOf('image') >= 0 ? order.indexOf('image') : 1;
 }
 
 function updateSlideTitle(i, val) { if (slides[i]) slides[i].title = val; }
 
-/** 슬라이드 제목 폰트 크기 변경 (A+/A−). 전역 폰트 스케일도 반영 */
+/** 슬라이드 제목 폰트 크기 변경 (모든 슬라이드에 저장된 값 적용) */
 function changeTitleFontSize(slideIndex, delta) {
   if (!slides[slideIndex]) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
@@ -645,10 +1307,7 @@ function changeTitleFontSize(slideIndex, delta) {
   var wrap = document.getElementById('slide-title-wrap-' + slideIndex);
   if (wrap) {
     var ta = wrap.querySelector('.slide-title-input');
-    if (ta) {
-      var scale = getComputedStyle(document.getElementById('slides-canvas') || document.documentElement).getPropertyValue('--slide-font-scale').trim() || '1';
-      ta.style.fontSize = 'calc(' + next + 'px * var(--slide-font-scale, 1))';
-    }
+    if (ta) ta.style.fontSize = next + 'px';
   }
   if (typeof showToast === 'function') showToast('제목 크기 ' + next + 'px');
 }
@@ -810,10 +1469,11 @@ async function startVisualizeAll() {
   const targets = slides.filter(s => s.visPrompt && (overwrite ? true : !s.imageUrl));
   if (!targets.length) { showToast('⚠️ 생성할 슬라이드가 없습니다'); return; }
 
+  _bgJobCancelled = false;
   _bgJobStart(targets.length, '준비 중...');
 
   for (let j = 0; j < targets.length; j++) {
-    if (window._bgJobCancelled) break;
+    if (_bgJobCancelled) break;
     const s = targets[j];
     const i = slides.indexOf(s);
     const prompt = extraPrompt ? s.visPrompt + '. ' + extraPrompt : s.visPrompt;
@@ -829,8 +1489,8 @@ async function startVisualizeAll() {
     _bgJobTick(j + 1, `슬라이드 ${i + 1} 완료`);
   }
 
-  _bgJobEnd(window._bgJobCancelled
-    ? `⏹ 중단됨 — ${(window._bgJob && window._bgJob.done) || 0}/${(window._bgJob && window._bgJob.total) || 0}개 생성`
+  _bgJobEnd(_bgJobCancelled
+    ? `⏹ 중단됨 — ${_bgJob.done}/${_bgJob.total}개 생성`
     : `✅ 이미지 생성 완료 (${targets.length}개)`);
   renderSlides(); renderThumbs(); renderGallery();
 }
@@ -842,17 +1502,14 @@ async function generateAllImages() { askThenVisualizeAll(); } // backward compat
 async function refineImage() {
   const slide = slides[activeSlideIndex]; if (!slide || !slide.imageUrl) return;
   const instruction = document.getElementById('refine-input')?.value; if (!instruction) return;
-  if (showJobProgress) showJobProgress('refineImg', '백그라운드에서 이미지 수정 중...', 0, '🎨');
-  refineImageAPI(slide.imageUrl, instruction).then(function (newImg) {
-    if (hideJobProgress) hideJobProgress('refineImg', 0);
-    if (newImg) {
-      if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-      slides[activeSlideIndex].imageUrl = newImg; renderSlides(); renderThumbs(); renderGallery(); showToast('✅ 이미지 수정 완료');
-    } else showToast('❌ 이미지 수정 실패');
-  }).catch(function () {
-    if (hideJobProgress) hideJobProgress('refineImg', 0);
-    showToast('❌ 이미지 수정 실패');
-  });
+  showLoading('이미지 수정 중...', instruction, 40, true);
+  const newImg = await refineImageAPI(slide.imageUrl, instruction);
+  if (newImg) {
+    if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
+    slides[activeSlideIndex].imageUrl = newImg; renderSlides(); renderThumbs(); renderGallery(); showToast('✅ 이미지 수정 완료');
+  }
+  else showToast('❌ 이미지 수정 실패');
+  hideLoading();
 }
 
 /* =========================================================
@@ -1033,7 +1690,7 @@ function renderPresSlide() {
   const bulletColor = isCover ? 'color:#d8e4f0' : (isDark ? 'color:#b8d4f0' : 'color:#333');
   const dotBg = isCover ? 'display:none' : (isDark ? 'background:#4f8ef7' : 'background:#4f8ef7');
 
-  const fs = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
+  const fs = _slideFontScale / 100;
   const tMin = Math.round(20 * fs), tMax = Math.round(44 * fs), tVw = (3.5 * fs).toFixed(1);
   const bMin = Math.round(11 * fs), bMax = Math.round(21 * fs), bVw = (1.7 * fs).toFixed(1);
   const titleSizePx = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : null;
@@ -1042,13 +1699,13 @@ function renderPresSlide() {
     ? ('position:absolute;left:' + (slide.titlePosition.left || 0) + 'px;top:' + (slide.titlePosition.top || 0) + 'px') : '';
 
   const innerHTML = `
-    <div style="position:absolute;inset:0;padding:5% 6%;display:flex;flex-direction:column;overflow:hidden;${bgCss};${isCover ? 'align-items:center;justify-content:center;text-align:center' : ''}">
+    <div style="position:absolute;inset:0;padding:5% 6%;display:flex;flex-direction:column;${bgCss};${isCover ? 'align-items:center;justify-content:center;text-align:center' : ''}">
       <div style="position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;${isCover ? 'display:none' : ''}"></div>
-      <div style="${titleStyle};font-weight:700;line-height:1.2;margin-bottom:4%;font-family:var(--font-head);${titleColor};${titlePosStyle}${isCover ? ';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:20px;margin-bottom:16px' : ''};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(slide.title)}</div>
-      <div style="flex:1;min-width:0;overflow:hidden;">
-        ${slide.bullets.map(b => `<div style="display:flex;gap:12px;margin-bottom:2%;align-items:flex-start;min-width:0;">
+      <div style="${titleStyle};font-weight:700;line-height:1.2;margin-bottom:4%;font-family:var(--font-head);${titleColor};${titlePosStyle}${isCover ? ';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:20px;margin-bottom:16px' : ''}">${markdownToHtml(slide.title)}</div>
+      <div style="flex:1">
+        ${slide.bullets.map(b => `<div style="display:flex;gap:12px;margin-bottom:2%;align-items:flex-start">
           <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:0.5em;${dotBg}"></div>
-          <div style="font-size:clamp(${bMin}px,${bVw}vw,${bMax}px);line-height:1.5;${bulletColor};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(b)}</div>
+          <div style="font-size:clamp(${bMin}px,${bVw}vw,${bMax}px);line-height:1.5;${bulletColor}">${markdownToHtml(b)}</div>
         </div>`).join('')}
       </div>
     </div>
@@ -1066,7 +1723,7 @@ function renderPresSlide() {
 
   document.getElementById('pres-counter').textContent = `${presIndex + 1} / ${slides.length}`;
   const presFontEl = document.getElementById('pres-font-val');
-  if (presFontEl) presFontEl.textContent = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) + '%';
+  if (presFontEl) presFontEl.textContent = _slideFontScale + '%';
   const notesBar = document.getElementById('pres-notes-bar');
   if (notesBar) { notesBar.textContent = presentationScript[presIndex] || slide.notes || ''; if (presNotesVisible) notesBar.classList.add('show'); }
   updatePenToolUI();
@@ -1296,7 +1953,7 @@ async function exportPPT() {
       const titleColor = isDark ? 'e8f4fd' : '1a1a2e';
       const bodyColor = isDark ? 'b8d4f0' : '444455';
 
-      const fontScale = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
+      const fontScale = _slideFontScale / 100;
       const titleFontSize = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : Math.round(28 * fontScale);
       const bodyFontSize = Math.round(14 * fontScale);
 
@@ -1385,7 +2042,7 @@ function clearAll() {
 let _pdfDoc = null;
 let _pdfCurrentPage = 1;
 let _pdfTotalPages = 0;
-let _pdfScale = 2.0;
+let _pdfScale = 1.4;
 let _pdfRendering = false;
 let _pdfPendingPage = null;
 let _pdfThumbsRendered = false;
@@ -1590,7 +2247,6 @@ async function extractCurrentPageText() {
 // ── State ────────────────────────────────────────────────
 let _cropRatio = 'free';           // current crop ratio preset
 let _origImageDataURL = null;      // original uploaded image (never mutated)
-let _imgPasteZoneActive = false;   // true after user clicks paste zone (Ctrl+V 붙여넣기용)
 
 // ── Open image modal ─────────────────────────────────────
 function openImageModal(slideIdx) {
@@ -1599,9 +2255,7 @@ function openImageModal(slideIdx) {
   _currentCropImg = null;
   _origImageDataURL = null;
   _cropEventsAttached = false;
-  _imgPasteZoneActive = false;
 
-  const row = document.getElementById('img-upload-paste-row');
   const dropZone = document.getElementById('img-drop-zone');
   const cropArea = document.getElementById('crop-area');
 
@@ -1609,18 +2263,17 @@ function openImageModal(slideIdx) {
   const existingImg = slides[_targetSlideForImage]?.imageUrl;
 
   if (existingImg) {
-    if (row) row.style.display = 'none';
+    if (dropZone) dropZone.style.display = 'none';
     if (cropArea) cropArea.style.display = 'block';
   } else {
-    if (row) row.style.display = 'flex';
-    if (dropZone) dropZone.style.display = 'flex';
+    if (dropZone) dropZone.style.display = 'block';
     if (cropArea) cropArea.style.display = 'none';
   }
 
   const applyBtn = document.getElementById('img-apply-btn');
   if (applyBtn) applyBtn.disabled = false;
 
-  // Setup drag-drop (업로드 박스에만)
+  // Setup drag-drop
   if (dropZone) {
     dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('drag-over'); };
     dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
@@ -1629,14 +2282,6 @@ function openImageModal(slideIdx) {
       const f = e.dataTransfer.files[0];
       if (f) loadImageForCrop({ target: { files: [f], value: '' } });
     };
-    dropZone.onclick = () => { _imgPasteZoneActive = false; document.getElementById('img-file-input').click(); };
-  }
-
-  // 붙여넣기 영역 클릭 시 포커스 + 플래그
-  const pasteZone = document.getElementById('img-paste-zone');
-  if (pasteZone) {
-    pasteZone.onclick = function () { _imgPasteZoneActive = true; this.focus(); };
-    pasteZone.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _imgPasteZoneActive = true; } };
   }
 
   openModal('img-modal');
@@ -1671,21 +2316,6 @@ function openImageModal(slideIdx) {
   }
 }
 
-// ── 이미지 모달: 붙여넣기 영역 클릭 후 Ctrl+V 처리 ─────────
-document.addEventListener('paste', function imgModalPaste(e) {
-  const modal = document.getElementById('img-modal');
-  if (!modal || !modal.classList.contains('open') || !_imgPasteZoneActive) return;
-  if (!e.clipboardData || !e.clipboardData.items) return;
-  let file = null;
-  for (let i = 0; i < e.clipboardData.items.length; i++) {
-    const item = e.clipboardData.items[i];
-    if (item.type.indexOf('image') !== -1) { file = item.getAsFile(); break; }
-  }
-  if (!file) return;
-  e.preventDefault();
-  loadImageForCrop({ target: { files: [file], value: '' } });
-});
-
 // ── Load image — immediately activate insert ─────────────
 function loadImageForCrop(e) {
   const file = e.target.files[0]; if (!file) return;
@@ -1699,10 +2329,8 @@ function loadImageForCrop(e) {
       _cropSelection = { x: 0, y: 0, w: img.width, h: img.height };
 
       // Show crop area
-      const row = document.getElementById('img-upload-paste-row');
       const dropZone = document.getElementById('img-drop-zone');
       const cropArea = document.getElementById('crop-area');
-      if (row) row.style.display = 'none';
       if (dropZone) dropZone.style.display = 'none';
       if (cropArea) cropArea.style.display = 'block';
 
@@ -2024,22 +2652,15 @@ function applyImageToSlide() {
   if (!dataURL) { showToast('⚠️ 이미지를 먼저 업로드하세요'); return; }
   if (_targetSlideForImage === null || !slides[_targetSlideForImage]) { showToast('⚠️ 슬라이드를 선택하세요'); return; }
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  const slide = slides[_targetSlideForImage];
   if (window._applyAsSecondImage) {
-    slide.imageUrl2 = dataURL;
-    slide.slideImage2 = null;
+    slides[_targetSlideForImage].imageUrl2 = dataURL;
     window._applyAsSecondImage = false;
     showToast('✅ 두 번째 이미지 삽입 완료');
   } else {
-    slide.imageUrl = dataURL;
-    slide.slideImage1 = null;
-    // 이미지 레이어는 뒤에, 텍스트 레이어는 앞에 (텍스트가 이미지 위에 보이도록)
-    slide.layerOrder = ['image', 'text'];
+    slides[_targetSlideForImage].imageUrl = dataURL;
     showToast('✅ 이미지 삽입 완료');
   }
-  renderSlides();
-  renderThumbs();
-  renderGallery();
+  renderSlides(); renderThumbs(); renderGallery();
   closeModal('img-modal');
   updateDesignPanel();
 }
@@ -2139,42 +2760,13 @@ function deleteHistoryImage(idx) {
 
 function openImageFullscreen(dataURL) {
   const w = window.open('', '_blank');
-  if (!w) return;
-  if (typeof registerChildWindow === 'function') registerChildWindow(w);
   w.document.write(`<!DOCTYPE html><html><head><title>이미지 미리보기</title>
   <style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh}
   img{max-width:98vw;max-height:98vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.8)}
   </style></head><body><img src="${dataURL}"/></body></html>`);
 }
 
-// ── AI로 시각 프롬프트 작성 (MDeditor 내용 참고) ──
-async function generateVisPromptFromMdEditor() {
-  const slide = slides[activeSlideIndex];
-  if (!slide) { showToast('⚠️ 슬라이드를 선택하세요'); return; }
-  const ta = document.getElementById('md-editor-ta');
-  let mdContent = ta ? ta.value.trim() : '';
-  if (!mdContent) {
-    mdContent = (slide.title ? '# ' + slide.title + '\n\n' : '') +
-      (slide.bullets && slide.bullets.length ? slide.bullets.map(b => '- ' + b).join('\n') + '\n' : '') +
-      (slide.notes ? '> ' + slide.notes : '');
-  }
-  if (!mdContent.trim()) { showToast('⚠️ MDeditor에 내용을 입력하거나 슬라이드를 로드(↓)하세요'); return; }
-  const inst = typeof getImggenVisPromptInstruction === 'function' ? getImggenVisPromptInstruction(mdContent) : null;
-  if (!inst) { showToast('⚠️ prompt-store 로드 필요'); return; }
-  const inputEl = document.getElementById('vis-prompt-input');
-  if (inputEl) inputEl.placeholder = 'AI가 프롬프트 작성 중...';
-  try {
-    const { text } = await callGemini(inst.user, inst.system, false);
-    const prompt = (text || '').replace(/```\w*\s*/g, '').replace(/```/g, '').trim();
-    if (prompt && inputEl) { inputEl.value = prompt; inputEl.placeholder = 'Describe the diagram in English...'; slide.visPrompt = prompt; showToast('✅ 시각 프롬프트 생성됨'); }
-    else { showToast('⚠️ 생성된 프롬프트가 비어 있습니다'); if (inputEl) inputEl.placeholder = 'Describe the diagram in English...'; }
-  } catch (err) {
-    if (inputEl) inputEl.placeholder = 'Describe the diagram in English...';
-    showToast('❌ 프롬프트 생성 실패: ' + (err && err.message || ''));
-  }
-}
-
-// ── Patched generateSingleImage — runs in background, shows result below, records history ──
+// ── Patched generateSingleImage — shows result below, records history ──
 async function generateSingleImage(idx) {
   const i = (idx !== undefined) ? idx : activeSlideIndex;
   const slide = slides[i]; if (!slide) return;
@@ -2182,14 +2774,20 @@ async function generateSingleImage(idx) {
   slide.visPrompt = p;
   if (!p) { showToast('⚠️ 시각 프롬프트를 입력하세요'); return; }
 
-  if (showJobProgress) showJobProgress('aiImg', '백그라운드에서 이미지 생성 중...', 0, '🎨');
-  const resultArea = document.getElementById('ai-img-inline-result');
-  if (resultArea) { resultArea.innerHTML = `<div style="text-align:center;padding:12px;color:var(--text2);font-size:11px">🎨 생성 중... 백그라운드에서 실행됩니다</div>`; resultArea.style.display = 'block'; }
+  showLoading(`슬라이드 ${i + 1} 이미지 생성 중...`, p, 30, true);
 
-  generateImage(p).then(function (img) {
-    if (hideJobProgress) hideJobProgress('aiImg', 0);
+  // Show inline generating indicator
+  const resultArea = document.getElementById('ai-img-inline-result');
+  if (resultArea) { resultArea.innerHTML = `<div style="text-align:center;padding:12px;color:var(--text2);font-size:11px">🎨 생성 중... 잠시만 기다려주세요</div>`; resultArea.style.display = 'block'; }
+
+  const img = await generateImage(p);
+  hideLoading();
+
   if (img) {
+    // ✅ Save to history ONLY — do NOT auto-apply to slide
     addToAiImgHistory(p, img, i);
+
+    // Show result card with "apply" button
     if (resultArea) {
       resultArea.innerHTML = `
         <div class="ai-img-result-card">
@@ -2209,11 +2807,6 @@ async function generateSingleImage(idx) {
     if (resultArea) { resultArea.innerHTML = `<div style="text-align:center;padding:12px;color:var(--danger);font-size:11px">❌ 생성 실패 — 프롬프트 수정 후 재시도하세요</div>`; }
     showToast('❌ 이미지 생성 실패');
   }
-  }).catch(function (err) {
-    if (hideJobProgress) hideJobProgress('aiImg', 0);
-    if (resultArea) { resultArea.innerHTML = `<div style="text-align:center;padding:12px;color:var(--danger);font-size:11px">❌ ${escapeHtml(err && err.message || '이미지 생성 실패')}</div>`; }
-    showToast('❌ 이미지 생성 실패');
-  });
 }
 
 function applyHistoryImageNow(dataURL, slideIdx) {
@@ -2378,28 +2971,6 @@ let _extraTextColors = ['#e8f4fd', '#f87171', '#60a5fa', '#34d399', '#fbbf24', '
 
 function initExtraText(slideIdx) {
   if (!slides[slideIdx].extraText) slides[slideIdx].extraText = '';
-}
-
-/** 현재 슬라이드에 텍스트창(extra 영역) 추가 */
-function addSlideExtraText(slideIndex) {
-  if (!slides[slideIndex]) return;
-  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[slideIndex].extraText = slides[slideIndex].extraText || '';
-  if (!slides[slideIndex].extraText.trim()) slides[slideIndex].extraText = '<p>새 텍스트를 입력하세요</p>';
-  renderSlides();
-  selectSlide(slideIndex);
-  if (typeof _markDirty === 'function') _markDirty();
-}
-
-/** 현재 슬라이드의 텍스트창(extra 영역) 제거 */
-function removeSlideExtraText(slideIndex) {
-  if (!slides[slideIndex]) return;
-  if (!slides[slideIndex].extraText) return;
-  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[slideIndex].extraText = '';
-  renderSlides();
-  selectSlide(slideIndex);
-  if (typeof _markDirty === 'function') _markDirty();
 }
 
 function toggleExtraTextEditor(slideIdx) {
@@ -2602,11 +3173,7 @@ function updateDesignPanel(subtab) {
     ${st === 'imggen' ? `
     <div style="margin-bottom:14px">
       <span class="design-label">슬라이드 ${activeSlideIndex + 1} 시각 프롬프트</span>
-      <p style="font-size:10px;color:var(--text3);margin:0 0 4px">MDeditor 창의 슬라이드 내용을 참고하면 더 세밀한 프롬프트가 만들어집니다. 설정 → 프롬프트 설정에서 지시문을 수정할 수 있습니다.</p>
       <textarea class="control" id="vis-prompt-input" style="resize:vertical;min-height:70px;max-height:500px" placeholder="Describe the diagram in English...">${escapeHtml(slide.visPrompt || '')}</textarea>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" style="flex:1;min-width:120px;justify-content:center" onclick="generateVisPromptFromMdEditor()" title="MDeditor 내용을 참고해 세밀한 시각 프롬프트 자동 작성">✏️ AI로 프롬프트 작성</button>
-      </div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="generateSingleImage()">🎨 AI 이미지 생성</button>
         <button class="btn btn-ghost btn-sm" onclick="openAiImageWindow(${activeSlideIndex})" title="새창에서 생성">↗</button>
@@ -2686,23 +3253,11 @@ function renderSlides() {
   canvas.innerHTML = slides.map((slide, index) => {
     const coverStyle = slide.isCover ? 'style-cover' : ('style-' + slideStyle);
     const extraHtml = slide.extraText ? renderExtraText(slide.extraText) : '';
-    const layerOrder = slide.layerOrder || (slide.imageUrl ? ['image', 'text'] : ['text', 'image']);
+    const layerOrder = slide.layerOrder || ['text', 'image'];
     const textZ = layerOrder.indexOf('text');
     const imageZ = layerOrder.indexOf('image');
     const layerStyleText = 'position:relative;z-index:' + (textZ >= 0 ? textZ : 0);
     const layerStyleImage = 'position:relative;z-index:' + (imageZ >= 0 ? imageZ : 1);
-    const TEXT_IMAGE_MIN = 0, TEXT_IMAGE_MAX = 100;
-    const textPct = slide.imageUrl && slide.innerSize && slide.innerSize.widthPct != null
-      ? Math.max(TEXT_IMAGE_MIN, Math.min(TEXT_IMAGE_MAX, slide.innerSize.widthPct))
-      : 55;
-    const innerSizeStyle = slide.imageUrl
-      ? (slide.innerSize && slide.innerSize.widthPct != null
-          ? ('flex: 0 0 ' + textPct + '%; min-width: 0;' + (slide.innerSize.heightPct != null ? ' height:' + Math.min(100, Math.max(20, slide.innerSize.heightPct)) + '%; min-height:0;' : ''))
-          : 'flex: 0 0 55%; min-width: 0;')
-      : '';
-    const imagePaneFlexStyle = slide.imageUrl ? ('flex: 0 0 ' + (100 - textPct) + '%;') : '';
-    const layerStyleTextWithInner = layerStyleText + (innerSizeStyle ? ' ' + innerSizeStyle : '');
-    const layerStyleImageWithFlex = layerStyleImage + (imagePaneFlexStyle ? ' ' + imagePaneFlexStyle : '');
     const extraAreaStyle = [];
     if (slide.extraAreaHeight) extraAreaStyle.push('height:' + slide.extraAreaHeight + 'px');
     if (slide.extraAreaPosition) {
@@ -2731,8 +3286,6 @@ function renderSlides() {
       <div class="slide-actions-bar">
         <button class="slide-action-btn" onclick="event.stopPropagation();askThenRewrite(${index})">🤖 AI재작성</button>
         <button class="slide-action-btn" onclick="event.stopPropagation();openImageModal(${index})">📁 이미지업로드</button>
-        <button class="slide-action-btn" onclick="event.stopPropagation();addSlideExtraText(${index})" title="슬라이드에 텍스트/미디어 영역 추가">📝 텍스트창 추가</button>
-        ${slide.extraText ? `<button class="slide-action-btn" onclick="event.stopPropagation();removeSlideExtraText(${index})" title="텍스트창(extra 영역) 제거">🗑 텍스트창 삭제</button>` : ''}
         <button class="slide-action-btn" onclick="event.stopPropagation();openAiImageWindow(${index})">🎨 AI이미지생성</button>
         <button class="slide-action-btn danger" onclick="event.stopPropagation();deleteSlide(${index})">🗑 지우기</button>
         <div style="position:relative;display:inline-block">
@@ -2744,16 +3297,16 @@ function renderSlides() {
         </div>
       </div>
       <div class="slide-card ${coverStyle}">
-        <div class="slide-inner${slide.imageUrl ? ' has-image' : ''}" data-slide-index="${index}" data-layer="text" style="${layerStyleTextWithInner || layerStyleText}">
+        <div class="slide-inner slide-layer-selectable${slide.imageUrl ? ' has-image' : ''}" data-slide-index="${index}" data-layer="text" style="${layerStyleText}" onclick="event.target.closest('.slide-layer-selectable')&&selectSlideLayer(${index},'text',event)">
           <div class="slide-title-wrap" id="slide-title-wrap-${index}" data-slide-index="${index}"${titleWrapStyleStr}>
             <div class="title-position-handle" title="드래그하여 제목 위치 조절">T</div>
             <span class="title-size-handle title-size-down" title="제목 크기 줄이기" onclick="event.stopPropagation();changeTitleFontSize(${index},-2)">A−</span>
             <span class="title-size-handle title-size-up" title="제목 크기 키우기" onclick="event.stopPropagation();changeTitleFontSize(${index},2)">A+</span>
-            <textarea class="slide-title-input" rows="2" style="font-size:calc(${titleFontSize}px * var(--slide-font-scale, 1))"
-            onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"
-            onfocus="_trackFocus(this,'title',${index})"
-            oninput="updateSlideTitle(${index},this.value);autoResize(this)"
-          >${escapeHtml(slide.title)}</textarea>
+            <textarea class="slide-title-input" rows="2" style="font-size:${titleFontSize}px"
+              onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"
+              onfocus="_trackFocus(this,'title',${index})"
+              oninput="updateSlideTitle(${index},this.value);autoResize(this)"
+            >${escapeHtml(slide.title)}</textarea>
           </div>
           ${extraHtml ? `<div class="slide-extra-text-area slide-extra-above" id="slide-extra-area-${index}" data-slide-index="${index}"${extraAreaStyleStr}><div class="slide-extra-area-toolbar"><span class="slide-extra-position-handle" title="드래그하여 영역 위치 조절">⋮⋮</span><button type="button" class="slide-extra-move-btn" title="클릭 후 드래그하여 영상/이미지 영역 이동">위치 이동</button></div><div class="slide-extra-text-rendered" id="slide-extra-rendered-${index}" onclick="event.stopPropagation();switchRightTab('design');selectSlide(${index})">${extraHtml}</div><div class="slide-extra-resize-handle" title="드래그하여 영역 높이 조절"></div></div>` : ''}
           <div class="slide-bullets-wrap ${(slide.bulletSize && (slide.bulletSize.w > 0 || slide.bulletSize.h > 0)) ? 'bullet-resized' : ''}" id="slide-bullets-wrap-${index}" data-slide-index="${index}"${bulletPositionStyleStr}><div class="bullet-position-handle" title="드래그하여 본문 위치 조절">H</div>${bulletResizeHandles}<div class="slide-bullets">
@@ -2772,12 +3325,18 @@ function renderSlides() {
                 </div>
               </div>`).join('')}
           </div>
+          </div>
         </div>
-        </div>
-        ${slide.imageUrl ? `<div class="slide-layer-divider" id="slide-layer-divider-${index}" data-slide-index="${index}" title="드래그하여 텍스트/이미지 비율 조절"></div><div class="slide-image-pane${slide.imageUrl2 ? ' dual-image' : ''}" data-slide-index="${index}" data-layer="image" style="${layerStyleImageWithFlex}">
+        ${slide.imageUrl ? `<div class="slide-image-pane slide-layer-selectable${slide.imageUrl2 ? ' dual-image' : ''}" data-slide-index="${index}" data-layer="image" style="${layerStyleImage}" onclick="event.target.closest('.slide-layer-selectable')&&selectSlideLayer(${index},'image',event)">
           <div class="slide-img-slot"><div class="slide-img-wrap ${(slide.slideImage1 && (slide.slideImage1.w || slide.slideImage1.h)) ? 'slide-resized' : ''}" id="slide-img-wrap-${index}-1" data-slide-index="${index}" data-slot="1"${buildSlideImageWrapStyle(slide.slideImage1)}><img src="${slide.imageUrl}" alt=""/><button class="slide-image-remove" onclick="removeSlideImage(${index});event.stopPropagation()" title="제거">✕</button>${buildResizeMoveHandlesHtml()}</div></div>
           ${slide.imageUrl2 ? `<div class="slide-img-slot"><div class="slide-img-wrap ${(slide.slideImage2 && (slide.slideImage2.w || slide.slideImage2.h)) ? 'slide-resized' : ''}" id="slide-img-wrap-${index}-2" data-slide-index="${index}" data-slot="2"${buildSlideImageWrapStyle(slide.slideImage2)}><img src="${slide.imageUrl2}" alt=""/><button class="slide-image-remove" onclick="removeSlideImage2(${index});event.stopPropagation()" title="제거">✕</button>${buildResizeMoveHandlesHtml()}</div></div>` : ''}
         </div>` : ''}
+
+        <div class="layer-toolbar" id="layer-toolbar-${index}" data-slide-index="${index}" style="display:none">
+          <span class="layer-toolbar-label">레이어</span>
+          <button type="button" class="layer-toolbar-btn" onclick="moveLayerUp(${index});event.stopPropagation()" title="한 칸 앞으로">↑ 위로</button>
+          <button type="button" class="layer-toolbar-btn" onclick="moveLayerDown(${index});event.stopPropagation()" title="한 칸 뒤로">↓ 아래로</button>
+        </div>
 
         <div class="slide-whitespace-badge" id="wsb-${index}" title="남는 여백(대략)">여백 -</div>
       </div>
@@ -2861,7 +3420,7 @@ function applyYoutubeResizedStyles() {
       var titleWrap = document.getElementById('slide-title-wrap-' + index);
       if (titleWrap) {
         var ta = titleWrap.querySelector('.slide-title-input');
-        if (ta) ta.style.fontSize = 'calc(' + slide.titleFontSize + 'px * var(--slide-font-scale, 1))';
+        if (ta) ta.style.fontSize = slide.titleFontSize + 'px';
       }
     }
     if (slide.bulletSize && (slide.bulletSize.w > 0 || slide.bulletSize.h > 0)) {
@@ -3327,17 +3886,13 @@ function applyYoutubeResizedStyles() {
   }, true);
 })();
 
-// ── 본문(불릿) 영역 좌우/상하 크기 조절 — 텍스트 레이어 내 불릿 영역만 조절 (데이터 레이어 slide-inner 전체는 조절하지 않음) ─────────────────────
+// ── 본문(불릿) 영역 좌우/상하 크기 조절 (4방향 리사이즈 핸들) ─────────────────────
 (function () {
   var MIN_W = 120, MIN_H = 60;
   var _resize = { active: false, wrap: null, edge: '', startX: 0, startY: 0, startLeft: 0, startTop: 0, startW: 0, startH: 0, hasMoved: false };
 
   function onMouseMove(e) {
     if (!_resize.active || !_resize.wrap) return;
-    var dx = e.clientX - _resize.startX;
-    var dy = e.clientY - _resize.startY;
-    var edge = _resize.edge;
-
     if (!_resize.hasMoved) {
       _resize.hasMoved = true;
       if (!_resize.wrap.classList.contains('bullet-resized')) {
@@ -3349,6 +3904,9 @@ function applyYoutubeResizedStyles() {
         _resize.wrap.style.height = _resize.startH + 'px';
       }
     }
+    var dx = e.clientX - _resize.startX;
+    var dy = e.clientY - _resize.startY;
+    var edge = _resize.edge;
     var L = _resize.startLeft, T = _resize.startTop, W = _resize.startW, H = _resize.startH;
     if (edge.indexOf('e') !== -1) W = Math.max(MIN_W, W + dx);
     if (edge.indexOf('w') !== -1) { W = Math.max(MIN_W, W - dx); L = _resize.startLeft + dx; }
@@ -3375,7 +3933,6 @@ function applyYoutubeResizedStyles() {
           slides[idx].bulletPosition.left = parseInt(_resize.wrap.style.left, 10) || 0;
           slides[idx].bulletPosition.top = parseInt(_resize.wrap.style.top, 10) || 0;
         }
-        if (typeof _markDirty === 'function') _markDirty();
       }
     }
     _resize.wrap = null;
@@ -3389,7 +3946,7 @@ function applyYoutubeResizedStyles() {
     e.preventDefault();
     e.stopPropagation();
     if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-    var edge = handle.getAttribute('data-edge') || 'e';
+    var edge = handle.getAttribute('data-edge') || 'se';
     var rect = wrap.getBoundingClientRect();
     var parent = wrap.parentElement;
     var parentRect = parent ? parent.getBoundingClientRect() : rect;
@@ -3407,67 +3964,6 @@ function applyYoutubeResizedStyles() {
     _resize.startY = e.clientY;
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, true);
-})();
-
-// ── 텍스트/이미지 레이어 구분 디바이더 드래그로 비율 조절 ─────────────────────
-(function () {
-  var _div = { active: false, slideIndex: -1, card: null, inner: null, startX: 0, cardWidth: 0, startPct: 0 };
-  var MIN_PCT = 0, MAX_PCT = 100;
-
-  function onMove(e) {
-    if (!_div.active || !_div.card || !_div.inner) return;
-    var cardRect = _div.card.getBoundingClientRect();
-    var cardW = cardRect.width;
-    if (cardW <= 0) return;
-    var pct = ((e.clientX - cardRect.left) / cardW) * 100;
-    pct = Math.max(MIN_PCT, Math.min(MAX_PCT, pct));
-    _div.inner.style.flex = '0 0 ' + pct + '%';
-    var imagePane = _div.card.querySelector('.slide-layer-divider + .slide-image-pane');
-    if (imagePane) imagePane.style.flex = '0 0 ' + (100 - pct) + '%';
-  }
-
-  function onUp() {
-    if (!_div.active) return;
-    if (_div.slideIndex >= 0 && typeof slides !== 'undefined' && slides[_div.slideIndex]) {
-      var pct = parseFloat(_div.inner.style.flex) || 55;
-      pct = Math.max(MIN_PCT, Math.min(MAX_PCT, pct));
-      if (pct > 0 && pct < 100) {
-        slides[_div.slideIndex].innerSize = slides[_div.slideIndex].innerSize || {};
-        slides[_div.slideIndex].innerSize.widthPct = pct;
-        if (typeof _markDirty === 'function') _markDirty();
-      }
-    }
-    _div.active = false;
-    _div.slideIndex = -1;
-    _div.card = null;
-    _div.inner = null;
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-  }
-
-  document.addEventListener('mousedown', function (e) {
-    if (e.button !== 0) return;
-    var div = e.target && e.target.closest('.slide-layer-divider');
-    if (!div) return;
-    var slideIndex = parseInt(div.getAttribute('data-slide-index'), 10);
-    if (isNaN(slideIndex) || slideIndex < 0) return;
-    var card = div.closest('.slide-card');
-    var inner = card && card.querySelector('.slide-inner[data-layer="text"]');
-    if (!card || !inner) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-    _div.active = true;
-    _div.slideIndex = slideIndex;
-    _div.card = card;
-    _div.inner = inner;
-    _div.startX = e.clientX;
-    _div.cardWidth = card.getBoundingClientRect().width;
-    var flex = (inner.style.flex || '').match(/[\d.]+/);
-    _div.startPct = flex ? parseFloat(flex[0]) : 55;
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
   }, true);
 })();
 
@@ -3993,7 +4489,6 @@ function openAiImageWindow(idx) {
   const defaultPrompt = slide.visPrompt || ('Academic visual for: ' + slide.title);
   const w = window.open('', '_blank', 'width=680,height=580,resizable=yes,scrollbars=yes');
   if (!w) { showToast('\u26a0\ufe0f \ud31d\uc5c5 \ucc28\ub2e8\ub428 \u2014 \ud31d\uc5c5\uc744 \ud5c8\uc6a9\ud574\uc8fc\uc138\uc694'); return; }
-  if (typeof registerChildWindow === 'function') registerChildWindow(w);
   // ⑨ Use image-specific key if set, otherwise fall back to active key
   let apiKey = _imageApiKey || '';
   if (!apiKey) { try { apiKey = getApiKey(); } catch (e) { } }
@@ -4101,7 +4596,7 @@ function apply(){
   }
 }
 function dl(){if(!_url)return;var a=document.createElement('a');a.href=_url;a.download='ai_img_slide'+(SIDX+1)+'_'+Date.now()+'.png';a.click();}
-function viewFull(){if(!_url)return;var w=window.open('','_blank');if(w&&window.opener&&typeof window.opener.registerChildWindow==='function')window.opener.registerChildWindow(w);w.document.write('<body style="margin:0;background:#111"><img src="'+_url+'" style="max-width:100vw;max-height:100vh;display:block;margin:auto"></body>');}
+function viewFull(){if(!_url)return;var w=window.open('','_blank');w.document.write('<body style="margin:0;background:#111"><img src="'+_url+'" style="max-width:100vw;max-height:100vh;display:block;margin:auto"></body>');}
 <\/script></body></html>`;
   w.document.write(html);
   w.document.close();
@@ -4119,9 +4614,8 @@ function applyAiImageFromPopup(slideIdx, dataURL) {
 // ── PDF new window ────────────────────────────────────────
 function openPdfNewWindow() {
   if (!_pdfDoc) { showToast('\u26a0\ufe0f PDF\uac00 \ub85c\ub4dc\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4'); return; }
-  const w = window.open('', '_blank', 'width=1200,height=900,resizable=yes,scrollbars=yes');
+  const w = window.open('', '_blank', 'width=900,height=700,resizable=yes,scrollbars=yes');
   if (!w) { showToast('\u26a0\ufe0f \ud31d\uc5c5 \ucc28\ub2e8\ub428'); return; }
-  if (typeof registerChildWindow === 'function') registerChildWindow(w);
   w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PDF \ubbf8\ub9ac\ubcf4\uae30</title>'
     + '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>'
     + '<style>body{margin:0;padding:16px;background:#1a1d24;display:flex;flex-direction:column;align-items:center;gap:12px}'
@@ -4138,7 +4632,7 @@ function openPdfNewWindow() {
     + '  var pg=document.getElementById("pages");'
     + '  var render=function(n){if(n>doc.numPages)return;'
     + '    doc.getPage(n).then(function(page){'
-    + '      var vp=page.getViewport({scale:2.5});'
+    + '      var vp=page.getViewport({scale:1.5});'
     + '      var cv=document.createElement("canvas");'
     + '      cv.width=vp.width;cv.height=vp.height;pg.appendChild(cv);'
     + '      page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise.then(function(){render(n+1);});'
@@ -4191,13 +4685,6 @@ document.addEventListener('DOMContentLoaded', () => {
   try { initMdSplitter(); } catch (e) { }
   try { mdUpdatePageIndicators(); } catch (e) { }
   try { setTimeout(() => updateWhitespaceBadges(), 80); } catch (e) { }
-  const extPresentBtn = document.getElementById('ext-present-btn');
-  if (extPresentBtn && typeof window.openExternalPresentation === 'function') {
-    extPresentBtn.addEventListener('click', function (e) { e.preventDefault(); window.openExternalPresentation(); });
-  }
-  if (!window.opener && typeof closeAllChildWindows === 'function') {
-    window.addEventListener('beforeunload', function () { closeAllChildWindows(); });
-  }
 });
 
 /* ── Auto-save: check for recovery on startup ── */

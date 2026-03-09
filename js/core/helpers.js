@@ -18,13 +18,13 @@ function showConfirm(title, msg, okFn) {
    ASK-THEN WRAPPERS (req. 5, 6)
    ========================================================= */
 function askThenSummary(type) {
-  if (!rawText) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
+  if (!(typeof window.getRawText === 'function' ? window.getRawText() : rawText)) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
   const label = type === 'full' ? '전체 요약 생성' : '슬라이드 생성';
   showConfirm(label + ' 실행', `AI를 사용하여 ${label}을 실행하시겠습니까?\n시간이 다소 걸릴 수 있습니다.`, () => generateSummary(type));
 }
 function askThenFetchSources() {
   const query = document.getElementById('source-search-input')?.value?.trim();
-  if (!query && !rawText) { showToast('⚠️ 검색어를 입력하세요'); switchRightTab('sources'); return; }
+  if (!query && !(typeof window.getRawText === 'function' ? window.getRawText() : rawText)) { showToast('⚠️ 검색어를 입력하세요'); switchRightTab('sources'); return; }
   if (!query) { showToast('⚠️ 출처 검색창에 검색어를 입력하세요'); switchRightTab('sources'); return; }
   showConfirm('출처 검색 실행', `"${query}" 에 대한 학술 출처를 AI로 검색하시겠습니까?`, () => fetchSources());
 }
@@ -38,39 +38,93 @@ function askThenRewrite(index) {
 }
 
 /* =========================================================
-   UI HELPERS — 전역 진행률, 로딩, 토스트, 탭
+   UI HELPERS — 전역 진행률 (다중 작업), 로딩, 토스트, 탭
    ========================================================= */
 let _globalProgressTimer = null;
+/** 작업별 진행 상태. id -> { label, pct, icon } */
+let _globalProgressJobs = {};
 
-function showGlobalProgress(label, pct = 0, icon = '⏳') {
+function renderGlobalProgress() {
   const bar = document.getElementById('global-progress-bar');
-  const lbl = document.getElementById('global-progress-label');
-  const fill = document.getElementById('global-progress-fill');
-  const pctEl = document.getElementById('global-progress-pct');
-  const ico = document.getElementById('global-progress-icon');
-  if (!bar) return;
+  const jobsEl = document.getElementById('global-progress-jobs');
+  if (!bar || !jobsEl) return;
+  const ids = Object.keys(_globalProgressJobs);
+  if (ids.length === 0) {
+    bar.style.display = 'none';
+    jobsEl.innerHTML = '';
+    return;
+  }
   bar.style.display = 'flex';
-  if (lbl) lbl.textContent = label;
-  if (fill) fill.style.width = pct + '%';
-  if (pctEl) pctEl.textContent = pct + '%';
-  if (ico) ico.textContent = icon;
+  const escapeHtml = function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  jobsEl.innerHTML = ids.map(function (id) {
+    const j = _globalProgressJobs[id];
+    const pct = Math.min(100, Math.round(j.pct));
+    const safeId = id.replace(/["'<>]/g, '');
+    return '<div class="global-progress-row" data-job-id="' + safeId + '" style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
+      '<span class="global-progress-icon" style="font-size:12px;flex-shrink:0">' + (j.icon || '⏳') + '</span>' +
+      '<span class="global-progress-label" style="font-size:11px;color:var(--accent);font-weight:600;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(j.label) + '</span>' +
+      '<div style="width:56px;height:4px;background:var(--border2);border-radius:2px;flex-shrink:0;overflow:hidden">' +
+      '<div class="global-progress-fill" style="height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:' + pct + '%;transition:width 0.3s"></div></div>' +
+      '<span class="global-progress-pct" style="font-size:10px;color:var(--text3);min-width:24px;text-align:right">' + pct + '%</span>' +
+      '</div>';
+  }).join('');
+}
+
+/** 작업 ID별 진행 표시 (요약/번역 등 동시에 여러 개 표시) */
+function showJobProgress(id, label, pct, icon) {
+  _globalProgressJobs[id] = { label: label || '처리 중...', pct: pct == null ? 0 : pct, icon: icon || '⏳' };
+  renderGlobalProgress();
+}
+
+function updateJobProgress(id, pct, label) {
+  if (!_globalProgressJobs[id]) return;
+  _globalProgressJobs[id].pct = pct != null ? pct : _globalProgressJobs[id].pct;
+  if (label != null) _globalProgressJobs[id].label = label;
+  const row = document.querySelector('.global-progress-row[data-job-id="' + id.replace(/["'<>]/g, '') + '"]');
+  if (row) {
+    const fill = row.querySelector('.global-progress-fill');
+    const pctEl = row.querySelector('.global-progress-pct');
+    const lbl = row.querySelector('.global-progress-label');
+    var p = Math.min(100, Math.round(_globalProgressJobs[id].pct));
+    if (fill) fill.style.width = p + '%';
+    if (pctEl) pctEl.textContent = p + '%';
+    if (lbl && label != null) lbl.textContent = label;
+  } else {
+    renderGlobalProgress();
+  }
+}
+
+function hideJobProgress(id, delay) {
+  if (delay == null || delay > 0) {
+    setTimeout(function () {
+      delete _globalProgressJobs[id];
+      renderGlobalProgress();
+    }, delay || 0);
+  } else {
+    delete _globalProgressJobs[id];
+    renderGlobalProgress();
+  }
+}
+
+function showGlobalProgress(label, pct, icon) {
+  showJobProgress('default', label, pct, icon);
 }
 
 function updateGlobalProgress(pct, label) {
-  const fill = document.getElementById('global-progress-fill');
-  const pctEl = document.getElementById('global-progress-pct');
-  const lbl = document.getElementById('global-progress-label');
-  if (fill) fill.style.width = Math.min(100, pct) + '%';
-  if (pctEl) pctEl.textContent = Math.min(100, Math.round(pct)) + '%';
-  if (label && lbl) lbl.textContent = label;
+  updateJobProgress('default', pct, label);
 }
 
-function hideGlobalProgress(delay = 1200) {
-  const bar = document.getElementById('global-progress-bar');
+function hideGlobalProgress(delay) {
   if (_globalProgressTimer) clearTimeout(_globalProgressTimer);
-  _globalProgressTimer = setTimeout(() => {
-    if (bar) bar.style.display = 'none';
-  }, delay);
+  _globalProgressTimer = setTimeout(function () {
+    hideJobProgress('default', 0);
+  }, delay == null ? 1200 : delay);
+}
+
+if (typeof window !== 'undefined') {
+  window.showJobProgress = showJobProgress;
+  window.updateJobProgress = updateJobProgress;
+  window.hideJobProgress = hideJobProgress;
 }
 
 function showLoading(msg, sub = '', progress = 30, showAbort = false) {
@@ -101,7 +155,7 @@ function escapeHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/
 function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
 
 function switchTab(tab) {
-  leftTab = tab;
+  if (typeof window.setLeftTab === 'function') window.setLeftTab(tab);
   document.querySelectorAll('.panel-left .panel-tab').forEach(el => el.classList.remove('active'));
   const btn = document.getElementById('tab-' + tab); if (btn) btn.classList.add('active');
   renderLeftPanel();
@@ -116,4 +170,22 @@ function switchRightTab(tab) {
   else if (tab === 'refs') { document.getElementById('refs-panel').style.display = 'block'; renderRefsPanel(); }
   else if (tab === 'design') { document.getElementById('design-panel').style.display = 'block'; updateDesignPanel(); }
   else if (tab === 'gallery') { document.getElementById('gallery-panel').style.display = 'block'; renderGallery(); }
+}
+
+/* =========================================================
+   CHILD WINDOWS — 앱이 연 새 창을 등록하고, 메인 창 종료 시 모두 닫기 (보안)
+   ========================================================= */
+let _childWindows = [];
+function registerChildWindow(win) {
+  if (win && typeof win.close === 'function' && !_childWindows.includes(win)) _childWindows.push(win);
+}
+function closeAllChildWindows() {
+  _childWindows.forEach(function (w) {
+    try { if (w && !w.closed && typeof w.close === 'function') w.close(); } catch (e) {}
+  });
+  _childWindows.length = 0;
+}
+if (typeof window !== 'undefined') {
+  window.registerChildWindow = registerChildWindow;
+  window.closeAllChildWindows = closeAllChildWindows;
 }

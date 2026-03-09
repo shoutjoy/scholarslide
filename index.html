@@ -46,10 +46,6 @@
   </div>
   </div>
   <div class="pres-controls">
-    <button class="pres-btn" onclick="presNav(-1)">◀ 이전</button>
-    <span class="pres-counter" id="pres-counter">1 / 1</span>
-    <button class="pres-btn" onclick="presNav(1)">다음 ▶</button>
-    <div class="pres-sep"></div>
     <button class="pres-btn pres-zoom-btn" onclick="changePresZoom(-10)" title="축소 (-)">−</button>
     <span class="pres-zoom-val" id="pres-zoom-val">100%</span>
     <button class="pres-btn pres-zoom-btn" onclick="changePresZoom(+10)" title="확대 (+)">+</button>
@@ -60,6 +56,9 @@
     <span class="pres-zoom-val" id="pres-font-val">100%</span>
     <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(10)" title="폰트 확대">+</button>
     <div class="pres-sep"></div>
+    <button class="pres-btn" onclick="presNav(-1)">◀ 이전</button>
+    <span class="pres-counter" id="pres-counter">1 / 1</span>
+    <button class="pres-btn" onclick="presNav(1)">다음 ▶</button>
     <button class="pres-btn" onclick="togglePresNotes()">📝 노트</button>
     <button class="pres-btn" style="color:var(--danger)" onclick="exitPresentation()">✕ 종료</button>
   </div>
@@ -128,6 +127,22 @@
   </div>
 </div>
 
+<!-- ── SETTINGS MODAL (내부 패널) ── -->
+<div id="settings-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'settings-modal')">
+  <div id="settings-modal-box" class="modal-box" onclick="event.stopPropagation()" style="max-width:720px;max-height:85vh">
+    <div class="modal-header">
+      <div class="modal-title">⚙️ ScholarSlide 설정</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-ghost btn-xs" id="settings-fullscreen-btn" onclick="toggleSettingsFullscreen()" title="전체화면 토글">⊞ 전체화면</button>
+        <button class="modal-close" onclick="closeModal('settings-modal')" title="닫기">&#x2715;</button>
+      </div>
+    </div>
+    <div id="settings-panel-root" class="modal-body" style="overflow-y:auto;min-height:200px">
+      <!-- 설정 내용은 JS로 주입 -->
+    </div>
+  </div>
+</div>
+
 <!-- ── API KEY MODAL ── -->
 <div id="api-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'api-modal')">
   <div class="modal-box" onclick="event.stopPropagation()">
@@ -140,8 +155,9 @@
         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Google AI Studio</a>에서 발급받은 API 키를 입력하세요. 키는 이 브라우저 localStorage에만 저장됩니다.
       </p>
       <label class="label" style="margin-top:16px">API 키</label>
-      <div style="position:relative">
+      <div id="api-key-field-wrap" style="position:relative;border-radius:8px;border:2px solid transparent;transition:border-color .2s, box-shadow .2s">
         <input type="password" class="control" id="api-key-field" placeholder="AIza..." autocomplete="off" oninput="updateApiKeyStrength(this.value)" />
+        <span id="api-key-check" style="display:none;position:absolute;right:36px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:4px;background:var(--success);color:#000;font-size:12px;font-weight:bold;line-height:20px;text-align:center;pointer-events:none">&#10003;</span>
         <button class="key-toggle-btn" onclick="toggleKeyVisibility()" id="key-toggle" title="표시/숨기기">&#128065;</button>
       </div>
       <div id="key-strength-bar" style="margin-top:8px;display:none">
@@ -306,10 +322,19 @@
       <button class="modal-close" onclick="closeModal('img-modal')">&#x2715;</button>
     </div>
     <div class="modal-body" style="overflow-y:auto;flex:1">
-      <!-- Drop zone -->
-      <div id="img-drop-zone" class="upload-zone" style="margin-bottom:12px" onclick="document.getElementById('img-file-input').click()">
-        <input type="file" id="img-file-input" style="display:none" accept="image/*" onchange="loadImageForCrop(event)"/>
-        <span class="upload-icon">🖼</span><h3>이미지 업로드</h3><p>JPG, PNG, GIF, WebP · 드래그 앤 드롭</p>
+      <!-- 가운데: 이미지 업로드 / 주변 공간: 클릭 후 Ctrl+V 붙여넣기 -->
+      <div id="img-upload-paste-row" class="img-upload-paste-row">
+        <div id="img-drop-zone" class="upload-zone img-upload-box" onclick="document.getElementById('img-file-input').click()">
+          <input type="file" id="img-file-input" style="display:none" accept="image/*" onchange="loadImageForCrop(event)"/>
+          <span class="upload-icon">🖼</span>
+          <h3>이미지 업로드</h3>
+          <p>JPG, PNG, GIF, WebP · 드래그 앤 드롭</p>
+        </div>
+        <div id="img-paste-zone" class="img-paste-zone" tabindex="0" role="button">
+          <span class="paste-zone-text">이 공간 클릭 후</span>
+          <kbd class="paste-kbd">Ctrl+V</kbd>
+          <span class="paste-zone-text">로 이미지 붙여넣기</span>
+        </div>
       </div>
       <!-- After upload: crop UI (no <details> wrapper so clientWidth is always readable) -->
       <div id="crop-area" style="display:none">
@@ -409,18 +434,18 @@
     <div class="logo-icon">📚</div>
     <div class="logo-text">ScholarSlide <span>AI</span></div>
     <div class="badge">v4.35 Pro</div>
-    <!-- 전역 백그라운드 진행률 표시 (왼쪽 상단) -->
-    <div id="global-progress-bar" style="display:none;align-items:center;gap:8px;margin-left:14px;padding:4px 12px;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:20px">
-      <span id="global-progress-icon" style="font-size:12px">⏳</span>
-      <span id="global-progress-label" style="font-size:11px;color:var(--accent);font-weight:600;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis">처리 중...</span>
-      <div style="width:60px;height:4px;background:var(--border2);border-radius:2px;flex-shrink:0">
-        <div id="global-progress-fill" style="height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:0%;transition:width 0.4s"></div>
-      </div>
-      <span id="global-progress-pct" style="font-size:10px;color:var(--text3);min-width:26px;text-align:right">0%</span>
+    <!-- 전역 백그라운드 진행률 표시 (다중 작업: 요약·번역 등 모두 표시) -->
+    <div id="global-progress-bar" style="display:none;flex-direction:column;align-items:flex-start;gap:2px;margin-left:14px;padding:6px 12px;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:12px;max-width:320px">
+      <div id="global-progress-jobs"></div>
     </div>
   </div>
   <div class="header-actions">
+    <span class="header-slide-mode" style="display:inline-flex;align-items:center;gap:2px;margin-right:6px" title="슬라이드 모드">
+      <button class="btn btn-ghost btn-sm header-mode-btn active" id="header-slide-mode-light" onclick="setSlideStyle('light')" title="라이트 모드">☀️ 라이트</button>
+      <button class="btn btn-ghost btn-sm header-mode-btn" id="header-slide-mode-dark" onclick="setSlideStyle('dark')" title="다크 모드">🌙 다크</button>
+    </span>
     <button class="btn btn-ghost btn-sm" id="help-btn" onclick="openHelpModal()" title="단축키 및 도움말">❓ Help</button>
+    <button class="btn btn-ghost btn-sm" id="settings-btn" onclick="openSettingsPanel()" title="API 키·프롬프트 등 설정">⚙️ 설정</button>
     <button class="btn btn-ghost btn-sm" id="api-key-btn" onclick="openApiModal()">
       <span id="api-key-status-icon">🔑</span>
       <span id="api-key-status-text">API 키 설정</span>
@@ -479,7 +504,7 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" id="fetch-sources-btn" onclick="switchRightTab('mdeditor')" disabled>📝 MD에디터</button>
         <button class="btn btn-ghost btn-sm" id="gen-script-btn" onclick="askThenGenerateScript()" disabled>📝 발표 원고</button>
-        <button class="btn btn-ghost btn-sm" id="ext-present-btn" onclick="openExternalPresentation()" title="외부 창에서 발표보기" style="display:none">🖥 외부 발표</button>
+        <button class="btn btn-ghost btn-sm" id="ext-present-btn" title="외부 창에서 발표보기" style="display:none">🖥 외부 발표</button>
         <button class="btn btn-primary btn-sm" id="visualize-btn" onclick="askThenVisualizeAll()" disabled>✨ 시각화</button>
       </div>
     </div>
@@ -642,11 +667,20 @@
 <script src="js/core/state.js"></script>
 <script src="js/core/helpers.js"></script>
 <script src="js/core/api-keys.js"></script>
+<script src="js/core/prompt-store.js"></script>
 <script src="js/core/storage.js"></script>
 <script src="js/features/references.js"></script>
-<script src="index.js"></script>
+<script src="js/upload/file-upload.js"></script>
+  <script src="js/features/refs-viewer.js"></script>
+  <script src="js/ui/zoom-pres.js"></script>
+  <script src="js/ui/sidebar/manuscript-tab.js"></script>
+  <script src="js/ui/left-panel.js"></script>
+  <script src="js/ui/viewers.js"></script>
+  <script src="index.js"></script>
 <script src="js/translate/translate.js"></script>
+<script src="js/prompts/prompt_summary.js"></script>
 <script src="js/slide-gen/slide-gen.js"></script>
+<script src="js/ui/settings-window.js"></script>
 
 <!-- ── AI SLIDE ADD MODAL ── -->
 <div id="ai-slide-add-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'ai-slide-add-modal')">
@@ -677,6 +711,65 @@
     <div class="modal-footer" style="justify-content:flex-end">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('ai-slide-add-modal')">취소</button>
       <button class="btn btn-primary btn-sm" onclick="confirmAddSlideAI()">🤖 AI 슬라이드 생성</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 요약 방식 선택 모달 (원문/번역 + 7가지 방식) ── -->
+<div id="summary-options-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'summary-options-modal')">
+  <div class="modal-box" style="max-width:480px" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">📖 전체 요약 방식 선택</div>
+      <button class="modal-close" onclick="closeModal('summary-options-modal')">&#x2715;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label class="label">요약 대상</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="radio" name="summary-mode" value="original" checked style="accent-color:var(--accent)"/> 원문요약
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="radio" name="summary-mode" value="translate" style="accent-color:var(--accent)"/> 번역요약
+          </label>
+        </div>
+        <p style="font-size:10px;color:var(--text3);margin-top:4px">원문요약: 원문 그대로 요약 · 번역요약: 한국어로 번역한 뒤 요약</p>
+      </div>
+      <div>
+        <label class="label">요약 세밀도</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="radio" name="summary-granularity" value="detail" checked style="accent-color:var(--accent)"/> 세밀한 요약
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="radio" name="summary-granularity" value="basic" style="accent-color:var(--accent)"/> 기본 요약
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="radio" name="summary-granularity" value="key" style="accent-color:var(--accent)"/> 핵심 요약
+          </label>
+        </div>
+        <p style="font-size:10px;color:var(--text3);margin-top:4px">세밀한: 원문 1/3 이상·논문 구조·이론·APA 인용 유지 (기본값)</p>
+      </div>
+      <div>
+        <label class="label">요약 방식</label>
+        <div id="summary-style-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:220px;overflow-y:auto">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="detail" checked style="accent-color:var(--accent)"/> ① 세밀한 요약 (Detailed)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="key" style="accent-color:var(--accent)"/> ② 핵심요약 (Key Summary)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="slide" style="accent-color:var(--accent)"/> ③ 슬라이드 요약 (Slide Ready)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="structural" style="accent-color:var(--accent)"/> ④ 구조 요약 (Structural)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="concept" style="accent-color:var(--accent)"/> ⑤ 개념 요약 (Concept)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="comparative" style="accent-color:var(--accent)"/> ⑥ 비교 요약 (Comparative)</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer"><input type="radio" name="summary-style" value="research" style="accent-color:var(--accent)"/> ⑦ 연구 요약 (Research)</label>
+        </div>
+      </div>
+      <div id="summary-slide-count-row" style="display:none">
+        <label class="label">슬라이드 수</label>
+        <input type="number" class="control" id="summary-options-slide-count" value="12" min="5" max="30" style="width:80px;text-align:center"/>
+      </div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('summary-options-modal')">취소</button>
+      <button class="btn btn-primary btn-sm" onclick="confirmSummaryOptions()">📖 요약 실행</button>
     </div>
   </div>
 </div>
@@ -762,8 +855,5 @@
 </div>
 <button class="pdf-preview-toggle" id="pdf-preview-toggle" onclick="togglePdfPreview()" style="display:none">PDF</button>
 
-<div id="summaryProgress" class="summary-progress">
-  요약 진행중... <span id="summaryPercent">0</span>%
-</div>
 </body>
 </html>

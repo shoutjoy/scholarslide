@@ -89,6 +89,8 @@ function buildWorkspaceSnapshot() {
     sources, presentationScript,
     references: ReferenceStore.getAll(),
     aiImgHistory: typeof _aiImgHistory !== 'undefined' ? _aiImgHistory : [],
+    pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fileName && fileName.toLowerCase().endsWith('.pdf'))
+      ? Array.from(new Uint8Array(window._pdfArrayBuffer)) : undefined,
   };
 }
 
@@ -178,6 +180,14 @@ function applyWorkspaceSnapshot(snap) {
   if (typeof applySlideFontScale === 'function') applySlideFontScale();
   if (typeof renderLeftPanel === 'function') renderLeftPanel();
   if (typeof renderRefsPanel === 'function') renderRefsPanel();
+  if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+  if (snap.pdfData && snap.pdfData.length && snap.fileName && snap.fileName.toLowerCase().endsWith('.pdf')) {
+    try {
+      const arr = new Uint8Array(snap.pdfData);
+      window._pdfArrayBuffer = arr.slice(0).buffer;
+      if (typeof loadPdfPreview === 'function') loadPdfPreview(arr.slice(0).buffer, snap.fileName);
+    } catch (err) { console.warn('[restore PDF]', err); }
+  }
 }
 
 function _markDirty() { if (rawText || slides.length) scheduleAutosave(); }
@@ -369,6 +379,7 @@ function loadSession(i) {
   if (s.references) { ReferenceStore.clear(); s.references.forEach(r => ReferenceStore.add(r)); }
   if (slides.length && typeof afterSlidesCreated === 'function') afterSlidesCreated();
   rawText = ''; if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof renderRefsPanel === 'function') renderRefsPanel(); closeModal('load-modal');
+  if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
   showToast(`✅ "${s.name}" 불러오기 완료`);
 }
 function renameSession(i) { const sessions = loadSessions(); const n = prompt('새 이름:', sessions[i].name); if (!n?.trim()) return; sessions[i].name = n.trim(); localStorage.setItem(LS_SESSIONS, JSON.stringify(sessions)); renderSessionsList(); showToast('✏ 이름 변경됨'); }

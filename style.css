@@ -61,6 +61,8 @@ header::after {
   text-transform: uppercase; letter-spacing: 1px;
 }
 .header-actions { display: flex; gap: 6px; align-items: center; }
+.header-mode-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.header-mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
 
 /* ── BUTTONS ── */
 .btn {
@@ -115,6 +117,56 @@ main { flex: 1; display: flex; overflow: hidden; }
 .upload-zone h3 { font-size: 14px; font-weight: 600; color: var(--text2); }
 .upload-zone p { font-size: 11px; color: var(--text3); margin-top: 4px; }
 
+/* ── 이미지 모달: 업로드 박스 + 붙여넣기 공간 ── */
+.img-upload-paste-row {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  min-height: 200px;
+  margin-bottom: 12px;
+}
+.img-upload-box {
+  flex-shrink: 0;
+  width: 200px;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+}
+.img-paste-zone {
+  flex: 1;
+  min-width: 180px;
+  border: 2px dashed var(--border2);
+  border-radius: var(--radius-lg);
+  background: var(--surface1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+.img-paste-zone:hover,
+.img-paste-zone:focus {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.img-paste-zone .paste-zone-text { font-size: 13px; color: var(--text2); }
+.img-paste-zone .paste-kbd {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  color: var(--text2);
+}
+
 /* ── TEXT INPUT AREA ── */
 .text-input-zone { margin-top: 12px; }
 .text-input-zone textarea {
@@ -159,6 +211,9 @@ textarea.control:focus, input.control:focus, select.control:focus { border-color
 textarea.control::placeholder, input.control::placeholder { color: var(--text3); }
 select.control option { background: var(--surface2); }
 
+/* 커스텀 지시사항 텍스트영역: 세로 크기 조절 가능 */
+#custom-instruction-val { resize: vertical; min-height: 3.5em; max-height: 200px; }
+
 .summary-text { font-size: 12px; line-height: 1.7; color: var(--text2); white-space: pre-wrap; }
 .raw-text {
   font-size: 10px; line-height: 1.6; color: var(--text3);
@@ -182,6 +237,7 @@ select.control option { background: var(--surface2); }
 /* Translation row */
 .translate-row { display: flex; gap: 6px; margin-bottom: 8px; }
 .translate-row .btn { flex: 1; justify-content: center; font-size: 10px; }
+.translate-row .btn.active { color: var(--accent); font-weight: 600; }
 
 .placeholder-msg { text-align: center; color: var(--text3); font-size: 12px; padding: 32px 0; }
 
@@ -261,9 +317,40 @@ select.control option { background: var(--surface2); }
   flex: 1; padding: 36px 44px; display: flex; flex-direction: column;
   font-family: var(--font-body); color: #1a1a2e; overflow: hidden;
   position: relative;
-  z-index: 0;
+  /* z-index는 인라인으로 레이어 순서에 따라 적용됨 */
 }
-.slide-inner.has-image { flex: 0 0 55%; }
+.slide-text-layer-remove {
+  position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+  background: rgba(255,255,255,0.95); border: none; border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; opacity: 1; transition: opacity 0.15s; color: #f87171;
+  z-index: 5; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.slide-inner:hover .slide-text-layer-remove,
+.slide-wrapper.active .slide-text-layer-remove { opacity: 1; }
+.slide-text-layer-remove:hover { background: #fff; color: #dc2626; }
+.slide-inner.has-image {
+  flex: 0 0 55%;
+  min-width: 0; /* 디바이더로 텍스트 영역을 왼쪽까지 줄일 수 있게 */
+}
+.slide-title-wrap {
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px;
+  flex-wrap: nowrap; width: 100%; box-sizing: border-box;
+}
+.slide-title-wrap .slide-title-input { flex: 1; min-width: 0; margin-bottom: 0; }
+.title-position-handle {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; font-size: 11px; font-weight: 700; color: #4f8ef7;
+  background: rgba(79,142,247,0.12); border: 1px solid rgba(79,142,247,0.4);
+  border-radius: 4px; cursor: move; z-index: 2; flex-shrink: 0;
+}
+.title-position-handle:hover { background: rgba(79,142,247,0.2); }
+.title-size-handle {
+  flex-shrink: 0; width: 26px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #4f8ef7; background: rgba(79,142,247,0.12);
+  border: 1px solid rgba(79,142,247,0.4); border-radius: 4px; cursor: pointer; user-select: none;
+}
+.title-size-handle:hover { background: rgba(79,142,247,0.2); }
 .slide-title-input {
   font-size: 24px; font-weight: 700; color: #0f172a;
   border: none; outline: none; background: transparent;
@@ -302,12 +389,28 @@ select.control option { background: var(--surface2); }
   font-family: var(--font-body); line-height: 1.5; padding: 0;
 }
 .slide-image-pane {
-  flex: 0 0 45%; background: #f0f4ff; overflow: hidden; position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  background: #f0f4ff; overflow: hidden; position: relative;
   display: flex;
   flex-direction: column;
-  z-index: 1;
+  /* z-index는 인라인으로 레이어 순서에 따라 적용됨 */
 }
-.slide-image-pane img { width: 100%; height: 100%; object-fit: cover; }
+/* 디바이더가 있을 때는 이미지 영역이 남은 공간을 채움(비율 조절 시 인라인으로 덮어씀) */
+.slide-card .slide-layer-divider + .slide-image-pane { flex: 1 1 0; min-width: 0; }
+.slide-layer-divider {
+  width: 6px; flex: 0 0 6px; flex-shrink: 0;
+  cursor: col-resize; background: rgba(79,142,247,0.3);
+  z-index: 5; position: relative;
+}
+.slide-layer-divider:hover { background: rgba(79,142,247,0.55); }
+.slide-image-pane img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .slide-image-remove {
   position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
   background: rgba(255,255,255,0.9); border: none; border-radius: 50%;
@@ -485,6 +588,7 @@ footer {
   animation: slideUp 0.2s ease; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden;
 }
 .modal-box.modal-wide { max-width: 660px; }
+#settings-modal-box.settings-fullscreen { max-width: 96vw; max-height: 96vh; width: 96vw; height: 96vh; }
 @keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -517,6 +621,10 @@ footer {
 }
 .key-toggle-btn:hover { color: var(--text); }
 #api-key-field { padding-right: 36px; }
+#api-key-field-wrap.has-key {
+  border-color: var(--success); box-shadow: 0 0 0 1px var(--success);
+}
+#api-key-field-wrap.has-key #api-key-field.api-key-valid { color: var(--success); }
 .saved-key-item {
   display: flex; align-items: center; gap: 8px;
   background: var(--surface2); border: 1px solid var(--border2);
@@ -529,7 +637,7 @@ footer {
 .saved-key-select:hover { background: var(--accent); color: #fff; }
 .saved-key-delete { font-size: 11px; background: none; border: none; color: var(--text3); cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: color 0.15s; flex-shrink: 0; }
 .saved-key-delete:hover { color: var(--danger); }
-#api-key-btn.has-key { border-color: rgba(52,211,153,0.4); color: var(--success); }
+#api-key-btn.has-key { border-color: var(--success); background: rgba(52,211,153,0.12); color: var(--success); }
 
 /* Session card */
 .session-card {
@@ -662,9 +770,13 @@ footer {
 
 /* Cover slide style */
 .slide-card.style-cover { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
-.slide-card.style-cover .slide-inner { align-items: center; justify-content: center; text-align: center; }
+.slide-card.style-cover .slide-inner { align-items: center; justify-content: center; text-align: center; color: #e2e8f0; }
 .slide-card.style-cover .slide-title-input { color: #fff; font-size: 26px; text-align: center; border-bottom: 2px solid rgba(79,142,247,0.5); padding-bottom: 10px; margin-bottom: 14px; }
-.slide-card.style-cover .bullet-text { color: rgba(255,255,255,0.75); text-align: center; font-size: 13px; }
+.slide-card.style-cover .bullet-text { color: #d8e4f0 !important; text-align: center; font-size: 13px; }
+.slide-card.style-cover .bullet-rendered { color: #d8e4f0 !important; }
+.slide-card.style-cover .bullet-rendered b,
+.slide-card.style-cover .bullet-rendered strong { color: #e8f4fd !important; }
+.slide-card.style-cover .slide-extra-text-rendered { color: #d8e4f0 !important; }
 
 /* Slide action bar - MUCH brighter */
 .slide-actions-bar { display: flex; gap: 5px; padding: 6px 0; opacity: 1; transition: opacity 0.15s; flex-wrap: wrap; }
@@ -1446,66 +1558,38 @@ footer {
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
 }
 .slide-img-wrap {
   position: relative;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   cursor: move;
+  overflow: hidden;
 }
-.slide-img-wrap .slide-image-remove { cursor: pointer; }
 .slide-img-wrap img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  max-width: 100%;
+  max-height: 100%;
 }
 .slide-img-slot img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  max-width: 100%;
+  max-height: 100%;
 }
 .slide-img-slot .slide-image-remove {
   position: absolute;
   top: 4px; right: 4px;
 }
-
-/* 레이어 순서 조절 툴바 */
-.layer-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  background: rgba(0,0,0,0.75);
-  border-radius: 6px;
-  position: absolute;
-  bottom: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-}
-.layer-toolbar-label {
-  font-size: 11px;
-  color: rgba(255,255,255,0.9);
-  margin-right: 4px;
-}
-.layer-toolbar-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-  border: 1px solid rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.15);
-  color: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.layer-toolbar-btn:hover {
-  background: rgba(255,255,255,0.25);
-}
-.slide-layer-selectable.layer-selected {
-  outline: 2px solid rgba(79,142,247,0.8);
-  outline-offset: -2px;
-}
+.slide-img-wrap .slide-image-remove { cursor: pointer; }
 
 /* ── BACKGROUND JOB BAR ── */
 #bg-job-bar {
@@ -1526,11 +1610,11 @@ footer {
   --slide-font-scale: 1;
 }
 
-/* 슬라이드 내부 폰트 확대/축소 (제목·불릿·추가텍스트만) */
+/* 슬라이드 내부 폰트 확대/축소 (제목·불릿·추가텍스트만). 인라인 font-size(A+/A−)가 우선되도록 !important 제거 */
 #slides-canvas .slide-card .slide-inner { font-size: calc(16px * var(--slide-font-scale, 1)); }
-#slides-canvas .slide-card .slide-title-input { font-size: calc(24px * var(--slide-font-scale, 1)) !important; }
-#slides-canvas .slide-card.style-dark .slide-title-input { font-size: calc(28px * var(--slide-font-scale, 1)) !important; }
-#slides-canvas .slide-card.style-cover .slide-title-input { font-size: calc(26px * var(--slide-font-scale, 1)) !important; }
+#slides-canvas .slide-card .slide-title-input { font-size: calc(24px * var(--slide-font-scale, 1)); }
+#slides-canvas .slide-card.style-dark .slide-title-input { font-size: calc(28px * var(--slide-font-scale, 1)); }
+#slides-canvas .slide-card.style-cover .slide-title-input { font-size: calc(26px * var(--slide-font-scale, 1)); }
 #slides-canvas .slide-card .bullet-text { font-size: calc(13px * var(--slide-font-scale, 1)) !important; }
 #slides-canvas .slide-card .bullet-rendered { font-size: calc(12px * var(--slide-font-scale, 1)); }
 #slides-canvas .slide-card .slide-extra-text-rendered { font-size: calc(10px * var(--slide-font-scale, 1)); }
@@ -1657,12 +1741,24 @@ details summary { list-style: none; }
    V3.3 FIX — 편집모드에서 슬라이드 높이 자동 확장
    ===================================================== */
 
-.slide-card {
+/* 데이터 레이어 밖으로 나간 제목/핸들·텍스트·이미지도 보이고 조절 가능하도록 (PowerPoint/Google Slides처럼) — 에디터 캔버스에만 적용 */
+#slides-canvas .slide-card {
+  overflow: visible !important;
+}
+#slides-canvas .slide-image-pane {
   overflow: visible !important;
 }
 
-.slide-inner {
+#slides-canvas .slide-card .slide-inner {
   overflow: visible !important;
+  min-width: 0;
+  max-width: 100%;
+}
+#slides-canvas .slide-card .slide-title-input,
+#slides-canvas .slide-card .bullet-text,
+#slides-canvas .slide-card .bullet-rendered {
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .slide-wrapper.editing .slide-card {

@@ -75,6 +75,7 @@ function loadSession(i) {
     if (typeof renderLeftPanel === 'function') renderLeftPanel();
     if (typeof renderRefsPanel === 'function') renderRefsPanel();
 
+    if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
     closeModal('load-modal');
     showToast(`📂 "${s.name}" 불러오기 완료`);
 }
