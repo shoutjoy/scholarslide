@@ -75,19 +75,24 @@ async function idbDelete(store, key) {
 }
 
 function buildWorkspaceSnapshot() {
-    return {
+    var slots = (typeof window.getFileSlots === 'function' && window.getFileSlots()) || [];
+    var rt = (typeof window.getRawText === 'function' ? window.getRawText() : rawText) || '';
+    var fn = (typeof window.getFileName === 'function' ? window.getFileName() : fileName) || '';
+    var snap = {
         version: 3,
         savedAt: new Date().toISOString(),
-        fileName, rawText, summaryText,
+        fileName: fn, rawText: rt, summaryText,
         _translatedSummary, _translatedRaw,
         slideStyle, writingStyle, activeSlideIndex,
         slides: slides.map(s => ({ ...s })), // includes imageUrl, imageUrl2
         sources, presentationScript,
         references: ReferenceStore.getAll(),
         aiImgHistory: typeof _aiImgHistory !== 'undefined' ? _aiImgHistory : [],
-        pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fileName && fileName.toLowerCase().endsWith('.pdf'))
+        pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fn && fn.toLowerCase().endsWith('.pdf'))
             ? Array.from(new Uint8Array(window._pdfArrayBuffer)) : undefined,
     };
+    if (slots && slots.length) snap.fileSlots = slots;
+    return snap;
 }
 
 async function autoSaveNow(quiet = false) {
@@ -146,8 +151,20 @@ async function restoreAutosave() {
 }
 
 function applyWorkspaceSnapshot(snap) {
-    rawText = snap.rawText || '';
-    fileName = snap.fileName || '';
+    if (snap.fileSlots && snap.fileSlots.length) {
+        if (typeof window.setFileSlots === 'function') window.setFileSlots(snap.fileSlots);
+    } else if (snap.rawText) {
+        if (typeof window.setFileSlots === 'function') {
+            window.setFileSlots([{ id: 'fs_legacy_' + Date.now(), fileName: snap.fileName || '문서', rawText: snap.rawText, checked: true }]);
+        } else {
+            rawText = snap.rawText || '';
+            fileName = snap.fileName || '';
+        }
+    } else {
+        if (typeof window.setFileSlots === 'function') window.setFileSlots([]);
+    }
+    rawText = (typeof window.getRawText === 'function' ? window.getRawText() : null) || snap.rawText || '';
+    fileName = (typeof window.getFileName === 'function' ? window.getFileName() : null) || snap.fileName || '';
     summaryText = snap.summaryText || '';
     _translatedSummary = snap._translatedSummary || '';
     _translatedRaw = snap._translatedRaw || '';

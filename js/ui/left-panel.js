@@ -10,7 +10,9 @@
   function renderLeftPanel() {
     var content = document.getElementById('left-content');
     var rawText = typeof window.getRawText === 'function' ? window.getRawText() : '';
-    if (!rawText) {
+    var fileSlots = (typeof window.getFileSlots === 'function' ? window.getFileSlots() : []) || [];
+    var hasContent = rawText || fileSlots.length;
+    if (!hasContent) {
       content.innerHTML = '<div class="upload-zone" id="upload-drop-zone" onclick="document.getElementById(\'file-input\').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave()">'
         + '<input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/>'
         + '<span class="upload-icon">📄</span><h3>논문 업로드</h3><p>PDF, DOCX, TXT · 드래그 앤 드롭</p></div>'
@@ -98,13 +100,33 @@
         displayContent = '<div class="translate-row"><button class="btn btn-ghost btn-xs" onclick="saveContent(\'script\')">💾 원고 저장</button></div>' + scriptParts.join('');
       }
     }
-    var _isPdf = fileName.toLowerCase().endsWith('.pdf');
-    content.innerHTML = '<div class="file-badge">'
-      + '<span>' + (_isPdf ? '📄' : '📝') + '</span>'
-      + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">' + escapeHtml(fileName) + '</span>'
-      + '<span class="file-size">' + (rawText.length / 1000).toFixed(1) + 'k</span>'
-      + (_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
-      + '</div>'
+    var fileSlotsHtml = '';
+    if (fileSlots.length) {
+      fileSlotsHtml = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">';
+      for (var si = 0; si < fileSlots.length; si++) {
+        var slot = fileSlots[si];
+        var sizeK = ((slot.rawText || '').length / 1000).toFixed(1);
+        var isPdfSlot = (slot.fileName || '').toLowerCase().endsWith('.pdf');
+        fileSlotsHtml += '<div class="file-badge" style="display:flex;align-items:center;gap:8px;padding:8px 10px">'
+          + '<label style="display:flex;align-items:center;cursor:pointer;flex-shrink:0"><input type="checkbox" ' + (slot.checked !== false ? 'checked' : '') + ' onchange="toggleFileSlotCheck(\'' + (slot.id || '').replace(/'/g, "\\'") + '\'); renderLeftPanel();" style="accent-color:var(--accent)"/></label>'
+          + '<span>' + (isPdfSlot ? '📄' : '📝') + '</span>'
+          + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + escapeHtml(slot.fileName || '제목 없음') + '</span>'
+          + '<span class="file-size">' + sizeK + 'k</span>'
+          + (isPdfSlot ? '<button onclick="openPdfPreview()" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
+          + '<button type="button" onclick="removeFileSlot(\'' + (slot.id || '').replace(/'/g, "\\'") + '\'); renderLeftPanel();" style="flex-shrink:0;padding:2px 6px;background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:12px" title="삭제">&#10005;</button>'
+          + '</div>';
+      }
+      fileSlotsHtml += '</div>';
+    } else {
+      var _isPdf = (fileName || '').toLowerCase().endsWith('.pdf');
+      fileSlotsHtml = '<div class="file-badge">'
+        + '<span>' + (_isPdf ? '📄' : '📝') + '</span>'
+        + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">' + escapeHtml(fileName || '') + '</span>'
+        + '<span class="file-size">' + (rawText.length / 1000).toFixed(1) + 'k</span>'
+        + (_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
+        + '</div>';
+    }
+    content.innerHTML = fileSlotsHtml
       + '<div style="margin-bottom:8px"><label class="label">문체 설정</label>'
       + '<select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="font-size:11px">'
       + '<option value="academic-da" ' + (writingStyle === 'academic-da' ? 'selected' : '') + '>학술체 (~이다)</option>'
@@ -118,7 +140,7 @@
       + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📋</span>슬라이드 요약</button></div>'
       + '<label class="label">커스텀 지시사항</label>'
       + '<textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력...">' + escapeHtml(customVal) + '</textarea>'
-      + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px" onclick="document.getElementById(\'file-input2\').click()">📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>'
+      + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>'
       + '<hr class="sep"/>' + displayContent;
   }
 

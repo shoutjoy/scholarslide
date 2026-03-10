@@ -77,10 +77,13 @@ async function idbDelete(store, key) {
 }
 
 function buildWorkspaceSnapshot() {
-  return {
+  var slots = (typeof window.getFileSlots === 'function' && window.getFileSlots()) || [];
+  var rt = (typeof window.getRawText === 'function' ? window.getRawText() : rawText) || '';
+  var fn = (typeof window.getFileName === 'function' ? window.getFileName() : fileName) || '';
+  var snap = {
     version: 3,
     savedAt: new Date().toISOString(),
-    fileName, rawText, summaryText,
+    fileName: fn, rawText: rt, summaryText,
     _translatedSummary: window._translatedSummary, _translatedRaw: window._translatedRaw,
     slideStyle, writingStyle, activeSlideIndex,
     _slideZoom: typeof _slideZoom !== 'undefined' ? _slideZoom : 100,
@@ -89,9 +92,11 @@ function buildWorkspaceSnapshot() {
     sources, presentationScript,
     references: ReferenceStore.getAll(),
     aiImgHistory: typeof _aiImgHistory !== 'undefined' ? _aiImgHistory : [],
-    pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fileName && fileName.toLowerCase().endsWith('.pdf'))
+    pdfData: (typeof window !== 'undefined' && window._pdfArrayBuffer && fn && fn.toLowerCase().endsWith('.pdf'))
       ? Array.from(new Uint8Array(window._pdfArrayBuffer)) : undefined,
   };
+  if (slots && slots.length) snap.fileSlots = slots;
+  return snap;
 }
 
 async function autoSaveNow(quiet = false) {
@@ -150,8 +155,20 @@ async function restoreAutosave() {
 }
 
 function applyWorkspaceSnapshot(snap) {
-  rawText = snap.rawText || '';
-  fileName = snap.fileName || '';
+  if (snap.fileSlots && snap.fileSlots.length) {
+    if (typeof window.setFileSlots === 'function') window.setFileSlots(snap.fileSlots);
+  } else if (snap.rawText) {
+    if (typeof window.setFileSlots === 'function') {
+      window.setFileSlots([{ id: 'fs_legacy_' + Date.now(), fileName: snap.fileName || '문서', rawText: snap.rawText, checked: true }]);
+    } else {
+      rawText = snap.rawText || '';
+      fileName = snap.fileName || '';
+    }
+  } else {
+    if (typeof window.setFileSlots === 'function') window.setFileSlots([]);
+  }
+  rawText = (typeof window.getRawText === 'function' ? window.getRawText() : null) || snap.rawText || '';
+  fileName = (typeof window.getFileName === 'function' ? window.getFileName() : null) || snap.fileName || '';
   summaryText = snap.summaryText || '';
   window._translatedSummary = snap._translatedSummary || '';
   window._translatedRaw = snap._translatedRaw || '';
@@ -329,10 +346,12 @@ async function clearAutosave() {
    EXISTING SESSION SAVE/LOAD (localStorage)
    ========================================================= */
 function saveSession() {
-  if (!slides.length && !rawText) { showToast('⚠️ 저장할 내용이 없습니다'); return; }
-  const name = fileName ? fileName.replace(/\.[^.]+$/, '') : `작업_${new Date().toLocaleDateString('ko-KR')}`;
+  var rt = (typeof window.getRawText === 'function' ? window.getRawText() : rawText) || '';
+  var fn = (typeof window.getFileName === 'function' ? window.getFileName() : fileName) || '';
+  if (!slides.length && !rt) { showToast('⚠️ 저장할 내용이 없습니다'); return; }
+  const name = fn ? fn.replace(/\.[^.]+$/, '') : `작업_${new Date().toLocaleDateString('ko-KR')}`;
   const session = {
-    id: Date.now(), name, savedAt: new Date().toISOString(), fileName, summaryText, slideStyle,
+    id: Date.now(), name, savedAt: new Date().toISOString(), fileName: fn, summaryText, slideStyle,
     slides: slides.map(s => ({ ...s, imageUrl: s.imageUrl && s.imageUrl.length < 500000 ? s.imageUrl : null })),
     activeSlideIndex, presentationScript, references: ReferenceStore.getAll()
   };
@@ -378,7 +397,9 @@ function loadSession(i) {
   presentationScript = s.presentationScript || [];
   if (s.references) { ReferenceStore.clear(); s.references.forEach(r => ReferenceStore.add(r)); }
   if (slides.length && typeof afterSlidesCreated === 'function') afterSlidesCreated();
-  rawText = ''; if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof renderRefsPanel === 'function') renderRefsPanel(); closeModal('load-modal');
+  if (typeof window.setFileSlots === 'function') window.setFileSlots([]);
+  rawText = ''; fileName = '';
+  if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof renderRefsPanel === 'function') renderRefsPanel(); closeModal('load-modal');
   if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
   showToast(`✅ "${s.name}" 불러오기 완료`);
 }

@@ -52,7 +52,6 @@
   async function handleFileUpload(e) {
     var file = e.target.files[0];
     if (!file) return;
-    if (typeof window.setFileName === 'function') window.setFileName(file.name);
     showLoading('파일에서 텍스트 추출 중...', file.name, 20);
     try {
       ensurePDFWorker();
@@ -81,10 +80,14 @@
         if (text && !text.trim().includes('\n') && text.length > 80) text = normalizeSentenceLineBreaks(text);
         if (text) text = '--- 1페이지 ---\n\n' + text.trim();
       }
-      if (typeof rawText !== 'undefined') rawText = text;
-      window.rawText = text;
-      if (typeof window.setRawText === 'function') window.setRawText(text);
-      if (typeof window.setFileName === 'function') window.setFileName(file.name);
+      if (typeof window.addFileToSlot === 'function') {
+        window.addFileToSlot({ fileName: file.name, rawText: text, checked: true });
+      } else {
+        if (typeof rawText !== 'undefined') rawText = text;
+        window.rawText = text;
+        if (typeof window.setRawText === 'function') window.setRawText(text);
+        if (typeof window.setFileName === 'function') window.setFileName(file.name);
+      }
       if (typeof window.resetTranslationCache === 'function') window.resetTranslationCache();
       showToast('✅ 파일 로드 완료 (' + (text.length / 1000).toFixed(1) + 'k 글자)');
       renderLeftPanel();
@@ -102,11 +105,14 @@
     var inp = document.getElementById('text-paste-input');
     var val = inp && inp.value ? inp.value.trim() : '';
     if (!val) { showToast('⚠️ 텍스트를 입력하세요'); return; }
-    if (typeof rawText !== 'undefined') rawText = val;
-    window.rawText = val;
-    if (typeof window.setRawText === 'function') window.setRawText(val);
-    if (typeof fileName !== 'undefined') fileName = '직접입력.txt';
-    if (typeof window.setFileName === 'function') window.setFileName('직접입력.txt');
+    if (typeof window.addFileToSlot === 'function') {
+      window.addFileToSlot({ fileName: '직접입력.txt', rawText: val, checked: true });
+    } else {
+      if (typeof rawText !== 'undefined') rawText = val;
+      window.rawText = val;
+      if (typeof window.setRawText === 'function') window.setRawText(val);
+      if (typeof window.setFileName === 'function') window.setFileName('직접입력.txt');
+    }
     if (typeof window.resetTranslationCache === 'function') window.resetTranslationCache();
     showToast('✅ 텍스트 로드 완료');
     renderLeftPanel();

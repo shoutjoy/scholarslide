@@ -1354,6 +1354,7 @@ async function exportPPT() {
    ========================================================= */
 function clearAll() {
   if (!confirm('모든 데이터를 초기화하시겠습니까?\n(자동저장도 함께 삭제됩니다)')) return;
+  if (typeof window.setFileSlots === 'function') window.setFileSlots([]);
   rawText = ''; fileName = ''; slides = []; sources = []; summaryText = ''; presentationScript = []; activeSlideIndex = 0;
   if (typeof slideUndoStack !== 'undefined') slideUndoStack = [];
   if (typeof slideRedoStack !== 'undefined') slideRedoStack = [];
@@ -1372,6 +1373,10 @@ function clearAll() {
   if (canvas) canvas.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎞</div><p>슬라이드가 없습니다</p></div>`;
   const srcList = document.getElementById('sources-list');
   if (srcList) srcList.innerHTML = '<p class="placeholder-msg">검색어를 입력하고 출처 검색을 실행하세요.</p>';
+  const mdTa = document.getElementById('md-editor-ta');
+  if (mdTa) { mdTa.value = ''; if (typeof mdUpdatePreview === 'function') mdUpdatePreview(); }
+  const mdPreview = document.getElementById('md-preview');
+  if (mdPreview) mdPreview.textContent = '';
   renderRefsPanel(); renderLeftPanel(); showToast('🗑 초기화 완료');
 }
 
