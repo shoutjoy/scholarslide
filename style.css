@@ -60,6 +60,10 @@ header::after {
   color: var(--accent); padding: 2px 7px; border-radius: 99px;
   text-transform: uppercase; letter-spacing: 1px;
 }
+.header-filename {
+  font-size: 10px; color: var(--text3); margin-left: 8px;
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .header-actions { display: flex; gap: 6px; align-items: center; }
 .header-mode-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 .header-mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
@@ -84,6 +88,23 @@ header::after {
 .btn-danger:hover:not(:disabled) { background: rgba(248,113,113,0.1); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 .btn-xs { padding: 3px 8px; font-size: 11px; }
+/* 원고 탭 발표원고생성: 눈에 띄지 않게 어두운 회색 */
+.btn-manuscript-script {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text3);
+}
+.btn-manuscript-script:hover:not(:disabled) {
+  background: var(--surface2);
+  border-color: var(--border);
+  color: var(--text2);
+}
+/* 원고 탭 슬라이드 생성 버튼: 가로로 넓게, 패널 UI에 맞춤 */
+.btn-slide-gen-square {
+  min-height: 50px; height: 72px; min-width: 80px; width: 80%; padding: 10px 14px;
+  display: inline-flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px;
+  flex: 1 1 auto; font-size: 18px;
+}
 
 /* ── MAIN ── */
 main { flex: 1; display: flex; overflow: hidden; }
@@ -558,6 +579,25 @@ footer {
 .loading-msg { font-size: 15px; font-weight: 500; color: var(--text2); }
 .loading-sub { font-size: 12px; color: var(--text3); font-family: var(--font-mono); }
 
+/* ── JOB COMPLETE BADGE (헤더 우측 빨간딱지) ── */
+#job-complete-badge.job-complete-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: 10px; padding: 3px 10px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  border-radius: 8px;
+  color: #ef4444; font-size: 11px; font-weight: 600;
+  cursor: pointer; max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+#job-complete-badge.job-complete-badge::before {
+  content: "●"; font-size: 8px; color: #ef4444; flex-shrink: 0;
+}
+#job-complete-badge.job-complete-badge:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
 /* ── TOAST ── */
 #toast {
   position: fixed; bottom: 90px; left: 50%;
@@ -565,7 +605,7 @@ footer {
   background: var(--surface2); border: 1px solid var(--border2);
   color: var(--text); padding: 10px 20px; border-radius: 99px;
   font-size: 13px; font-weight: 500;
-  opacity: 0; transition: all 0.3s; z-index: 9998; pointer-events: none;
+  opacity: 0; transition: all 0.3s; z-index: 100002; pointer-events: none;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 

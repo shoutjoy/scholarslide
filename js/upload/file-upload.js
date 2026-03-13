@@ -92,6 +92,9 @@
       showToast('✅ 파일 로드 완료 (' + (text.length / 1000).toFixed(1) + 'k 글자)');
       renderLeftPanel();
       enableMainBtns();
+      if (text.length > 500 && typeof window.extractReferencesWithAI === 'function') {
+        setTimeout(function () { window.extractReferencesWithAI(null, { autoApply: true }); }, 300);
+      }
     } catch (err) {
       console.error(err);
       showToast('❌ 파일 처리 실패: ' + err.message);
@@ -117,6 +120,9 @@
     showToast('✅ 텍스트 로드 완료');
     renderLeftPanel();
     enableMainBtns();
+    if (val.length > 500 && typeof window.extractReferencesWithAI === 'function') {
+      setTimeout(function () { window.extractReferencesWithAI(null, { autoApply: true }); }, 300);
+    }
   }
 
   function enableMainBtns() {

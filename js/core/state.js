@@ -6,7 +6,7 @@
 /* =========================================================
    STATE
    ========================================================= */
-const LS_ACTIVE_KEY = 'ss_active_key', LS_KEYS_LIST = 'ss_keys', LS_SESSIONS = 'ss_sessions_v3', LS_SAVED_REF_LIST = 'ss_saved_ref_list', LS_SUMMARY_HISTORY = 'ss_summary_history', LS_MANUSCRIPT_HISTORY = 'ss_manuscript_history';
+const LS_ACTIVE_KEY = 'ss_active_key', LS_KEYS_LIST = 'ss_keys', LS_SESSIONS = 'ss_sessions_v3', LS_SAVED_REF_LIST = 'ss_saved_ref_list', LS_SUMMARY_HISTORY = 'ss_summary_history', LS_MANUSCRIPT_HISTORY = 'ss_manuscript_history', LS_SLIDE_HISTORY = 'ss_slide_history';
 let rawText = '', fileName = '', slides = [], sources = [], activeSlideIndex = 0;
 let fileSlots = []; // [{ id, fileName, rawText, checked }] — 다중 파일 슬롯
 const FILE_SLOTS_MAX = 10;
@@ -16,9 +16,11 @@ let _presFromCurrent = false;
 let writingStyle = 'academic-da';
 let summarySubTab = 'current'; // 'current' | 'history'
 let summaryHistory = [];
-let manuscriptHistory = []; // 원고 탭 전용 (요약 히스토리와 분리)
+let manuscriptHistory = []; // 발표 원고 전용 (script 타입만)
+let slideHistory = []; // 슬라이드 생성 전용 (slides 타입)
 const SUMMARY_HISTORY_MAX = 100;
 const MANUSCRIPT_HISTORY_MAX = 50;
+const SLIDE_HISTORY_MAX = 50;
 let _abortController = null;
 if (typeof window !== 'undefined') {
   window._translatedSummary = '';
@@ -69,12 +71,18 @@ function _exposeSlideGenGlobals() {
     }
     return fileName;
   };
-  window.setFileName = function (name) { fileName = name || ''; };
+  function updateHeaderFileName() {
+    var el = document.getElementById('header-current-filename');
+    if (el) el.textContent = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '';
+  }
+  window.updateHeaderFileName = updateHeaderFileName;
+  window.setFileName = function (name) { fileName = name || ''; updateHeaderFileName(); };
   window.getFileSlots = function () { return fileSlots.slice(); };
   window.setFileSlots = function (slots) {
     fileSlots = Array.isArray(slots) ? slots.slice() : [];
     if (fileSlots.length) { rawText = window.getRawText(); var f = fileSlots.find(function (s) { return s.checked !== false; }); fileName = f ? f.fileName : ''; }
     else { rawText = ''; fileName = ''; }
+    updateHeaderFileName();
   };
   window.addFileToSlot = function (entry) {
     if (!entry || !entry.fileName) return;
@@ -85,15 +93,18 @@ function _exposeSlideGenGlobals() {
     fileSlots.push(entry);
     rawText = window.getRawText();
     fileName = entry.fileName;
+    updateHeaderFileName();
   };
   window.removeFileSlot = function (id) {
     fileSlots = fileSlots.filter(function (s) { return s.id !== id; });
     if (fileSlots.length) { rawText = window.getRawText(); var f = fileSlots.find(function (s) { return s.checked !== false; }); fileName = f ? f.fileName : ''; }
     else { rawText = ''; fileName = ''; }
+    updateHeaderFileName();
   };
   window.toggleFileSlotCheck = function (id) {
     var s = fileSlots.find(function (x) { return x.id === id; });
     if (s) { s.checked = !s.checked; rawText = window.getRawText(); var f = fileSlots.find(function (x) { return x.checked !== false; }); fileName = f ? f.fileName : ''; }
+    updateHeaderFileName();
   };
   window.getLeftTab = function () { return leftTab; };
   window.setLeftTab = function (t) { leftTab = t; };
@@ -125,6 +136,8 @@ function _exposeSlideGenGlobals() {
   };
   window.getManuscriptHistory = function () { return manuscriptHistory.slice(); };
   window.addToManuscriptHistory = function (entry) {
+    entry.type = 'script';
+    entry.displayTitle = (entry.fileName || '제목 없음') + ' 발표 원고';
     entry.id = 'mh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
     entry.createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString();
     manuscriptHistory.unshift(entry);
@@ -139,8 +152,27 @@ function _exposeSlideGenGlobals() {
     manuscriptHistory = [];
     try { localStorage.setItem(LS_MANUSCRIPT_HISTORY, '[]'); } catch (e) {}
   };
+  window.getSlideHistory = function () { return slideHistory.slice(); };
+  window.addToSlideHistory = function (entry) {
+    entry.type = 'slides';
+    entry.displayTitle = (entry.fileName || '제목 없음') + ' 슬라이드';
+    entry.id = 'sh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    entry.createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString();
+    slideHistory.unshift(entry);
+    if (slideHistory.length > SLIDE_HISTORY_MAX) slideHistory = slideHistory.slice(0, SLIDE_HISTORY_MAX);
+    try { localStorage.setItem(LS_SLIDE_HISTORY, JSON.stringify(slideHistory)); } catch (e) {}
+  };
+  window.removeFromSlideHistory = function (id) {
+    slideHistory = slideHistory.filter(function (h) { return h.id !== id; });
+    try { localStorage.setItem(LS_SLIDE_HISTORY, JSON.stringify(slideHistory)); } catch (e) {}
+  };
+  window.clearSlideHistory = function () {
+    slideHistory = [];
+    try { localStorage.setItem(LS_SLIDE_HISTORY, '[]'); } catch (e) {}
+  };
 }
 _exposeSlideGenGlobals();
+if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
 
 (function loadSummaryHistory() {
   try {
@@ -151,7 +183,24 @@ _exposeSlideGenGlobals();
 (function loadManuscriptHistory() {
   try {
     var raw = localStorage.getItem(LS_MANUSCRIPT_HISTORY);
-    if (raw) manuscriptHistory = JSON.parse(raw);
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      manuscriptHistory = parsed.filter(function (h) { return h.type !== 'slides'; });
+      var slidesFromManuscript = parsed.filter(function (h) { return h.type === 'slides'; });
+      if (slidesFromManuscript.length) {
+        var slideRaw = localStorage.getItem(LS_SLIDE_HISTORY);
+        var existing = slideRaw ? JSON.parse(slideRaw) : [];
+        slideHistory = slidesFromManuscript.concat(existing).slice(0, 50);
+        try { localStorage.setItem(LS_SLIDE_HISTORY, JSON.stringify(slideHistory)); } catch (e) {}
+        try { localStorage.setItem(LS_MANUSCRIPT_HISTORY, JSON.stringify(manuscriptHistory)); } catch (e) {}
+      }
+    }
+  } catch (e) {}
+})();
+(function loadSlideHistory() {
+  try {
+    var raw = localStorage.getItem(LS_SLIDE_HISTORY);
+    if (raw) slideHistory = JSON.parse(raw);
   } catch (e) {}
 })();
 

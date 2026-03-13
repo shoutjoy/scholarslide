@@ -17,6 +17,13 @@
     { id: 'key', label: '핵심 요약' }
   ];
 
+  function getDocTitleInstruction(docTitle) {
+    if (!docTitle || typeof docTitle !== 'string') return '';
+    var t = docTitle.trim();
+    if (!t) return '';
+    return '요약 맨 위 첫 줄에 반드시 다음 문서 제목을 마크다운 헤딩(# 또는 ##)으로 포함하세요: ' + t + '\n\n';
+  }
+
   function getGranularityInstruction(granularity) {
     var common = [
       '논문·학술 자료이므로 논문 구조(서론-이론-방법-결과-논의)에 맞춰 요약할 것.',
@@ -55,7 +62,9 @@
       systemInstruction: 'You are an academic summarization specialist. Preserve at least one-third of the source content, follow paper structure, and include all key citations in APA (Author, Year) format.',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '요약 시 반드시 포함할 항목:',
@@ -78,7 +87,9 @@
       systemInstruction: 'You are an academic summarization engine. Extract core messages while preserving research necessity, theoretical background, and APA citations (Author, Year).',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '요구사항:',
@@ -106,7 +117,9 @@
       getPrompt: function (text, opts) {
         var slideCount = (opts && opts.slideCount) || 12;
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '슬라이드용 요약이므로 아래 항목을 빠짐없이 포함할 것. 각 항목별로 슬라이드 제목과 불릿(3~5개) 형태로 정리.',
@@ -143,7 +156,9 @@
       systemInstruction: 'You are an academic structure analyst. Summarize each section (necessity, theory, method, results, discussion) with clear theory explanations and APA citations.',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '문서의 논문적 구조를 파악하여 다음 섹션별로 요약할 것:',
@@ -165,7 +180,9 @@
       systemInstruction: 'You are a concept extraction engine for academic texts. Define key concepts with theory context and cite sources in APA (Author, Year).',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '핵심 개념을 추출하고 각 개념에 대해: 정의, 이론적 설명, 필요 시 인용(저자, 연도)을 포함할 것.',
@@ -181,7 +198,9 @@
       systemInstruction: 'You are an analytical comparison engine. Compare theories/models with clear descriptions and APA citations.',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '비교 가능한 이론·모델·주장을 식별하고, 특성·유사점·차이점을 정리할 것. 인용은 (저자, 연도) 유지.',
@@ -197,7 +216,9 @@
       systemInstruction: 'You are an academic research summarizer. Summarize with research necessity, theoretical background (with clear theory explanations), method, results, implications, and full APA in-text citations.',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
+        var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
         return [
+          titleInstr,
           g,
           '',
           '구조화된 연구 요약. 반드시 포함:',
@@ -227,7 +248,8 @@
     var text = (options && options.text) || '';
     var opts = {
       slideCount: (options && options.slideCount) != null ? options.slideCount : 12,
-      granularity: (options && options.granularity) || 'detail'
+      granularity: (options && options.granularity) || 'detail',
+      docTitle: (options && options.docTitle) || ''
     };
     var prompt = style.getPrompt(text, opts);
     if (options && options.writingStyleGuide) {

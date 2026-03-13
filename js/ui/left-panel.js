@@ -22,8 +22,6 @@
       return;
     }
     var customVal = document.getElementById('custom-instruction-val') && document.getElementById('custom-instruction-val').value || '';
-    var slideCountVal = document.getElementById('slide-count-val') && document.getElementById('slide-count-val').value || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_slide_count')) || '15';
-    var defaultIncludeCover = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_include_cover')) !== 'false';
     var leftTab = typeof window.getLeftTab === 'function' ? window.getLeftTab() : 'summary';
     var summaryText = typeof window.getSummaryText === 'function' ? window.getSummaryText() : '';
     var presentationScript = typeof window.getPresentationScript === 'function' ? window.getPresentationScript() : [];
@@ -132,12 +130,9 @@
       + '<option value="academic-da" ' + (writingStyle === 'academic-da' ? 'selected' : '') + '>학술체 (~이다)</option>'
       + '<option value="academic-im" ' + (writingStyle === 'academic-im' ? 'selected' : '') + '>학술체 (~임, ~함)</option>'
       + '<option value="polite" ' + (writingStyle === 'polite' ? 'selected' : '') + '>일반체 (존댓말)</option></select></div>'
-      + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>'
-      + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="30" style="width:64px;text-align:center"/>'
-      + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>'
       + '<div class="action-grid">'
-      + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📖</span>전체 요약</button>'
-      + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📋</span>슬라이드 요약</button></div>'
+      + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📖</span>전문요약 도구</button>'
+      + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📋</span>슬라이드 초안제작</button></div>'
       + '<label class="label">커스텀 지시사항</label>'
       + '<textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력...">' + escapeHtml(customVal) + '</textarea>'
       + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>'

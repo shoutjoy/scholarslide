@@ -27,20 +27,30 @@
     return val !== undefined && val !== null && String(val).trim() !== '' ? String(val) : null;
   }
 
-  /** 슬라이드 생성 시스템 지시: override가 있으면 사용, 없으면 기본 ScholarSlide AI 프롬프트 반환 */
-  function getSlideGenSystemPrompt() {
-    var override = getPromptOverride('slide_gen_system');
+  /** 슬라이드 생성 유형 id → 시스템 지시 키 (slide_gen_system_precision 등) */
+  var SLIDE_GEN_TYPE_IDS = ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop'];
+
+  /** 슬라이드 생성 시스템 지시: 선택된 유형(slideGenType)에 해당하는 override 또는 기본값 반환 */
+  function getSlideGenSystemPrompt(slideGenType) {
+    var type = slideGenType || 'precision';
+    var key = 'slide_gen_system_' + type;
+    var override = getPromptOverride(key);
     if (override) return override;
     var defaults = getDefaultPrompts();
-    return (defaults.slide_gen_system && defaults.slide_gen_system.value) ? defaults.slide_gen_system.value : 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
+    var val = (defaults[key] && defaults[key].value) ? defaults[key].value : null;
+    return val || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
   }
 
-  /** 슬라이드 생성 프롬프트만 업그레이드 기본값으로 적용(override에 저장). 설정에서 "업그레이드 적용" 시 사용 */
+  /** 슬라이드 생성 프롬프트만 업그레이드 기본값으로 적용(override에 저장). 8개 유형 모두 적용. 설정에서 "업그레이드 적용" 시 사용 */
   function applySlideGenUpgrade() {
     var defaults = getDefaultPrompts();
-    var val = (defaults.slide_gen_system && defaults.slide_gen_system.value) ? defaults.slide_gen_system.value : null;
-    if (!val) return false;
-    setPromptOverrides({ slide_gen_system: val });
+    var overrides = {};
+    for (var i = 0; i < SLIDE_GEN_TYPE_IDS.length; i++) {
+      var key = 'slide_gen_system_' + SLIDE_GEN_TYPE_IDS[i];
+      if (defaults[key] && defaults[key].value) overrides[key] = defaults[key].value;
+    }
+    if (Object.keys(overrides).length === 0) return false;
+    setPromptOverrides(overrides);
     return true;
   }
 
@@ -61,108 +71,175 @@
     saveOverrides(o);
   }
 
+  /** 카테고리: 요약 | 슬라이드 생성 | 이미지 생성 | 번역 | 참고문헌 추출 | 기타 */
+  var PROMPT_CATEGORIES = [
+    { id: 'summary', title: '📖 요약 관련' },
+    { id: 'slide', title: '🗂 슬라이드 생성 관련' },
+    { id: 'image', title: '🎨 이미지 생성 관련' },
+    { id: 'translate', title: '🌐 번역 관련' },
+    { id: 'ref_extract', title: '📚 참고문헌 추출 (AI)' },
+    { id: 'other', title: '📚 기타 (학술 검색 등)' }
+  ];
+
   /** 기본 프롬프트 목록 (JS와 일치). 설정 창에서 표시·편집용 */
   function getDefaultPrompts() {
     var styles = (typeof global.SUMMARY_STYLES !== 'undefined' && global.SUMMARY_STYLES) ? global.SUMMARY_STYLES : [];
     var out = {};
 
     styles.forEach(function (s) {
-      out['summary_system_' + s.id] = { label: '요약 — ' + (s.label || s.id) + ' (시스템 지시)', value: s.systemInstruction || '' };
+      out['summary_system_' + s.id] = { category: 'summary', label: (s.label || s.id) + ' (시스템 지시)', value: s.systemInstruction || '' };
     });
 
     out.translate_user_prefix = {
-      label: '번역 — 사용자 프롬프트 접두문',
+      category: 'translate',
+      label: '사용자 프롬프트 접두문',
       value: '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n'
     };
     out.translate_system_instruction = {
-      label: '번역 — 시스템 지시',
+      category: 'translate',
+      label: '시스템 지시',
       value: '전문 학술 번역가입니다.'
     };
-    out.slide_gen_system = {
-      label: '슬라이드 생성 — 시스템 지시 (ScholarSlide AI 업그레이드: Role, APA 인용, 필수 8섹션, 유형 A~H)',
-      value: [
-        '# Role',
-        '너는 학술 논문 및 연구 자료 분석 전문가인 [ScholarSlide AI]이다.',
-        '톤: 학술적 톤 (명사형 종결 어미 사용, 또는 ~임, ~이다).',
-        '안전 규칙: 기존 기능을 수정하거나 삭제할 경우 반드시 사용자 동의가 필요하다.',
-        '',
-        '# Citation Rule (APA 7th Edition)',
-        '- 모든 슬라이드 내용에는 근거가 되는 연구자와 연도를 반드시 명기하라.',
-        '- 문장 끝에 (저자, 연도) 형식의 APA 내체 인용을 누락 없이 포함해야 한다.',
-        '- 예: 끈기(Grit)는 장기 목표 달성을 위한 인내심과 열정으로 정의된다 (Duckworth et al., 2007).',
-        '- 인용 근거가 불확실한 경우 본문에서 해당 내용을 찾아 반드시 확인 후 기입하라.',
-        '',
-        '# Must-Include Sections (필수 구성 항목)',
-        '모든 슬라이드 생성 시 다음 8가지 항목을 순차적으로 반드시 포함하라:',
-        '1. Title: 논문명, 저자, 저널명, 발표일',
-        '2. Introduction: 연구 배경 및 핵심 연구 질문(RQ)',
-        '3. Theoretical Framework: 주요 이론적 배경 및 핵심 변수 정의',
-        '4. Methodology: 연구 설계, 표집(N), 측정 도구, 분석 방법',
-        '5. Key Findings: 데이터 분석 결과 및 주요 통계치(p-value 등)',
-        '6. Discussion: 결과에 대한 학술적 해석 및 시사점',
-        '7. Conclusion & Suggestions: 최종 결론 및 향후 연구 제언',
-        '8. Glossary & References: 주요 용어 사전 및 전체 참고문헌 리스트',
-        '',
-        '# Generation Types (사용자 선택 유형에 따라 아래 규칙 적용)',
-        '',
-        '## Type A: 정밀 요약형 (Precision Archive)',
-        '데이터 무결성 및 통계치 보존 중심. 입력 데이터의 모든 통계적 수치(Mean, SD, p-value, t-value, F-value 등)를 표 형식이나 텍스트로 누락 없이 기록하라. 연구 가설(Hypothesis)과 실제 분석 결과의 일치 여부를 정밀하게 대조하여 작성하고, 방법론 섹션에서는 연구 설계의 타당성과 표집 방법을 전문 용어로 기술하라.',
-        '',
-        '## Type B: 발표 최적화형 (Presentation Focus)',
-        '가독성 및 핵심 메시지 전달 중심. 1슬라이드 1메시지 원칙을 준수하며 텍스트는 3줄 이내 불렛 포인트로 요약하라. 슬라이드당 하나의 핵심 주장(Key Takeaway)만 배치하라. 모든 텍스트는 3줄 이내의 불렛 포인트로 요약하고, 구어체보다는 명확한 명사형 종결 어미를 사용하라. 청중이 직관적으로 이해할 수 있도록 복잡한 데이터는 상승/하락/유의미한 차이 등 결과 위주로 단순화하라.',
-        '',
-        '## Type C: 노트북/학습형 (Concept Mastery)',
-        '개념 정의 및 이론 심화 학습 중심. 논문에 등장하는 주요 전문 용어와 이론에 대해 개념(Definition) 섹션을 상세히 구성하라. 단순히 결과를 나열하는 것이 아니라, 해당 이론이 왜 이 연구에 적용되었는지 배경 논리를 설명하라. 학습자가 내용을 복기할 수 있도록 슬라이드 중간중간 요약 정리(Summary) 섹션을 추가하라.',
-        '',
-        '## Type D: 비판적 검토형 (Critical Analysis)',
-        '논리적 결함 파악 및 비판적 사고 중심. 연구 방법론의 타당성(Internal/External Validity)을 의심하고 분석하라. 표본의 대표성 부족, 측정 도구의 편향성, 결과 해석의 비약 등을 비판적 시각에서 정리하라. 해당 연구가 기존 학계의 정설과 충돌하는 지점이 있다면 이를 강조하여 기술하라.',
-        '',
-        '## Type E: 시각적 증거형 (Evidence-Based Claims)',
-        '결론 선언 후 증거 제시 구조. 슬라이드 제목 대신 연구 결과에서 도출된 강력한 결론 문장을 최상단에 배치하라. 본문은 그 문장을 뒷받침하는 수치적 데이터와 핵심 증거들로만 구성하라. 불필요한 미사여구를 제거하고 주장-근거의 구조를 엄격히 유지하라.',
-        '',
-        '## Type F: 인과관계 도식형 (Logic Flow)',
-        '변수 간 메커니즘 시각화 중심. 독립변수(IV), 매개변수(MV), 종속변수(DV) 간의 관계를 화살표(->)와 단계별 프로세스로 요약하라. 연구의 전체적인 메커니즘을 한눈에 볼 수 있도록 논리의 흐름(Flow) 중심으로 텍스트를 배치하라. 결과 섹션에서는 어떤 경로(Path)가 유의미했는지에 집중하여 설명하라.',
-        '',
-        '## Type G: 상호작용형 (Interactive Quiz)',
-        '퀴즈를 통한 능동적 학습 유도. 슬라이드를 질문-답변 구조로 설계하라. (예: 한 슬라이드에서 실험 결과를 묻고, 다음 슬라이드에서 실제 결과를 공개). 주요 수치나 용어에 빈칸([ ])을 만들어 학습자가 스스로 생각하게 유도하고, 마지막에는 연구 내용에 기반한 3가지 핵심 퀴즈를 출제하라.',
-        '',
-        '## Type H: 워크숍형 (Practical Action)',
-        '실무 적용 및 액션 플랜 중심. 연구 결과를 실무(Business, Education 등)에 적용할 수 있는 3단계 액션 플랜(Action Plan)을 제시하라. 이론적 시사점을 넘어서서 그래서 무엇을 해야 하는가(So-what)에 대한 답을 제공하라. 현장에서 바로 사용할 수 있는 체크리스트나 실습 과제 형식을 포함하라.',
-        '',
-        '# Operational Instructions',
-        '- 답변 시작 시 "선택하신 [유형 이름]으로 슬라이드 구성을 시작합니다."라고 알릴 것.',
-        '- 각 슬라이드의 title(제목)에는 "Slide 1:", "Slide 15:" 같은 슬라이드 번호를 절대 넣지 말 것. 섹션명·내용 제목만 사용할 것 (예: "References - 참고문헌 리스트", "Introduction", "Key Findings").',
-        '- 학술 용어는 표준 번역어를 사용하되, 필요한 경우 괄호 안에 원어를 병기할 것.',
-        '- 출력은 반드시 아래 JSON 배열 형식으로만 할 것. 코드블록·마크다운 없이 순수 JSON만. Korean for title/bullets/notes, English for visPrompt.'
-      ].join('\n')
+    var slideGenBase = [
+      '# Role',
+      '너는 학술 논문 및 연구 자료 분석 전문가인 [ScholarSlide AI]이다.',
+      '톤: 학술적 톤 (명사형 종결 어미 사용, 또는 ~임, ~이다).',
+      '안전 규칙: 기존 기능을 수정하거나 삭제할 경우 반드시 사용자 동의가 필요하다.',
+      '',
+      '# Citation Rule (APA 7th Edition)',
+      '- 모든 슬라이드 내용에는 근거가 되는 연구자와 연도를 반드시 명기하라.',
+      '- 문장 끝에 (저자, 연도) 형식의 APA 내체 인용을 누락 없이 포함해야 한다.',
+      '- 예: 끈기(Grit)는 장기 목표 달성을 위한 인내심과 열정으로 정의된다 (Duckworth et al., 2007).',
+      '- 인용 근거가 불확실한 경우 본문에서 해당 내용을 찾아 반드시 확인 후 기입하라.',
+      '',
+      '# Must-Include Sections (필수 구성 항목)',
+      '모든 슬라이드 생성 시 다음 8가지 항목을 순차적으로 반드시 포함하라:',
+      '1. Title: 논문명, 저자, 저널명, 발표일',
+      '2. Introduction: 연구 배경 및 핵심 연구 질문(RQ)',
+      '3. Theoretical Framework: 주요 이론적 배경 및 핵심 변수 정의',
+      '4. Methodology: 연구 설계, 표집(N), 측정 도구, 분석 방법',
+      '5. Key Findings: 데이터 분석 결과 및 주요 통계치(p-value 등)',
+      '6. Discussion: 결과에 대한 학술적 해석 및 시사점',
+      '7. Conclusion & Suggestions: 최종 결론 및 향후 연구 제언',
+      '8. Glossary & References: 주요 용어 사전 및 전체 참고문헌 리스트',
+      '',
+      '# Operational Instructions',
+      '- 답변 시작 시 "선택하신 [유형 이름]으로 슬라이드 구성을 시작합니다."라고 알릴 것.',
+      '- 각 슬라이드의 title(제목)에는 "Slide 1:", "Slide 15:" 같은 슬라이드 번호를 절대 넣지 말 것. 섹션명·내용 제목만 사용할 것 (예: "References - 참고문헌 리스트", "Introduction", "Key Findings").',
+      '- 학술 용어는 표준 번역어를 사용하되, 필요한 경우 괄호 안에 원어를 병기할 것.',
+      '- 출력은 반드시 아래 JSON 배열 형식으로만 할 것. 코드블록·마크다운 없이 순수 JSON만. Korean for title/bullets/notes, English for visPrompt.'
+    ].join('\n');
+    var typeParagraphs = {
+      precision: '## Type A: 정밀 요약형 (Precision Archive)\n데이터 무결성 및 통계치 보존 중심. 입력 데이터의 모든 통계적 수치(Mean, SD, p-value, t-value, F-value 등)를 표 형식이나 텍스트로 누락 없이 기록하라. 연구 가설(Hypothesis)과 실제 분석 결과의 일치 여부를 정밀하게 대조하여 작성하고, 방법론 섹션에서는 연구 설계의 타당성과 표집 방법을 전문 용어로 기술하라.',
+      presentation: '## Type B: 발표 최적화형 (Presentation Focus)\n가독성 및 핵심 메시지 전달 중심. 1슬라이드 1메시지 원칙을 준수하며 텍스트는 3줄 이내 불렛 포인트로 요약하라. 슬라이드당 하나의 핵심 주장(Key Takeaway)만 배치하라. 모든 텍스트는 3줄 이내의 불렛 포인트로 요약하고, 구어체보다는 명확한 명사형 종결 어미를 사용하라. 청중이 직관적으로 이해할 수 있도록 복잡한 데이터는 상승/하락/유의미한 차이 등 결과 위주로 단순화하라.',
+      notebook: '## Type C: 노트북/학습형 (Concept Mastery)\n개념 정의 및 이론 심화 학습 중심. 논문에 등장하는 주요 전문 용어와 이론에 대해 개념(Definition) 섹션을 상세히 구성하라. 단순히 결과를 나열하는 것이 아니라, 해당 이론이 왜 이 연구에 적용되었는지 배경 논리를 설명하라. 학습자가 내용을 복기할 수 있도록 슬라이드 중간중간 요약 정리(Summary) 섹션을 추가하라.',
+      critical: '## Type D: 비판적 검토형 (Critical Analysis)\n논리적 결함 파악 및 비판적 사고 중심. 연구 방법론의 타당성(Internal/External Validity)을 의심하고 분석하라. 표본의 대표성 부족, 측정 도구의 편향성, 결과 해석의 비약 등을 비판적 시각에서 정리하라. 해당 연구가 기존 학계의 정설과 충돌하는 지점이 있다면 이를 강조하여 기술하라.',
+      evidence: '## Type E: 시각적 증거형 (Evidence-Based Claims)\n결론 선언 후 증거 제시 구조. 슬라이드 제목 대신 연구 결과에서 도출된 강력한 결론 문장을 최상단에 배치하라. 본문은 그 문장을 뒷받침하는 수치적 데이터와 핵심 증거들로만 구성하라. 불필요한 미사여구를 제거하고 주장-근거의 구조를 엄격히 유지하라.',
+      logic: '## Type F: 인과관계 도식형 (Logic Flow)\n변수 간 메커니즘 시각화 중심. 독립변수(IV), 매개변수(MV), 종속변수(DV) 간의 관계를 화살표(->)와 단계별 프로세스로 요약하라. 연구의 전체적인 메커니즘을 한눈에 볼 수 있도록 논리의 흐름(Flow) 중심으로 텍스트를 배치하라. 결과 섹션에서는 어떤 경로(Path)가 유의미했는지에 집중하여 설명하라.',
+      quiz: '## Type G: 상호작용형 (Interactive Quiz)\n퀴즈를 통한 능동적 학습 유도. 슬라이드를 질문-답변 구조로 설계하라. (예: 한 슬라이드에서 실험 결과를 묻고, 다음 슬라이드에서 실제 결과를 공개). 주요 수치나 용어에 빈칸([ ])을 만들어 학습자가 스스로 생각하게 유도하고, 마지막에는 연구 내용에 기반한 3가지 핵심 퀴즈를 출제하라.',
+      workshop: '## Type H: 워크숍형 (Practical Action)\n실무 적용 및 액션 플랜 중심. 연구 결과를 실무(Business, Education 등)에 적용할 수 있는 3단계 액션 플랜(Action Plan)을 제시하라. 이론적 시사점을 넘어서서 그래서 무엇을 해야 하는가(So-what)에 대한 답을 제공하라. 현장에서 바로 사용할 수 있는 체크리스트나 실습 과제 형식을 포함하라.'
+    };
+    var typeLabels = {
+      precision: 'A. 정밀 요약형 (Precision Archive)',
+      presentation: 'B. 발표 최적화형 (Presentation Focus)',
+      notebook: 'C. 노트북/학습형 (Concept Mastery)',
+      critical: 'D. 비판적 검토형 (Critical Analysis)',
+      evidence: 'E. 시각적 증거형 (Evidence-Based Claims)',
+      logic: 'F. 인과관계 도식형 (Logic Flow)',
+      quiz: 'G. 상호작용형 (Interactive Quiz)',
+      workshop: 'H. 워크숍형 (Practical Action)'
+    };
+    ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop'].forEach(function (tid) {
+      out['slide_gen_system_' + tid] = {
+        category: 'slide',
+        label: '슬라이드 생성 — ' + (typeLabels[tid] || tid) + ' (시스템 지시)',
+        value: slideGenBase + '\n\n# Generation Type (선택된 유형)\n\n' + (typeParagraphs[tid] || '')
+      };
+    });
+    out.slide_gen_user_prompt = {
+      category: 'slide',
+      label: '사용자 프롬프트 ({{TYPE_LABEL}}, {{SLIDE_COUNT}}, {{STYLE_GUIDE}}, {{COVER_NOTE}}, {{STRUCTURE_NOTE}}, {{NO_SLIDE_NUM_NOTE}}, {{TEXT}})',
+      value: '선택하신 {{TYPE_LABEL}}으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 {{SLIDE_COUNT}}개의 슬라이드를 생성하세요.\n스타일: {{STYLE_GUIDE}}\n{{COVER_NOTE}}\n{{STRUCTURE_NOTE}}\n{{NO_SLIDE_NUM_NOTE}}\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n{{TEXT}}'
+    };
+    out.slide_gen_structure_note = {
+      category: 'slide',
+      label: '구조 지시 (필수 8섹션·유형 규칙, {{TYPE_LETTER}}로 유형 문자 대체)',
+      value: '위 필수 구성 항목(8가지)을 순서대로 반영하고, 선택한 유형(Type {{TYPE_LETTER}})의 규칙을 적용하세요.'
+    };
+    out.slide_gen_no_slide_num_note = {
+      category: 'slide',
+      label: '제목 규칙 (슬라이드 번호 금지)',
+      value: '각 슬라이드의 title에는 "Slide 1:", "Slide 15:" 같은 번호를 붙이지 말고, 섹션명·내용 제목만 사용할 것 (예: "References - 참고문헌 리스트", "Introduction", "Key Findings").'
     };
     out.slide_gen_script_system = {
+      category: 'slide',
       label: '발표 원고 생성 — 시스템 지시',
       value: '학술 발표 전문가입니다. 자연스러운 발표 원고를 한국어로 작성합니다.'
     };
     out.scholar_search_prompt = {
-      label: '학술 검색 — 프롬프트 (주제는 {{query}}로 대체)',
+      category: 'other',
+      label: '학술 검색 프롬프트 (주제는 {{query}}로 대체)',
       value: '다음 주제와 관련된 실제 학술 논문 5편을 JSON 배열로만 응답하세요 (코드블록, 마크다운 없이 순수 JSON만):\n[{"authors":"Last, F., & Last2, F2.","year":"2023","title":"논문 제목","journal":"저널명","volume":"15","issue":"2","pages":"100-120","doi":""}]\n주제: {{query}}'
     };
     out.scholar_search_system = {
-      label: '학술 검색 — 시스템 지시',
+      category: 'other',
+      label: '학술 검색 시스템 지시',
       value: 'You are a scholar database. Return ONLY valid JSON array, no markdown.'
     };
     out.ref_extract_system = {
-      label: '참고문헌 추출 (AI) — 시스템 지시',
-      value: 'You are an expert in APA 7th edition citation format. Your task is to extract ALL references from the given academic document text. Return ONLY a valid JSON array—no markdown, no code block, no explanation. Each object must have exactly these keys: authors (string), year (string, 4 digits), title (string), journal (string), volume (string, optional), issue (string, optional), pages (string, optional), doi (string, optional; without https://doi.org/ prefix). Author names and year must be present for every entry; other fields may be empty string if not found.'
+      category: 'ref_extract',
+      label: '참고문헌 추출 (AI) 시스템 지시',
+      value: 'You are an expert in APA 7th edition citation format. Your task is to extract ALL references from the given academic document text. References typically appear at the END of the document under sections titled "Reference", "References", "참고문헌", "참고", "Bibliography", "Works Cited", etc. Return ONLY a valid JSON array—no markdown, no code block, no explanation. Each object must have exactly these keys: authors (string), year (string, 4 digits), title (string), journal (string), volume (string, optional), issue (string, optional), pages (string, optional), doi (string, optional; without https://doi.org/ prefix). Author names and year must be present for every entry; other fields may be empty string if not found.'
     };
     out.ref_extract_prompt = {
-      label: '참고문헌 추출 (AI) — 사용자 프롬프트 (원문은 {{TEXT}}로 대체)',
-      value: 'Extract every reference from the following document in APA 7th edition format. Include only entries that have at least: author(s) and publication year. For each reference return one object with keys: authors, year, title, journal, volume, issue, pages, doi. Return ONLY a JSON array of such objects, nothing else.\n\nDocument text:\n{{TEXT}}'
+      category: 'ref_extract',
+      label: '참고문헌 추출 (AI) 사용자 프롬프트 (원문은 {{TEXT}}로 대체)',
+      value: 'Extract every reference from the following document in APA 7th edition format. Focus on the END of the document where reference sections typically appear under headings such as: Reference, References, 참고문헌, 참고, Bibliography, Works Cited, or similar. Include only entries that have at least: author(s) and publication year. For each reference return one object with keys: authors, year, title, journal, volume, issue, pages, doi. Return ONLY a JSON array of such objects, nothing else.\n\nDocument text:\n{{TEXT}}'
+    };
+
+    var scholarAIPresetText = [
+      'You are an academic research assistant.',
+      '',
+      'Task:',
+      'Search for real, peer-reviewed journal articles on the following topic:',
+      '[여기에 주제 입력]',
+      '',
+      'Search conditions:',
+      '- Publication years: [연도 범위 입력]',
+      '- Only include verifiable, existing journal articles.',
+      '- Do NOT fabricate citations.',
+      '- If bibliographic information is uncertain, explicitly state uncertainty.',
+      '',
+      'Output requirements:',
+      '1. Format all references strictly in APA 7th edition.',
+      '2. Include DOI when available.',
+      '3. Indicate journal indexing status (SSCI/SCIE/ESCI/Scopus if known).',
+      '4. Separate domestic (Korean) and international studies if applicable.',
+      '5. For each article, provide 2–3 sentences summarizing:',
+      '   - Research purpose',
+      '   - Methodology (e.g., SEM, multilevel modeling, regression, meta-analysis)',
+      '   - Key findings',
+      '6. Focus on recent theoretical frameworks when relevant.'
+    ].join('\n');
+    out.scholarai_prompt = {
+      category: 'other',
+      label: 'ScholarAI 사전 프롬프트',
+      value: scholarAIPresetText
+    };
+    out.apa_search_prompt = {
+      category: 'other',
+      label: 'APA 조사 프롬프트',
+      value: scholarAIPresetText
     };
 
     out.imggen_vis_prompt_system = {
-      label: '이미지 생성 — 시각 프롬프트 제작 지시 (시스템)',
+      category: 'image',
+      label: '시각 프롬프트 제작 지시 (시스템)',
       value: 'You are an expert at creating detailed visual prompts for AI image generation. Your task is to convert slide content into a rich, specific English prompt that will produce high-quality academic visuals. Output ONLY the prompt text—no explanation, no markdown, no code block, no prefix.'
     };
     out.imggen_vis_prompt_instruction = {
-      label: '이미지 생성 — 시각 프롬프트 제작 지시 (사용자, MDeditor 내용은 {{MD_CONTENT}}로 대체)',
+      category: 'image',
+      label: '시각 프롬프트 제작 지시 (사용자, MDeditor 내용은 {{MD_CONTENT}}로 대체)',
       value: [
         '다음 MDeditor 창의 슬라이드 내용을 참고하여, AI 이미지 생성용 시각 프롬프트를 **영어로** 세밀하게 작성하세요.',
         '',
@@ -181,13 +258,49 @@
     return out;
   }
 
+  /** 슬라이드 생성 사용자 프롬프트: placeholders 치환 후 반환 */
+  function getSlideGenUserPrompt(vars) {
+    var tpl = getPromptOverride('slide_gen_user_prompt');
+    if (!tpl) {
+      var d = getDefaultPrompts();
+      tpl = (d.slide_gen_user_prompt && d.slide_gen_user_prompt.value) || '';
+    }
+    if (!tpl) return null;
+    var s = tpl;
+    for (var k in vars) if (vars.hasOwnProperty(k)) s = s.replace(new RegExp('\\{\\{' + k + '\\}\\}', 'g'), vars[k]);
+    return s;
+  }
+
+  /** 슬라이드 생성 구조 지시 (structureNote) */
+  function getSlideGenStructureNote(typeLetter) {
+    var tpl = getPromptOverride('slide_gen_structure_note');
+    if (!tpl) {
+      var d = getDefaultPrompts();
+      tpl = (d.slide_gen_structure_note && d.slide_gen_structure_note.value) || '위 필수 구성 항목(8가지)을 순서대로 반영하고, 선택한 유형(Type {{TYPE_LETTER}})의 규칙을 적용하세요.';
+    }
+    return (tpl || '').replace(/\{\{TYPE_LETTER\}\}/g, typeLetter || 'A');
+  }
+
+  /** 슬라이드 생성 제목 규칙 (noSlideNumNote) */
+  function getSlideGenNoSlideNumNote() {
+    var val = getPromptOverride('slide_gen_no_slide_num_note');
+    if (val) return val;
+    var d = getDefaultPrompts();
+    return (d.slide_gen_no_slide_num_note && d.slide_gen_no_slide_num_note.value) || '각 슬라이드의 title에는 "Slide 1:", "Slide 15:" 같은 번호를 붙이지 말고, 섹션명·내용 제목만 사용할 것 (예: "References - 참고문헌 리스트", "Introduction", "Key Findings").';
+  }
+
   if (typeof global !== 'undefined') {
     global.getPromptOverride = getPromptOverride;
+    global.SLIDE_GEN_TYPE_IDS = SLIDE_GEN_TYPE_IDS;
     global.getImggenVisPromptInstruction = getImggenVisPromptInstruction;
     global.getSlideGenSystemPrompt = getSlideGenSystemPrompt;
+    global.getSlideGenUserPrompt = getSlideGenUserPrompt;
+    global.getSlideGenStructureNote = getSlideGenStructureNote;
+    global.getSlideGenNoSlideNumNote = getSlideGenNoSlideNumNote;
     global.applySlideGenUpgrade = applySlideGenUpgrade;
     global.setPromptOverrides = setPromptOverrides;
     global.getPromptOverrides = getOverrides;
     global.getDefaultPrompts = getDefaultPrompts;
+    global.PROMPT_CATEGORIES = PROMPT_CATEGORIES;
   }
 })(typeof window !== 'undefined' ? window : this);

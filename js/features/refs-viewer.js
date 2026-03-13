@@ -74,6 +74,9 @@
     window._bgJob = _bgJob;
     _bgBarUpdate();
     if (msg) showToast(msg);
+    if (msg && msg.indexOf('✅') === 0 && typeof window.showJobCompleteBadge === 'function') {
+      window.showJobCompleteBadge(msg.replace(/^✅\s*/, ''));
+    }
   }
   function _bgBarUpdate() {
     var bar = document.getElementById('bg-job-bar');

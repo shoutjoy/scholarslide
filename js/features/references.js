@@ -89,15 +89,17 @@ function reExtractReferencesFromDocument() {
   showToast('✅ 원문에서 ' + refs.length + '개 참고문헌으로 재추출했습니다.');
 }
 
-/** AI로 원문 전체에서 참고문헌을 APA 양식에 맞게 추출해 목록으로 대체. 완료 후 콜백 호출(REF EXP 창 새로고침용) */
-async function extractReferencesWithAI(doneCallback) {
+/** AI로 원문 전체에서 참고문헌을 APA 양식에 맞게 추출해 목록으로 대체. 완료 후 콜백 호출(REF EXP 창 새로고침용). autoApply: true면 확인 없이 자동 적용 */
+async function extractReferencesWithAI(doneCallback, options) {
   var raw = typeof window.getRawText === 'function' ? window.getRawText() : (typeof rawText !== 'undefined' ? rawText : '');
   if (!raw || !raw.trim()) { showToast('⚠️ 먼저 원문을 로드하세요'); if (doneCallback) doneCallback(); return; }
-  var promptTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_prompt')) || 'Extract every reference from the following document in APA 7th edition format. Return ONLY a JSON array of objects with keys: authors, year, title, journal, volume, issue, pages, doi.\n\nDocument text:\n{{TEXT}}';
-  var systemTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_system')) || 'You are an expert in APA 7th edition. Return ONLY a valid JSON array of reference objects. No markdown.';
+  var defaults = (typeof window.getDefaultPrompts === 'function' && window.getDefaultPrompts()) || {};
+  var promptTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_prompt')) || (defaults.ref_extract_prompt && defaults.ref_extract_prompt.value) || 'Extract every reference from the following document in APA 7th edition format. Focus on the END of the document where reference sections typically appear (Reference, References, 참고문헌, 참고, Bibliography). Return ONLY a JSON array of objects with keys: authors, year, title, journal, volume, issue, pages, doi.\n\nDocument text:\n{{TEXT}}';
+  var systemTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_system')) || (defaults.ref_extract_system && defaults.ref_extract_system.value) || 'You are an expert in APA 7th edition. Return ONLY a valid JSON array of reference objects. No markdown.';
   var textSnippet = raw.length > 50000 ? raw.substring(0, 50000) + '\n\n[... 이하 생략 ...]' : raw;
   var prompt = promptTpl.replace(/\{\{TEXT\}\}/g, textSnippet);
-  if (typeof window.showLoading === 'function') window.showLoading('참고문헌 AI 추출 중...', '원문 분석', 30, true);
+  var autoApply = options && options.autoApply === true;
+  if (typeof showToast === 'function') showToast('참고문헌 AI 추출 중... (백그라운드)');
   try {
     var res = await window.callGemini(prompt, systemTpl);
     var text = res && res.text ? res.text : (res || '');
@@ -119,7 +121,7 @@ async function extractReferencesWithAI(doneCallback) {
       };
     }).filter(function (r) { return r.authors && r.year && r.title; });
     if (refs.length === 0) { showToast('⚠️ 저자·연도·제목이 있는 항목이 없습니다'); if (doneCallback) doneCallback(); return; }
-    if (!confirm('AI가 ' + refs.length + '개 참고문헌을 추출했습니다. 기존 목록을 이 목록으로 대체하시겠습니까?')) { if (doneCallback) doneCallback(); return; }
+    if (!autoApply && !confirm('AI가 ' + refs.length + '개 참고문헌을 추출했습니다. 기존 목록을 이 목록으로 대체하시겠습니까?')) { if (doneCallback) doneCallback(); return; }
     ReferenceStore.clear();
     for (var i = 0; i < refs.length; i++) ReferenceStore.add(refs[i]);
     renderRefsPanel();
@@ -127,7 +129,6 @@ async function extractReferencesWithAI(doneCallback) {
   } catch (e) {
     if (e.name !== 'AbortError') { console.error(e); showToast('❌ 참고문헌 AI 추출 실패: ' + (e.message || e)); }
   }
-  if (typeof window.hideLoading === 'function') window.hideLoading();
   if (doneCallback) doneCallback();
 }
 

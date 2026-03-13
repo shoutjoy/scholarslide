@@ -34,12 +34,26 @@
   }
 
   /**
+   * 히스토리 항목 선택 (생성히스토리 뷰에서만 선택, 하단 버튼 활성화용)
+   */
+  window.selectManuscriptHistoryItem = function (id) {
+    if (!id) return;
+    window._selectedManuscriptHistoryId = id;
+    if (typeof renderLeftPanel === 'function') renderLeftPanel();
+  };
+
+  /**
    * 히스토리 항목을 생성내용에 표시
    */
   window.loadManuscriptFromHistory = function (id) {
-    if (!id || typeof window.getManuscriptHistory !== 'function') return;
-    var list = window.getManuscriptHistory();
-    var item = list.find(function (h) { return h.id === id; });
+    if (!id) return;
+    var item = null;
+    if (typeof window.getManuscriptHistory === 'function') {
+      item = (window.getManuscriptHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && typeof window.getSlideHistory === 'function') {
+      item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (!item) return;
     window._selectedManuscriptHistoryId = id;
     if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
@@ -52,9 +66,14 @@
    * 히스토리 항목을 슬라이드로 복원
    */
   window.restoreManuscriptToSlides = function (id) {
-    if (!id || typeof window.getManuscriptHistory !== 'function' || typeof window.setSlides !== 'function') return;
-    var list = window.getManuscriptHistory();
-    var item = list.find(function (h) { return h.id === id; });
+    if (!id || typeof window.setSlides !== 'function') return;
+    var item = null;
+    if (typeof window.getManuscriptHistory === 'function') {
+      item = (window.getManuscriptHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && typeof window.getSlideHistory === 'function') {
+      item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (!item || !item.slides || !item.slides.length) {
       if (typeof showToast === 'function') showToast('⚠️ 저장된 슬라이드가 없습니다.');
       return;
@@ -71,52 +90,206 @@
   };
 
   /**
-   * 히스토리 항목을 새 창에 표시
+   * 현재 탭/선택에 따라 전체화면·새창에 쓸 콘텐츠 반환. { text, title, subtitle, fileName } 또는 null
    */
-  window.openManuscriptInNewWindow = function (id) {
-    var content = '';
-    var title = '원고';
-    var fileName = '';
+  function getManuscriptContentForViewer() {
+    var currentView = window._manuscriptView || 'script';
+    var id = window._selectedManuscriptHistoryId || null;
+    var item = null;
     if (id && typeof window.getManuscriptHistory === 'function') {
-      var list = window.getManuscriptHistory();
-      var item = list.find(function (h) { return h.id === id; });
-      if (item) {
-        fileName = item.fileName || '원고';
-        if (item.type === 'slides' && item.manuscriptContent) {
-          content = item.manuscriptContent;
-          title = '슬라이드 원고';
-        } else if (item.type === 'script' && item.presentationScript && item.presentationScript.length) {
-          var esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
-          var parts = [];
-          for (var i = 0; i < item.presentationScript.length; i++) {
-            var slideTitle = (item.slides && item.slides[i]) ? item.slides[i].title : '슬라이드 ' + (i + 1);
-            parts.push('<div style="margin-bottom:20px"><div style="font-size:11px;color:#71717a;margin-bottom:4px">' + esc(slideTitle) + '</div><div style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + esc(item.presentationScript[i]) + '</div></div>');
-          }
-          content = parts.join('');
-          title = '발표 원고';
-        }
+      item = (window.getManuscriptHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && id && typeof window.getSlideHistory === 'function') {
+      item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (item) {
+      var fileName = item.fileName || '원고';
+      if (item.type === 'slides' && item.manuscriptContent) {
+        return { text: item.manuscriptContent, title: '슬라이드 생성', subtitle: '📋 슬라이드생성', fileName: fileName };
+      }
+      if ((item.type === 'script' || !item.type) && item.presentationScript && item.presentationScript.length) {
+        return { text: scriptToMarkdown(item.presentationScript, item.slides), title: '발표 원고', subtitle: '📝 발표원고', fileName: fileName };
       }
     }
-    if (!content) {
+    if (currentView === 'slides') {
+      var slides = (typeof window.getSlides === 'function' ? window.getSlides() : []) || [];
+      if (slides.length) {
+        var md = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(slides) : '';
+        var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '슬라이드';
+        return { text: md, title: '슬라이드 생성', subtitle: '📋 슬라이드생성', fileName: fileName };
+      }
+    } else {
+      var script = (typeof window.getPresentationScript === 'function' ? window.getPresentationScript() : []) || [];
+      if (script.length) {
+        var slides = (typeof window.getSlides === 'function' ? window.getSlides() : []) || [];
+        var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '발표 원고';
+        return { text: scriptToMarkdown(script, slides), title: '발표 원고', subtitle: '📝 발표원고', fileName: fileName };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 앱 내 전체화면: 새창보기와 동일한 뷰어 디자인으로 콘텐츠를 크게 표시
+   */
+  window.openManuscriptFullscreen = function () {
+    var opts = getManuscriptContentForViewer();
+    if (!opts || !opts.text || !String(opts.text).trim()) {
+      if (typeof showToast === 'function') showToast(window._manuscriptView === 'slides' ? '⚠️ 슬라이드를 먼저 생성하세요.' : '⚠️ 발표 원고를 먼저 생성하세요.');
+      return;
+    }
+    var buildViewer = typeof window.buildViewerContentWithPages === 'function' ? window.buildViewerContentWithPages : null;
+    var contentHtml = buildViewer ? buildViewer(opts.text) : String(opts.text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    var escapeHtml = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+    var safeTitle = escapeHtml(opts.fileName || opts.title);
+    var subtitle = opts.subtitle || opts.title;
+
+    var overlayId = 'manuscript-fullscreen-overlay';
+    var existing = document.getElementById(overlayId);
+    if (existing) {
+      existing.remove();
+    }
+    var overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;background:#0c0e13;font-family:\'JetBrains Mono\',\'Noto Sans KR\',monospace;';
+    overlay.innerHTML =
+      '<style>#manuscript-fullscreen-overlay .ms-toolbar{flex-shrink:0;background:#13161d;border-bottom:1px solid #1e2332;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}' +
+      '#manuscript-fullscreen-overlay .ms-toolbar h2{font-size:14px;color:#4f8ef7;margin:0;}' +
+      '#manuscript-fullscreen-overlay .ms-toolbar .ms-close{background:#4f8ef7;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:600;}' +
+      '#manuscript-fullscreen-overlay .ms-toolbar .ms-close:hover{opacity:0.9;}' +
+      '#manuscript-fullscreen-overlay .ms-viewport{flex:1;overflow:auto;padding:24px;display:flex;justify-content:center;min-height:0;}' +
+      '#manuscript-fullscreen-overlay .ms-page{max-width:860px;width:100%;min-height:min-content;padding:28px;word-wrap:break-word;background:#13161d;border:1px solid #1e2332;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,0.3);}' +
+      '#manuscript-fullscreen-overlay .ms-page-content{font-size:15px;line-height:1.75;color:#b0bac8;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content .page-section{margin-bottom:1.5em;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content h1,#manuscript-fullscreen-overlay .ms-page-content h2,#manuscript-fullscreen-overlay .ms-page-content h3,#manuscript-fullscreen-overlay .ms-page-content h4{font-family:sans-serif;color:#4f8ef7;margin-top:1em;margin-bottom:0.5em;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content h1{font-size:1.4em;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content h2{font-size:1.2em;border-bottom:1px solid #252a37;padding-bottom:6px;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content h3,#manuscript-fullscreen-overlay .ms-page-content h4{font-size:1.1em;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content pre,#manuscript-fullscreen-overlay .ms-page-content code{background:rgba(79,142,247,0.12);border-radius:4px;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content pre{padding:12px;overflow-x:auto;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content code{padding:2px 6px;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content ul,#manuscript-fullscreen-overlay .ms-page-content ol{margin:0.5em 0;padding-left:1.5em;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content a{color:#60a5fa;}' +
+      '#manuscript-fullscreen-overlay .ms-page-content p{margin:0.5em 0;}</style>' +
+      '<div class="ms-toolbar">' +
+        '<h2>' + subtitle + ' — ' + safeTitle + '</h2>' +
+        '<button type="button" class="ms-close" onclick="document.getElementById(\'manuscript-fullscreen-overlay\').remove()">전체화면 닫기</button>' +
+      '</div>' +
+      '<div class="ms-viewport">' +
+        '<div class="ms-page"><div class="ms-page-content">' + contentHtml + '</div></div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+  };
+
+  /**
+   * 발표원고/슬라이드생성 텍스트를 요약 새창보기와 동일한 뷰어 UI로 열기
+   */
+  function openManuscriptViewerWindow(opts) {
+    var text = opts.text;
+    var title = opts.title || '원고';
+    var subtitle = opts.subtitle || '';
+    var fileName = opts.fileName || '';
+    if (!text || !String(text).trim()) return false;
+    var buildViewer = typeof window.buildViewerContentWithPages === 'function' ? window.buildViewerContentWithPages : null;
+    var getViewerHtml = typeof window.getTextViewerWindowHtml === 'function' ? window.getTextViewerWindowHtml : null;
+    if (!getViewerHtml) {
+      if (typeof showToast === 'function') showToast('⚠️ 뷰어를 사용할 수 없습니다.');
+      return false;
+    }
+    var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
+    if (!win) {
+      if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다.');
+      return false;
+    }
+    if (typeof window.registerChildWindow === 'function') window.registerChildWindow(win);
+    var contentRendered = buildViewer ? buildViewer(text) : String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    var escapedHtml = contentRendered.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
+    var rawJson = JSON.stringify(text);
+    var escapeHtml = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+    var safeTitle = escapeHtml(fileName || title);
+    var pageTitle = (subtitle ? subtitle + ' — ' : '') + safeTitle;
+    var html = getViewerHtml({
+      title: safeTitle,
+      subtitle: subtitle || title,
+      pageTitle: pageTitle,
+      contentHtml: escapedHtml,
+      rawTextJson: rawJson,
+      contentType: 'manuscript'
+    });
+    win.document.write(html);
+    win.document.close();
+    return true;
+  }
+
+  /**
+   * 발표원고 배열 → 마크다운 텍스트
+   */
+  function scriptToMarkdown(scriptArr, slides) {
+    if (!scriptArr || !scriptArr.length) return '';
+    var parts = [];
+    for (var i = 0; i < scriptArr.length; i++) {
+      var slideTitle = (slides && slides[i] && slides[i].title) ? slides[i].title : '슬라이드 ' + (i + 1);
+      parts.push('## ' + slideTitle + '\n\n' + (scriptArr[i] || ''));
+    }
+    return parts.join('\n\n---\n\n');
+  }
+
+  /**
+   * 슬라이드생성 탭: 현재 슬라이드 내용을 새 창에 표시
+   */
+  window.openSlidesInNewWindow = function () {
+    var slides = (typeof window.getSlides === 'function' ? window.getSlides() : []) || [];
+    if (!slides.length) {
+      if (typeof showToast === 'function') showToast('⚠️ 슬라이드를 먼저 생성하세요.');
+      return;
+    }
+    var md = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(slides) : '';
+    var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '슬라이드';
+    openManuscriptViewerWindow({ text: md, title: '슬라이드 생성', subtitle: '📋 슬라이드생성', fileName: fileName });
+  };
+
+  /**
+   * 히스토리 항목을 새 창에 표시 (요약 새창보기와 동일한 UI). 발표원고/슬라이드생성 탭에 따라 선택 항목 또는 현재 내용 표시.
+   */
+  window.openManuscriptInNewWindow = function (id) {
+    var text = '';
+    var title = '원고';
+    var subtitle = '';
+    var fileName = '';
+    var item = null;
+    var currentView = window._manuscriptView || 'script';
+    if (id && typeof window.getManuscriptHistory === 'function') {
+      item = (window.getManuscriptHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && id && typeof window.getSlideHistory === 'function') {
+      item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (item) {
+      fileName = item.fileName || '원고';
+      if (item.type === 'slides' && item.manuscriptContent) {
+        text = item.manuscriptContent;
+        title = '슬라이드 생성';
+        subtitle = '📋 슬라이드생성';
+      } else if ((item.type === 'script' || !item.type) && item.presentationScript && item.presentationScript.length) {
+        text = scriptToMarkdown(item.presentationScript, item.slides);
+        title = '발표 원고';
+        subtitle = '📝 발표원고';
+      }
+    }
+    if (!text || !text.trim()) {
+      if (currentView === 'slides') {
+        window.openSlidesInNewWindow();
+        return;
+      }
       if (id && typeof showToast === 'function') showToast('⚠️ 저장된 콘텐츠가 없습니다.');
       else window.openScriptInNewWindow();
       return;
     }
-    var win = window.open('', '_blank', 'width=720,height=700,scrollbars=yes,resizable=yes');
-    if (!win) {
-      if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다.');
-      return;
-    }
-    if (typeof window.registerChildWindow === 'function') window.registerChildWindow(win);
-    var esc = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
-    var bodyContent = content.indexOf('<div') === 0 ? content : '<pre style="white-space:pre-wrap;font-family:system-ui,sans-serif;font-size:13px;line-height:1.7">' + esc(content) + '</pre>';
-    var html = '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>' + esc(title) + ' — ' + esc(fileName) + '</title><style>body{font-family:system-ui,sans-serif;background:#1a1a1e;color:#e4e4e7;margin:0;padding:16px;line-height:1.6}</style></head><body><h2 style="font-size:16px;margin-bottom:16px">' + esc(title) + '</h2>' + bodyContent + '</body></html>';
-    win.document.write(html);
-    win.document.close();
+    openManuscriptViewerWindow({ text: text, title: title, subtitle: subtitle, fileName: fileName });
   };
 
   /**
-   * 원고 탭에서만 쓰는 새 창 보기 (발표 원고 내용)
+   * 원고 탭에서만 쓰는 새 창 보기 (발표 원고 내용) — 요약 새창보기와 동일한 UI
    */
   window.openScriptInNewWindow = function () {
     var script = (typeof window.getPresentationScript === 'function' ? window.getPresentationScript() : []) || [];
@@ -124,23 +297,10 @@
       if (typeof showToast === 'function') showToast('⚠️ 발표 원고를 먼저 생성하세요.');
       return;
     }
-    var win = window.open('', '_blank', 'width=720,height=700,scrollbars=yes,resizable=yes');
-    if (!win) {
-      if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다.');
-      return;
-    }
-    if (typeof window.registerChildWindow === 'function') window.registerChildWindow(win);
-    var escapeHtml = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
     var slides = (typeof window.getSlides === 'function' ? window.getSlides() : []) || [];
     var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '발표 원고';
-    var parts = [];
-    for (var i = 0; i < script.length; i++) {
-      var title = (slides[i] && slides[i].title) ? slides[i].title : '슬라이드 ' + (i + 1);
-      parts.push('<div style="margin-bottom:20px"><div style="font-size:11px;color:#71717a;margin-bottom:4px">' + escapeHtml(title) + '</div><div style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + escapeHtml(script[i]) + '</div></div>');
-    }
-    var html = '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>발표 원고 — ' + escapeHtml(fileName) + '</title><style>body{font-family:system-ui,sans-serif;background:#1a1a1e;color:#e4e4e7;margin:0;padding:16px;line-height:1.6}</style></head><body><h2 style="font-size:16px;margin-bottom:16px">📝 발표 원고</h2>' + parts.join('') + '</body></html>';
-    win.document.write(html);
-    win.document.close();
+    var text = scriptToMarkdown(script, slides);
+    openManuscriptViewerWindow({ text: text, title: '발표 원고', subtitle: '📝 발표원고', fileName: fileName });
   };
 
   /**
@@ -155,6 +315,8 @@
     var slides = opts.slides || [];
     var customVal = opts.customInstruction || '';
     var slideGenType = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_type')) || 'precision';
+    var slideCountVal = (document.getElementById('slide-count-val') && document.getElementById('slide-count-val').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_slide_count')) || '15';
+    var defaultIncludeCover = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_include_cover')) !== 'false';
     var esc = opts.escapeHtml || function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
     var view = window._manuscriptView || 'script';
     var subView = window._manuscriptSubView || 'content';
@@ -177,9 +339,12 @@
       + '<option value="quiz" ' + (slideGenType === 'quiz' ? 'selected' : '') + '>G. 상호작용형 (Interactive Quiz)</option>'
       + '<option value="workshop" ' + (slideGenType === 'workshop' ? 'selected' : '') + '>H. 워크숍형 (Practical Action)</option></select></div>';
 
-    var row1 = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-primary btn-sm" onclick="askThenGenerateScript()">📝 발표원고생성</button>'
-      + '<button type="button" class="btn btn-primary btn-sm" onclick="askThenSummary(\'slides\')">🗂 슬라이드 생성</button>'
+    var slideCountRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>'
+      + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="80" style="width:64px;text-align:center"/>'
+      + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>';
+
+    var slideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
+      + '<button type="button" class="btn btn-primary btn-sm btn-slide-gen-square" onclick="askThenSummary(\'slides\')">🗂 슬라이드 생성</button>'
       + '</div>';
 
     var row2 = '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
@@ -203,8 +368,13 @@
 
     var selectedId = window._selectedManuscriptHistoryId || null;
     var selectedItem = null;
-    if (selectedId && typeof window.getManuscriptHistory === 'function') {
-      selectedItem = (window.getManuscriptHistory() || []).find(function (h) { return h.id === selectedId; });
+    if (selectedId) {
+      if (typeof window.getManuscriptHistory === 'function') {
+        selectedItem = (window.getManuscriptHistory() || []).find(function (h) { return h.id === selectedId; });
+      }
+      if (!selectedItem && typeof window.getSlideHistory === 'function') {
+        selectedItem = (window.getSlideHistory() || []).find(function (h) { return h.id === selectedId; });
+      }
     }
 
     var contentScript = '';
@@ -232,7 +402,7 @@
     if (selectedItem && subView === 'content') {
       if (selectedItem.type === 'slides' && selectedItem.manuscriptContent) {
         contentFromSelected = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">' + esc(selectedItem.manuscriptContent) + '</div>';
-      } else if (selectedItem.type === 'script' && selectedItem.presentationScript && selectedItem.presentationScript.length) {
+      } else if ((selectedItem.type === 'script' || selectedItem.type === undefined) && selectedItem.presentationScript && selectedItem.presentationScript.length) {
         var scriptPartsSel = [];
         for (var j = 0; j < selectedItem.presentationScript.length; j++) {
           var stSel = selectedItem.presentationScript[j];
@@ -245,18 +415,33 @@
       }
     }
 
+    /* 생성내용: 현재 탭(발표원고/슬라이드생성)에 맞는 것만 표시. 슬라이드생성에는 슬라이드만, 발표원고에는 원고만 */
+    var useSelectedForContent = selectedItem && subView === 'content' &&
+      (view === 'script' ? (selectedItem.type === 'script' || selectedItem.type === undefined) : selectedItem.type === 'slides');
+
     var contentHistory = '';
-    if (subView === 'history' && typeof window.getManuscriptHistory === 'function') {
-      var historyList = window.getManuscriptHistory() || [];
+    if (subView === 'history') {
+      var historyList = [];
+      var clearFn = '';
+      var removeFn = '';
+      if (view === 'script' && typeof window.getManuscriptHistory === 'function') {
+        historyList = window.getManuscriptHistory() || [];
+        clearFn = 'clearManuscriptHistory';
+        removeFn = 'removeFromManuscriptHistory';
+      } else if (view === 'slides' && typeof window.getSlideHistory === 'function') {
+        historyList = window.getSlideHistory() || [];
+        clearFn = 'clearSlideHistory';
+        removeFn = 'removeFromSlideHistory';
+      }
       if (historyList.length) {
-        contentHistory = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="clearManuscriptHistory(); _selectedManuscriptHistoryId=null; renderLeftPanel();">일괄 지우기</button></div><div style="display:flex;flex-direction:column;gap:6px">';
+        contentHistory = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="' + clearFn + '(); _selectedManuscriptHistoryId=null; renderLeftPanel();">일괄 지우기</button></div><div style="display:flex;flex-direction:column;gap:6px">';
         for (var hi = 0; hi < historyList.length; hi++) {
           var h = historyList[hi];
           var created = h.createdAt ? new Date(h.createdAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-          var typeLabel = h.type === 'slides' ? '슬라이드 생성' : h.type === 'script' ? '발표 원고' : (h.type || '');
+          var displayTitle = h.displayTitle || ((h.fileName || '제목 없음') + (h.type === 'slides' ? ' 슬라이드' : ' 발표 원고'));
           var isSelected = h.id === selectedId;
           var itemStyle = 'padding:8px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:8px' + (isSelected ? ';border-color:var(--accent);background:var(--accent-glow)' : '');
-          contentHistory += '<div class="manuscript-history-item" data-id="' + esc(h.id) + '" style="' + itemStyle + '" onclick="loadManuscriptFromHistory(\'' + String(h.id || '').replace(/'/g, "\\'") + '\')"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">' + esc(h.fileName || '제목 없음') + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(created) + (typeLabel ? ' · ' + esc(typeLabel) : '') + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); removeFromManuscriptHistory(\'' + String(h.id || '').replace(/'/g, "\\'") + '\'); if(_selectedManuscriptHistoryId===\'' + String(h.id || '').replace(/'/g, "\\'") + '\')_selectedManuscriptHistoryId=null; renderLeftPanel();" title="삭제">&#10005;</button></div>';
+          contentHistory += '<div class="manuscript-history-item" data-id="' + esc(h.id) + '" style="' + itemStyle + '" onclick="selectManuscriptHistoryItem(\'' + String(h.id || '').replace(/'/g, "\\'") + '\')"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">' + esc(displayTitle) + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(created) + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); ' + removeFn + '(\'' + String(h.id || '').replace(/'/g, "\\'") + '\'); if(_selectedManuscriptHistoryId===\'' + String(h.id || '').replace(/'/g, "\\'") + '\')_selectedManuscriptHistoryId=null; renderLeftPanel();" title="삭제">&#10005;</button></div>';
         }
         contentHistory += '</div>';
         var sel = selectedItem || (selectedId ? historyList.find(function (h) { return h.id === selectedId; }) : null);
@@ -268,18 +453,22 @@
           + '<button type="button" class="btn btn-ghost btn-xs"' + (canView ? '' : ' disabled') + ' onclick="openManuscriptInNewWindow(_selectedManuscriptHistoryId)" title="새창보기에 띄워서 보기">새창보기</button>'
           + '</div>';
       } else {
-        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">원고/슬라이드 생성 히스토리가 없습니다.</p>';
+        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">' + (view === 'script' ? '발표 생성' : '슬라이드 생성') + ' 히스토리가 없습니다.</p>';
       }
-    } else if (subView === 'history') {
-      contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">원고 히스토리를 불러올 수 없습니다.</p>';
     }
 
-    var mainContent = subView === 'history' ? contentHistory : (contentFromSelected ? contentFromSelected : (view === 'script' ? contentScript : contentSlides));
+    var mainContent = subView === 'history' ? contentHistory : (useSelectedForContent ? contentFromSelected : (view === 'script' ? contentScript : contentSlides));
+
+    var labelContent = view === 'script' ? '발표 상세 내용' : '슬라이드 생성 내용';
+    var labelHistory = view === 'script' ? '발표 생성 히스토리' : '슬라이드 생성히스토리';
+    var labelNewWindow = view === 'script' ? '발표 새창보기' : '슬라이드 새창보기';
+    var labelFullscreen = view === 'script' ? '발표 전체화면' : '슬라이드 전체화면';
 
     var row6 = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
-      + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'content' ? ' active' : '') + '" onclick="setManuscriptSubView(\'content\')">생성내용</button>'
-      + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'history' ? ' active' : '') + '" onclick="setManuscriptSubView(\'history\')">생성히스토리</button>'
-      + '<button type="button" class="btn btn-ghost btn-xs" onclick="openManuscriptInNewWindow(_selectedManuscriptHistoryId)" title="선택된 항목 또는 현재 원고를 새 창에 표시">새창보기</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'content' ? ' active' : '') + '" onclick="setManuscriptSubView(\'content\')">' + labelContent + '</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'history' ? ' active' : '') + '" onclick="setManuscriptSubView(\'history\')">' + labelHistory + '</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="openManuscriptInNewWindow(_selectedManuscriptHistoryId)" title="' + (view === 'script' ? '선택된 항목 또는 현재 발표 원고를 새 창에 표시' : '선택된 항목 또는 현재 슬라이드 내용을 새 창에 표시') + '">' + labelNewWindow + '</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="openManuscriptFullscreen()" title="앱 내에서 전체화면으로 보기">' + labelFullscreen + '</button>'
       + '</div>';
 
     var resultArea = '<div id="manuscript-result-area" style="max-height:280px;overflow-y:auto;font-size:12px;line-height:1.6;color:var(--text2);border:1px solid var(--border2);border-radius:8px;padding:10px;background:var(--surface)">'
@@ -288,7 +477,8 @@
 
     return fileBadge
       + slideGenTypeRow
-      + row1
+      + slideCountRow
+      + slideGenButtonRow
       + row2
       + row3
       + row4

@@ -127,26 +127,42 @@ if (typeof window !== 'undefined') {
   window.hideJobProgress = hideJobProgress;
 }
 
+/** 백그라운드 진행: 전체화면 오버레이 없이 상단 global-progress-bar만 표시 */
 function showLoading(msg, sub = '', progress = 30, showAbort = false) {
-  document.getElementById('loading-overlay').classList.add('show');
-  document.getElementById('loading-msg').textContent = msg;
-  document.getElementById('loading-sub').textContent = sub;
-  document.getElementById('loading-progress').style.width = progress + '%';
-  const abortBtn = document.getElementById('loading-abort-btn');
-  if (abortBtn) abortBtn.style.display = showAbort ? '' : 'none';
-  showGlobalProgress(msg, progress);
+  var label = sub ? msg + ' — ' + sub : msg;
+  showGlobalProgress(label, progress);
+  var abortBtn = document.getElementById('global-progress-abort-btn');
+  if (abortBtn) abortBtn.style.display = showAbort ? 'inline-block' : 'none';
 }
 function setProgress(pct) {
-  document.getElementById('loading-progress').style.width = pct + '%';
   updateGlobalProgress(pct);
 }
 function hideLoading() {
-  document.getElementById('loading-overlay').classList.remove('show');
-  const abortBtn = document.getElementById('loading-abort-btn');
+  var abortBtn = document.getElementById('global-progress-abort-btn');
   if (abortBtn) abortBtn.style.display = 'none';
   hideGlobalProgress(1000);
 }
 function abortCurrentTask() { if (_abortController) _abortController.abort(); hideLoading(); showToast('⏹ 작업 중단됨'); }
+
+/** 작업 완료 알림: header-current-filename 우측에 빨간딱지로 표시. 클릭 시 확인(색 제거) */
+function showJobCompleteBadge(label) {
+  var el = document.getElementById('job-complete-badge');
+  if (!el) return;
+  el.textContent = (label || '작업 완료') + ' · 확인하게';
+  el.style.display = 'inline-flex';
+  el.classList.remove('job-complete-seen');
+  el.title = '요청하신 업무를 마무리했습니다. 클릭하면 확인됨';
+}
+function clearJobCompleteBadge() {
+  var el = document.getElementById('job-complete-badge');
+  if (!el) return;
+  el.style.display = 'none';
+}
+if (typeof window !== 'undefined') {
+  window.showJobCompleteBadge = showJobCompleteBadge;
+  window.clearJobCompleteBadge = clearJobCompleteBadge;
+}
+
 function showToast(msg, duration = 3200) {
   const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), duration);
@@ -189,3 +205,21 @@ if (typeof window !== 'undefined') {
   window.registerChildWindow = registerChildWindow;
   window.closeAllChildWindows = closeAllChildWindows;
 }
+
+/* =========================================================
+   USER INFO FOR SUMMARY — 설정에서 저장한 사용자 정보 (체크된 항목만)
+   ========================================================= */
+function getUserInfoForSummary() {
+  try {
+    var raw = localStorage.getItem('ss_user_info');
+    if (!raw) return '';
+    var data = JSON.parse(raw);
+    var parts = [];
+    if (data.checkName && data.name) parts.push(data.name);
+    if (data.checkAffiliation && data.affiliation) parts.push(data.affiliation);
+    if (data.checkEmail && data.email) parts.push(data.email);
+    if (data.checkPhone && data.phone) parts.push(data.phone);
+    return parts.length ? parts.join(' | ') : '';
+  } catch (e) { return ''; }
+}
+if (typeof window !== 'undefined') window.getUserInfoForSummary = getUserInfoForSummary;

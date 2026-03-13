@@ -434,9 +434,12 @@
     <div class="logo-icon">📚</div>
     <div class="logo-text">ScholarSlide <span>AI</span></div>
     <div class="badge">v4.35 Pro</div>
+    <span id="header-current-filename" class="header-filename" title="현재 열린 파일"></span>
+    <span id="job-complete-badge" class="job-complete-badge" onclick="clearJobCompleteBadge()" title="요청하신 업무를 마무리했습니다. 클릭하면 확인됨" style="display:none"></span>
     <!-- 전역 백그라운드 진행률 표시 (다중 작업: 요약·번역 등 모두 표시) -->
     <div id="global-progress-bar" style="display:none;flex-direction:column;align-items:flex-start;gap:2px;margin-left:14px;padding:6px 12px;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:12px;max-width:320px">
       <div id="global-progress-jobs"></div>
+      <button id="global-progress-abort-btn" class="btn btn-ghost btn-xs" style="display:none;margin-top:4px;color:var(--danger)" onclick="abortCurrentTask()">⏹ 중단</button>
     </div>
   </div>
   <div class="header-actions">
@@ -505,7 +508,8 @@
         <button class="btn btn-ghost btn-sm" id="fetch-sources-btn" onclick="switchRightTab('mdeditor')" disabled>📝 MD에디터</button>
         <button class="btn btn-ghost btn-sm" id="gen-script-btn" onclick="askThenGenerateScript()" disabled>📝 발표 원고</button>
         <button class="btn btn-ghost btn-sm" id="ext-present-btn" title="외부 창에서 발표보기" style="display:none">🖥 외부 발표</button>
-        <button class="btn btn-primary btn-sm" id="visualize-btn" onclick="askThenVisualizeAll()" disabled>✨ 시각화</button>
+        <button class="btn btn-primary btn-sm" id="visualize-btn" onclick="askThenVisualizeAll()" disabled>✨ 일괄시각화</button>
+        <button class="btn btn-ghost btn-sm" id="slide-reset-btn" onclick="slideReset()" disabled>🔄 슬라이드 초기화</button>
       </div>
     </div>
 

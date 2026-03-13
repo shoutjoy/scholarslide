@@ -198,6 +198,7 @@ function applyWorkspaceSnapshot(snap) {
   if (typeof renderLeftPanel === 'function') renderLeftPanel();
   if (typeof renderRefsPanel === 'function') renderRefsPanel();
   if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+  if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
   if (snap.pdfData && snap.pdfData.length && snap.fileName && snap.fileName.toLowerCase().endsWith('.pdf')) {
     try {
       const arr = new Uint8Array(snap.pdfData);
@@ -401,6 +402,7 @@ function loadSession(i) {
   rawText = ''; fileName = '';
   if (typeof renderLeftPanel === 'function') renderLeftPanel(); if (typeof renderRefsPanel === 'function') renderRefsPanel(); closeModal('load-modal');
   if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+  if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
   showToast(`✅ "${s.name}" 불러오기 완료`);
 }
 function renameSession(i) { const sessions = loadSessions(); const n = prompt('새 이름:', sessions[i].name); if (!n?.trim()) return; sessions[i].name = n.trim(); localStorage.setItem(LS_SESSIONS, JSON.stringify(sessions)); renderSessionsList(); showToast('✏ 이름 변경됨'); }

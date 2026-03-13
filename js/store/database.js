@@ -189,6 +189,7 @@ function applyWorkspaceSnapshot(snap) {
     if (typeof renderLeftPanel === 'function') renderLeftPanel();
     if (typeof renderRefsPanel === 'function') renderRefsPanel();
     if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();
+    if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
     if (snap.pdfData && snap.pdfData.length && snap.fileName && snap.fileName.toLowerCase().endsWith('.pdf')) {
         try {
             const arr = new Uint8Array(snap.pdfData);

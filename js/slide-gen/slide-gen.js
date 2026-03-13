@@ -62,13 +62,30 @@
         }
       }, 400);
 
+      var docTitle = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '';
+      if (docTitle) docTitle = docTitle.replace(/\.[^.]+$/, '');
+      var formatDocTitleToAPA = function (s) {
+        if (!s || !s.trim()) return s;
+        s = s.trim();
+        var m = s.match(/^(.+?)\s*\((\d{4})\)\s*(.*)$/);
+        if (m) {
+          var authors = m[1].replace(/\s+and\s+/gi, ' & ').replace(/\s*,\s*/g, ' & ').trim();
+          var year = m[2];
+          var title = m[3].trim();
+          if (title && !/^[.!]/.test(title)) title = title.replace(/\.$/, '') + '.';
+          return authors + ' (' + year + '). ' + (title || '');
+        }
+        return s;
+      };
+      if (docTitle) docTitle = formatDocTitleToAPA(docTitle);
       var prompt = typeof window.getSummaryPrompt === 'function'
         ? window.getSummaryPrompt(styleId, {
             text: textToSummarize,
             slideCount: slideCountOpt,
             granularity: opts.granularity || 'detail',
             writingStyleGuide: writingStyleGuide,
-            customInstruction: customInstruction
+            customInstruction: customInstruction,
+            docTitle: docTitle
           })
         : '이 학술 텍스트를 분석하여 구조화된 요약을 작성하세요: 연구 배경, 연구 질문/가설, 이론적 프레임워크, 연구 방법론, 주요 발견사항, 함의 및 시사점, 한계점. ' + writingStyleGuide + '\n\n텍스트:\n' + textToSummarize;
       var systemInstruction = typeof window.getSummarySystemInstruction === 'function'
@@ -79,6 +96,20 @@
       try {
         var res = await window.callGemini(prompt, systemInstruction + ' ' + langInstruction);
         var text = res && res.text ? res.text : res;
+        if (docTitle && text) {
+          var intro = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다.';
+          var userInfoLine = '';
+          if (typeof window.getUserInfoForSummary === 'function') {
+            var ui = window.getUserInfoForSummary();
+            if (ui) userInfoLine = '\n' + ui + '\n';
+          }
+          if (text.indexOf(intro) === 0) {
+            var rest = text.slice(intro.length).replace(/^\s+/, '');
+            text = intro + '\n' + docTitle + userInfoLine + '\n' + rest;
+          } else {
+            text = intro + '\n' + docTitle + userInfoLine + '\n' + text.trim();
+          }
+        }
         clearInterval(_progTimer);
         if (pct) pct.textContent = '100';
         if (window.updateJobProgress) window.updateJobProgress('summary', 100, '✅ 요약 완료');
@@ -101,6 +132,7 @@
         if (g('tab-summary')) g('tab-summary').classList.add('active');
         if (window.renderLeftPanel) window.renderLeftPanel();
         if (window.showToast) window.showToast('✅ 요약 생성 완료');
+        if (window.showJobCompleteBadge) window.showJobCompleteBadge('요약 생성 완료');
       } catch (e) {
         clearInterval(_progTimer);
         if (box) box.style.display = 'none';
@@ -128,11 +160,20 @@
     var typeLetters = { precision: 'A', presentation: 'B', notebook: 'C', critical: 'D', evidence: 'E', logic: 'F', quiz: 'G', workshop: 'H' };
     var typeLabel = typeLabels[slideGenType] || typeLabels.precision;
     var typeLetter = typeLetters[slideGenType] || 'A';
-    var structureNote = '위 필수 구성 항목(8가지)을 순서대로 반영하고, 선택한 유형(Type ' + typeLetter + ')의 규칙을 적용하세요.';
-    var noSlideNumNote = '각 슬라이드의 title에는 "Slide 1:", "Slide 15:" 같은 번호를 붙이지 말고, 섹션 제목만 넣으세요 (예: References - 참고문헌 리스트, Introduction, Methodology).';
-    var prompt = '선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + slideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000);
+    var structureNote = (typeof window.getSlideGenStructureNote === 'function' ? window.getSlideGenStructureNote(typeLetter) : '위 필수 구성 항목(8가지)을 순서대로 반영하고, 선택한 유형(Type ' + typeLetter + ')의 규칙을 적용하세요.');
+    var noSlideNumNote = (typeof window.getSlideGenNoSlideNumNote === 'function' ? window.getSlideGenNoSlideNumNote() : '각 슬라이드의 title에는 "Slide 1:", "Slide 15:" 같은 번호를 붙이지 말고, 섹션 제목만 넣으세요 (예: References - 참고문헌 리스트, Introduction, Methodology).');
+    var userPrompt = (typeof window.getSlideGenUserPrompt === 'function' && window.getSlideGenUserPrompt({
+      TYPE_LABEL: typeLabel,
+      SLIDE_COUNT: String(slideCount),
+      STYLE_GUIDE: styleGuide,
+      COVER_NOTE: coverNote,
+      STRUCTURE_NOTE: structureNote,
+      NO_SLIDE_NUM_NOTE: noSlideNumNote,
+      TEXT: rawText().substring(0, 15000)
+    }));
+    var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + slideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000));
     if (customInstruction) prompt += '\n추가 지시: ' + customInstruction;
-    var slideSystem = (typeof window.getSlideGenSystemPrompt === 'function' && window.getSlideGenSystemPrompt()) || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
+    var slideSystem = (typeof window.getSlideGenSystemPrompt === 'function' && window.getSlideGenSystemPrompt(slideGenType)) || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
     try {
       var res = await window.callGemini(prompt, slideSystem);
       var text = res && res.text ? res.text : res;
@@ -155,15 +196,16 @@
       setActiveSlideIndex(0);
       setPresentationScript([]);
       if (window.afterSlidesCreated) window.afterSlidesCreated();
-      if (window.addToManuscriptHistory && window.getFileName) {
+      if (window.addToSlideHistory && window.getFileName) {
         var manuscriptContent = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(newSlides) : '';
-        var entry = { type: 'slides', fileName: window.getFileName(), slides: newSlides.map(function (s) { return { id: s.id, title: s.title, bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: null }; }), manuscriptContent: manuscriptContent };
-        window.addToManuscriptHistory(entry);
+        var entry = { fileName: window.getFileName(), slides: newSlides.map(function (s) { return { id: s.id, title: s.title, bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: null }; }), manuscriptContent: manuscriptContent };
+        window.addToSlideHistory(entry);
         if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id;
         if (typeof window.setManuscriptView === 'function') window.setManuscriptView('slides');
         if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
       }
       if (window.showToast) window.showToast('✅ ' + newSlides.length + '개 슬라이드 생성 완료');
+      if (window.showJobCompleteBadge) window.showJobCompleteBadge(newSlides.length + '개 슬라이드 생성 완료');
       if (window.renderLeftPanel) window.renderLeftPanel();
     } catch (e) {
       if (e.name !== 'AbortError') {
@@ -192,7 +234,7 @@
       setLeftTab('script');
       if (window.addToManuscriptHistory && window.getFileName) {
         var s = getSlidesArr();
-        var entry = { type: 'script', fileName: window.getFileName(), presentationScript: script.slice(), slides: (s || []).map(function (sl) { return { title: sl.title, bullets: sl.bullets || [], notes: sl.notes || '' }; }) };
+        var entry = { fileName: window.getFileName(), presentationScript: script.slice(), slides: (s || []).map(function (sl) { return { title: sl.title, bullets: sl.bullets || [], notes: sl.notes || '' }; }) };
         window.addToManuscriptHistory(entry);
         if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id;
         if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
