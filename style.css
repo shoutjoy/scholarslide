@@ -105,6 +105,27 @@ header::after {
   display: inline-flex; flex-direction: row; align-items: center; justify-content: center; gap: 8px;
   flex: 1 1 auto; font-size: 18px;
 }
+.btn-slide-gen-auto {
+  min-height: 50px;
+  height: 72px;
+  min-width: 80px;
+  width: 80%;
+  padding: 10px 14px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  font-size: 16px;
+  background: linear-gradient(135deg, #f08a3c, #de6e2a);
+  color: #fff;
+  border: 1px solid rgba(255, 167, 91, 0.45);
+}
+.btn-slide-gen-auto:hover:not(:disabled) {
+  filter: brightness(1.06);
+  box-shadow: 0 0 18px rgba(240, 138, 60, 0.28);
+}
 
 /* ── MAIN ── */
 main { flex: 1; display: flex; overflow: hidden; }

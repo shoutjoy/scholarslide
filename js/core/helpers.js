@@ -19,7 +19,7 @@ function showConfirm(title, msg, okFn) {
    ========================================================= */
 function askThenSummary(type) {
   if (!(typeof window.getRawText === 'function' ? window.getRawText() : rawText)) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
-  const label = type === 'full' ? '전체 요약 생성' : '슬라이드 생성';
+  const label = type === 'full' ? '전체 요약 생성' : (type === 'slides_auto' ? 'AII Slide생성' : '슬라이드 생성');
   showConfirm(label + ' 실행', `AI를 사용하여 ${label}을 실행하시겠습니까?\n시간이 다소 걸릴 수 있습니다.`, () => generateSummary(type));
 }
 function askThenFetchSources() {

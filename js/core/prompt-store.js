@@ -28,7 +28,7 @@
   }
 
   /** 슬라이드 생성 유형 id → 시스템 지시 키 (slide_gen_system_precision 등) */
-  var SLIDE_GEN_TYPE_IDS = ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop'];
+  var SLIDE_GEN_TYPE_IDS = ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop', 'auto_visual'];
 
   /** 슬라이드 생성 시스템 지시: 선택된 유형(slideGenType)에 해당하는 override 또는 기본값 반환 */
   function getSlideGenSystemPrompt(slideGenType) {
@@ -137,7 +137,8 @@
       evidence: '## Type E: 시각적 증거형 (Evidence-Based Claims)\n결론 선언 후 증거 제시 구조. 슬라이드 제목 대신 연구 결과에서 도출된 강력한 결론 문장을 최상단에 배치하라. 본문은 그 문장을 뒷받침하는 수치적 데이터와 핵심 증거들로만 구성하라. 불필요한 미사여구를 제거하고 주장-근거의 구조를 엄격히 유지하라.',
       logic: '## Type F: 인과관계 도식형 (Logic Flow)\n변수 간 메커니즘 시각화 중심. 독립변수(IV), 매개변수(MV), 종속변수(DV) 간의 관계를 화살표(->)와 단계별 프로세스로 요약하라. 연구의 전체적인 메커니즘을 한눈에 볼 수 있도록 논리의 흐름(Flow) 중심으로 텍스트를 배치하라. 결과 섹션에서는 어떤 경로(Path)가 유의미했는지에 집중하여 설명하라.',
       quiz: '## Type G: 상호작용형 (Interactive Quiz)\n퀴즈를 통한 능동적 학습 유도. 슬라이드를 질문-답변 구조로 설계하라. (예: 한 슬라이드에서 실험 결과를 묻고, 다음 슬라이드에서 실제 결과를 공개). 주요 수치나 용어에 빈칸([ ])을 만들어 학습자가 스스로 생각하게 유도하고, 마지막에는 연구 내용에 기반한 3가지 핵심 퀴즈를 출제하라.',
-      workshop: '## Type H: 워크숍형 (Practical Action)\n실무 적용 및 액션 플랜 중심. 연구 결과를 실무(Business, Education 등)에 적용할 수 있는 3단계 액션 플랜(Action Plan)을 제시하라. 이론적 시사점을 넘어서서 그래서 무엇을 해야 하는가(So-what)에 대한 답을 제공하라. 현장에서 바로 사용할 수 있는 체크리스트나 실습 과제 형식을 포함하라.'
+      workshop: '## Type H: 워크숍형 (Practical Action)\n실무 적용 및 액션 플랜 중심. 연구 결과를 실무(Business, Education 등)에 적용할 수 있는 3단계 액션 플랜(Action Plan)을 제시하라. 이론적 시사점을 넘어서서 그래서 무엇을 해야 하는가(So-what)에 대한 답을 제공하라. 현장에서 바로 사용할 수 있는 체크리스트나 실습 과제 형식을 포함하라.',
+      auto_visual: '## Type I: AII 자동 시각화형 (Auto Visualizer)\n문서 분량에 맞춰 슬라이드 수를 자동 조정하고(필요 시 사용자 범위 준수), 페이지별 시각화 전략을 먼저 결정하라. 원자료의 그림/표/도해를 가능한 한 보존해 재구성하되, 해석이 필요한 경우 주석·인사이트가 추가된 도식으로 변환하라. 시각화가 필요한 슬라이드에는 visPrompt를 매우 구체적인 영어 문장으로 작성하고, 불필요한 슬라이드는 visPrompt를 비워라.'
     };
     var typeLabels = {
       precision: 'A. 정밀 요약형 (Precision Archive)',
@@ -147,9 +148,10 @@
       evidence: 'E. 시각적 증거형 (Evidence-Based Claims)',
       logic: 'F. 인과관계 도식형 (Logic Flow)',
       quiz: 'G. 상호작용형 (Interactive Quiz)',
-      workshop: 'H. 워크숍형 (Practical Action)'
+      workshop: 'H. 워크숍형 (Practical Action)',
+      auto_visual: 'I. AII 자동 시각화형 (Auto Visualizer)'
     };
-    ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop'].forEach(function (tid) {
+    ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop', 'auto_visual'].forEach(function (tid) {
       out['slide_gen_system_' + tid] = {
         category: 'slide',
         label: '슬라이드 생성 — ' + (typeLabels[tid] || tid) + ' (시스템 지시)',
@@ -158,8 +160,8 @@
     });
     out.slide_gen_user_prompt = {
       category: 'slide',
-      label: '사용자 프롬프트 ({{TYPE_LABEL}}, {{SLIDE_COUNT}}, {{STYLE_GUIDE}}, {{COVER_NOTE}}, {{STRUCTURE_NOTE}}, {{NO_SLIDE_NUM_NOTE}}, {{TEXT}})',
-      value: '선택하신 {{TYPE_LABEL}}으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 {{SLIDE_COUNT}}개의 슬라이드를 생성하세요.\n스타일: {{STYLE_GUIDE}}\n{{COVER_NOTE}}\n{{STRUCTURE_NOTE}}\n{{NO_SLIDE_NUM_NOTE}}\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n{{TEXT}}'
+      label: '사용자 프롬프트 ({{TYPE_LABEL}}, {{SLIDE_COUNT}}, {{STYLE_GUIDE}}, {{COVER_NOTE}}, {{STRUCTURE_NOTE}}, {{NO_SLIDE_NUM_NOTE}}, {{PAGE_POLICY_NOTE}}, {{VISUAL_POLICY}}, {{TEXT}})',
+      value: '선택하신 {{TYPE_LABEL}}으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 {{SLIDE_COUNT}}개의 슬라이드를 생성하세요.\n스타일: {{STYLE_GUIDE}}\n{{COVER_NOTE}}\n{{STRUCTURE_NOTE}}\n{{NO_SLIDE_NUM_NOTE}}\n{{PAGE_POLICY_NOTE}}\n{{VISUAL_POLICY}}\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n{{TEXT}}'
     };
     out.slide_gen_structure_note = {
       category: 'slide',

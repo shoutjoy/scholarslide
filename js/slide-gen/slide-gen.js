@@ -16,6 +16,132 @@
   function activeSlideIndex() { return window.getActiveSlideIndex ? window.getActiveSlideIndex() : 0; }
   function slideStyle() { return window.getSlideStyle ? window.getSlideStyle() : 'light'; }
   function writingStyle() { return window.getWritingStyle ? window.getWritingStyle() : 'academic-da'; }
+  function buildSlideMarkdownForVis(slide, idx) {
+    var s = slide || {};
+    var out = [];
+    out.push('# Slide ' + (idx + 1));
+    if (s.title) out.push('\nTitle: ' + s.title);
+    var bullets = s.bullets || [];
+    if (bullets.length) {
+      out.push('\nBullets:');
+      for (var i = 0; i < bullets.length; i++) out.push('- ' + String(bullets[i] || ''));
+    }
+    if (s.notes) out.push('\nNotes:\n' + String(s.notes));
+    return out.join('\n');
+  }
+  async function autoFillMissingVisPrompts(slidesArr) {
+    if (!slidesArr || !slidesArr.length) return { requested: 0, generated: 0, failed: 0 };
+    if (typeof window.callGemini !== 'function') return { requested: 0, generated: 0, failed: 0, unavailable: true };
+    var targets = [];
+    for (var i = 0; i < slidesArr.length; i++) {
+      var s = slidesArr[i] || {};
+      if (!s.visPrompt || !String(s.visPrompt).trim()) targets.push(i);
+    }
+    if (!targets.length) return { requested: 0, generated: 0, failed: 0 };
+    if (window.showJobProgress) window.showJobProgress('slideAutoVisPrompt', 'visPrompt 자동 보강 중...', 0, '🧩');
+    var generated = 0;
+    var failed = 0;
+    for (var t = 0; t < targets.length; t++) {
+      var idx = targets[t];
+      var pct = Math.round((t / targets.length) * 100);
+      if (window.updateJobProgress) window.updateJobProgress('slideAutoVisPrompt', pct, '슬라이드 ' + (idx + 1) + ' visPrompt 보강 중...');
+      try {
+        var mdContent = buildSlideMarkdownForVis(slidesArr[idx], idx);
+        var visPromptPack = (typeof window.getImggenVisPromptInstruction === 'function')
+          ? window.getImggenVisPromptInstruction(mdContent)
+          : {
+              system: 'You are an expert at creating detailed visual prompts for AI image generation. Output ONLY the prompt text.',
+              user: 'Create a detailed English visual prompt for AI image generation based on this slide content. Output only the prompt.\n\n' + mdContent
+            };
+        var res = await window.callGemini(visPromptPack.user, visPromptPack.system);
+        var text = (res && res.text ? res.text : res) || '';
+        var clean = String(text).replace(/```[\s\S]*?```/g, function (m) {
+          return m.replace(/```/g, '');
+        }).trim();
+        if (!clean) {
+          failed += 1;
+          continue;
+        }
+        slidesArr[idx].visPrompt = clean;
+        generated += 1;
+      } catch (e) {
+        failed += 1;
+      }
+    }
+    if (window.updateJobProgress) window.updateJobProgress('slideAutoVisPrompt', 100, '✅ visPrompt 자동 보강 완료');
+    if (window.hideJobProgress) window.hideJobProgress('slideAutoVisPrompt', 1000);
+    return { requested: targets.length, generated: generated, failed: failed };
+  }
+  async function autoGenerateImagesForSlides(slidesArr) {
+    if (!slidesArr || !slidesArr.length) return { requested: 0, generated: 0, failed: 0, skipped: 0 };
+    if (typeof window.generateImage !== 'function') return { requested: 0, generated: 0, failed: 0, skipped: slidesArr.length, unavailable: true };
+    var visFillResult = await autoFillMissingVisPrompts(slidesArr);
+    var targets = [];
+    for (var i = 0; i < slidesArr.length; i++) {
+      var s = slidesArr[i] || {};
+      if (s.visPrompt && String(s.visPrompt).trim() && !s.imageUrl) targets.push(i);
+    }
+    if (!targets.length) return { requested: 0, generated: 0, failed: 0, skipped: slidesArr.length, visFill: visFillResult };
+    if (window.showJobProgress) window.showJobProgress('slideAutoImg', 'AII 이미지 자동 생성 중...', 0, '🎨');
+    var generated = 0;
+    var failed = 0;
+    for (var t = 0; t < targets.length; t++) {
+      var idx = targets[t];
+      var pct = Math.round((t / targets.length) * 100);
+      if (window.updateJobProgress) window.updateJobProgress('slideAutoImg', pct, '슬라이드 ' + (idx + 1) + ' 이미지 생성 중...');
+      try {
+        var prompt = String(slidesArr[idx].visPrompt || '').trim();
+        var img = await window.generateImage(prompt);
+        if (img) {
+          slidesArr[idx].imageUrl = img;
+          generated += 1;
+          if (window.addToAiImgHistory) window.addToAiImgHistory(prompt, img, idx);
+          if (typeof window.pushSlideUndoState === 'function') window.pushSlideUndoState();
+          setSlides(slidesArr.slice());
+          if (window.renderSlides) window.renderSlides();
+          if (window.renderThumbs) window.renderThumbs();
+          if (window.renderGallery) window.renderGallery();
+        } else {
+          failed += 1;
+        }
+      } catch (e) {
+        failed += 1;
+      }
+    }
+    if (window.updateJobProgress) window.updateJobProgress('slideAutoImg', 100, '✅ AII 이미지 자동 생성 완료');
+    if (window.hideJobProgress) window.hideJobProgress('slideAutoImg', 1200);
+    return { requested: targets.length, generated: generated, failed: failed, skipped: Math.max(0, slidesArr.length - targets.length), visFill: visFillResult };
+  }
+  function parseSlideRange(text) {
+    var raw = String(text || '').trim();
+    if (!raw) return null;
+    var range = raw.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+    if (range) {
+      var min = parseInt(range[1], 10);
+      var max = parseInt(range[2], 10);
+      if (!isFinite(min) || !isFinite(max) || min <= 0 || max <= 0) return null;
+      if (min > max) {
+        var t = min;
+        min = max;
+        max = t;
+      }
+      return { min: min, max: max };
+    }
+    var single = raw.match(/^(\d+)$/);
+    if (single) {
+      var v = parseInt(single[1], 10);
+      if (!isFinite(v) || v <= 0) return null;
+      return { min: v, max: v };
+    }
+    return null;
+  }
+  function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+  function estimateAutoSlideCount(textLen, includeCover) {
+    var chars = Math.max(1, parseInt(textLen || 0, 10));
+    var byLength = Math.ceil(chars / 900);
+    if (includeCover) byLength += 1;
+    return clamp(byLength, 8, 80);
+  }
 
   async function generateSummary(type, options) {
     if (!rawText()) return;
@@ -144,9 +270,33 @@
 
     if (window.showJobProgress) window.showJobProgress('slideGen', '백그라운드에서 슬라이드 생성 중...', 0, '🗂');
     var isAcademic = slideStyle() === 'light';
-    var styleGuide = isAcademic ? '텍스트 중심, 세부 내용 포함. ' + writingStyleGuide : '발표 중심: 핵심 요약, 간결한 bullet points, 청중 친화적. ' + writingStyleGuide;
-    var coverNote = includeCover ? '첫 번째 슬라이드는 반드시 표지(논문 제목, 저자, 소속, 발표연도 등)로 구성하고 "isCover":true 로 표시하세요.' : '';
+    var slideRangeRaw = (g('slide-range-val') && g('slide-range-val').value) || '';
+    var parsedRange = parseSlideRange(slideRangeRaw);
+    if (slideRangeRaw && !parsedRange && window.showToast) {
+      window.showToast('⚠️ 페이지 범위 형식은 "최소-최대" 또는 단일 숫자여야 합니다. (예: 12-24)');
+    }
     var slideGenType = (g('slide-gen-type') && g('slide-gen-type').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_type')) || 'precision';
+    var isAutoSlideMode = type === 'slides_auto';
+    if (isAutoSlideMode) slideGenType = 'auto_visual';
+    var targetSlideCount = slideCount;
+    if (isAutoSlideMode || slideGenType === 'auto_visual') {
+      var estimated = estimateAutoSlideCount(rawText().length, includeCover);
+      if (parsedRange) {
+        targetSlideCount = clamp(estimated, parsedRange.min, parsedRange.max);
+      } else {
+        targetSlideCount = estimated;
+      }
+      if (g('slide-count-val')) g('slide-count-val').value = String(targetSlideCount);
+    }
+    targetSlideCount = clamp(targetSlideCount, 5, 200);
+    var pagePolicyNote = parsedRange
+      ? ('슬라이드 수는 문서 길이를 기준으로 자동 산정하되, 반드시 사용자 범위 ' + parsedRange.min + '~' + parsedRange.max + ' 내에서 결정할 것.')
+      : '슬라이드 수는 문서 길이와 정보 밀도에 맞춰 자동 산정할 것. 불필요한 분할은 피하고, 과밀한 슬라이드는 분리할 것.';
+    var styleGuide = isAcademic ? '텍스트 중심, 세부 내용 포함. ' + writingStyleGuide : '발표 중심: 핵심 요약, 간결한 bullet points, 청중 친화적. ' + writingStyleGuide;
+    if (slideGenType === 'auto_visual') {
+      styleGuide += ' 자동 시각화 우선: 페이지별 핵심 메시지에 맞춰 그림/표/도식 필요 여부를 먼저 판단하고, 필요한 페이지에는 시각 요소 중심으로 구성.';
+    }
+    var coverNote = includeCover ? '첫 번째 슬라이드는 반드시 표지(논문 제목, 저자, 소속, 발표연도 등)로 구성하고 "isCover":true 로 표시하세요.' : '';
     var typeLabels = {
       precision: '정밀 요약형 (Precision Archive)',
       presentation: '발표 최적화형 (Presentation Focus)',
@@ -155,23 +305,29 @@
       evidence: '시각적 증거형 (Evidence-Based Claims)',
       logic: '인과관계 도식형 (Logic Flow)',
       quiz: '상호작용형 (Interactive Quiz)',
-      workshop: '워크숍형 (Practical Action)'
+      workshop: '워크숍형 (Practical Action)',
+      auto_visual: 'AII 자동 시각화형 (Auto Visualizer)'
     };
-    var typeLetters = { precision: 'A', presentation: 'B', notebook: 'C', critical: 'D', evidence: 'E', logic: 'F', quiz: 'G', workshop: 'H' };
+    var typeLetters = { precision: 'A', presentation: 'B', notebook: 'C', critical: 'D', evidence: 'E', logic: 'F', quiz: 'G', workshop: 'H', auto_visual: 'I' };
     var typeLabel = typeLabels[slideGenType] || typeLabels.precision;
     var typeLetter = typeLetters[slideGenType] || 'A';
+    var visualPolicy = slideGenType === 'auto_visual'
+      ? '원자료(교재/PDF)의 도해·표·그림 내용을 최대한 보존해 재구성하고, 필요 시 해석을 덧붙인 신규 다이어그램을 제안할 것. 그림이 필요한 슬라이드에는 visPrompt를 반드시 구체적인 영어 문장으로 작성.'
+      : '시각화가 필요할 때만 visPrompt를 작성하고, 불필요하면 빈 문자열로 둘 것.';
     var structureNote = (typeof window.getSlideGenStructureNote === 'function' ? window.getSlideGenStructureNote(typeLetter) : '위 필수 구성 항목(8가지)을 순서대로 반영하고, 선택한 유형(Type ' + typeLetter + ')의 규칙을 적용하세요.');
     var noSlideNumNote = (typeof window.getSlideGenNoSlideNumNote === 'function' ? window.getSlideGenNoSlideNumNote() : '각 슬라이드의 title에는 "Slide 1:", "Slide 15:" 같은 번호를 붙이지 말고, 섹션 제목만 넣으세요 (예: References - 참고문헌 리스트, Introduction, Methodology).');
     var userPrompt = (typeof window.getSlideGenUserPrompt === 'function' && window.getSlideGenUserPrompt({
       TYPE_LABEL: typeLabel,
-      SLIDE_COUNT: String(slideCount),
+      SLIDE_COUNT: String(targetSlideCount),
       STYLE_GUIDE: styleGuide,
       COVER_NOTE: coverNote,
       STRUCTURE_NOTE: structureNote,
       NO_SLIDE_NUM_NOTE: noSlideNumNote,
+      PAGE_POLICY_NOTE: pagePolicyNote,
+      VISUAL_POLICY: visualPolicy,
       TEXT: rawText().substring(0, 15000)
     }));
-    var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + slideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000));
+    var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + targetSlideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n' + pagePolicyNote + '\n' + visualPolicy + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000));
     if (customInstruction) prompt += '\n추가 지시: ' + customInstruction;
     var slideSystem = (typeof window.getSlideGenSystemPrompt === 'function' && window.getSlideGenSystemPrompt(slideGenType)) || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
     try {
@@ -196,15 +352,32 @@
       setActiveSlideIndex(0);
       setPresentationScript([]);
       if (window.afterSlidesCreated) window.afterSlidesCreated();
+      var autoImgResult = null;
+      if (slideGenType === 'auto_visual') {
+        autoImgResult = await autoGenerateImagesForSlides(newSlides);
+      }
       if (window.addToSlideHistory && window.getFileName) {
         var manuscriptContent = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(newSlides) : '';
-        var entry = { fileName: window.getFileName(), slides: newSlides.map(function (s) { return { id: s.id, title: s.title, bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: null }; }), manuscriptContent: manuscriptContent };
+        var entry = { fileName: window.getFileName(), slides: newSlides.map(function (s) { return { id: s.id, title: s.title, bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: s.imageUrl || null }; }), manuscriptContent: manuscriptContent };
         window.addToSlideHistory(entry);
         if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id;
         if (typeof window.setManuscriptView === 'function') window.setManuscriptView('slides');
         if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
       }
-      if (window.showToast) window.showToast('✅ ' + newSlides.length + '개 슬라이드 생성 완료');
+      if (window.showToast) {
+        var msg = '✅ ' + newSlides.length + '개 슬라이드 생성 완료' + (slideGenType === 'auto_visual' ? ' (AII 자동 시각화형)' : '');
+        if (autoImgResult && slideGenType === 'auto_visual') {
+          if (autoImgResult.unavailable) msg += ' / 이미지 자동 생성 기능을 사용할 수 없음';
+          else {
+            if (autoImgResult.visFill && autoImgResult.visFill.requested) {
+              msg += ' / visPrompt 보강 ' + autoImgResult.visFill.generated + '개'
+                + (autoImgResult.visFill.failed ? (' (실패 ' + autoImgResult.visFill.failed + '개)') : '');
+            }
+            msg += ' / 이미지 생성 ' + autoImgResult.generated + '개' + (autoImgResult.failed ? (' (실패 ' + autoImgResult.failed + '개)') : '');
+          }
+        }
+        window.showToast(msg);
+      }
       if (window.showJobCompleteBadge) window.showJobCompleteBadge(newSlides.length + '개 슬라이드 생성 완료');
       if (window.renderLeftPanel) window.renderLeftPanel();
     } catch (e) {

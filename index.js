@@ -4779,7 +4779,25 @@ document.addEventListener("keydown", function (e) {
   }
 });
 
-// Ctrl+← / Ctrl+→ : 이전/다음 슬라이드 (하단 메뉴 썸네일 연동)
+// 슬라이드 메뉴(썸네일) 포커스 시 ← / → : 이전/다음 슬라이드
+document.addEventListener("keydown", function (e) {
+  if (e.ctrlKey || !slides || !slides.length) return;
+  const panel = document.getElementById('pdf-preview-panel');
+  if (panel && panel.classList.contains('open')) return;
+  const tc = document.getElementById('thumbs-container');
+  if (!tc || !tc.contains(document.activeElement)) return;
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    const next = Math.max(0, activeSlideIndex - 1);
+    if (next !== activeSlideIndex) selectSlide(next);
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    const next = Math.min(slides.length - 1, activeSlideIndex + 1);
+    if (next !== activeSlideIndex) selectSlide(next);
+  }
+});
+
+// Ctrl+← / Ctrl+→ : 이전/다음 슬라이드 (포커스 무관)
 document.addEventListener("keydown", function (e) {
   if (!e.ctrlKey || !slides || !slides.length) return;
   const panel = document.getElementById('pdf-preview-panel');
@@ -4794,6 +4812,19 @@ document.addEventListener("keydown", function (e) {
     if (next !== activeSlideIndex) selectSlide(next);
   }
 });
+
+// 하단 슬라이드바: 마우스 휠로 가로 스크롤
+(function () {
+  const tc = document.getElementById('thumbs-container');
+  const footer = document.getElementById('slide-footer');
+  if (!tc || !footer) return;
+  footer.addEventListener('wheel', function (e) {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      tc.scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
+})();
 
 // F5 = 처음부터 발표, Shift+F5 = 현재부터 발표
 document.addEventListener("keydown", function (e) {

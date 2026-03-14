@@ -337,14 +337,21 @@
       + '<option value="evidence" ' + (slideGenType === 'evidence' ? 'selected' : '') + '>E. 시각적 증거형 (Evidence-Based Claims)</option>'
       + '<option value="logic" ' + (slideGenType === 'logic' ? 'selected' : '') + '>F. 인과관계 도식형 (Logic Flow)</option>'
       + '<option value="quiz" ' + (slideGenType === 'quiz' ? 'selected' : '') + '>G. 상호작용형 (Interactive Quiz)</option>'
-      + '<option value="workshop" ' + (slideGenType === 'workshop' ? 'selected' : '') + '>H. 워크숍형 (Practical Action)</option></select></div>';
+      + '<option value="workshop" ' + (slideGenType === 'workshop' ? 'selected' : '') + '>H. 워크숍형 (Practical Action)</option>'
+      + '<option value="auto_visual" ' + (slideGenType === 'auto_visual' ? 'selected' : '') + '>I. AII 자동 시각화형 (Auto Visualizer)</option></select></div>';
 
     var slideCountRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>'
-      + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="80" style="width:64px;text-align:center"/>'
+      + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="200" style="width:64px;text-align:center"/>'
       + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>';
+    var slideRangeRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><label class="label" style="margin:0;white-space:nowrap">페이지 범위</label>'
+      + '<input type="text" class="control" id="slide-range-val" placeholder="예: 12-24 (비우면 자동)" style="width:160px;font-size:11px"/>'
+      + '<span style="font-size:10px;color:var(--text3)">AII 버튼에서 문서량 기반 자동 조정</span></div>';
 
     var slideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-primary btn-sm btn-slide-gen-square" onclick="askThenSummary(\'slides\')">🗂 슬라이드 생성</button>'
+      + '<button type="button" class="btn btn-primary btn-sm btn-slide-gen-square" style="width:100%" onclick="askThenSummary(\'slides\')">🗂 슬라이드생성</button>'
+      + '</div>';
+    var allSlideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
+      + '<button type="button" class="btn btn-sm btn-slide-gen-auto" style="width:100%" onclick="askThenSummary(\'slides_auto\')">🧠 All Slide생성</button>'
       + '</div>';
 
     var row2 = '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
@@ -479,6 +486,8 @@
       + slideGenTypeRow
       + slideCountRow
       + slideGenButtonRow
+      + slideRangeRow
+      + allSlideGenButtonRow
       + row2
       + row3
       + row4

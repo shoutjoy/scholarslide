@@ -29,7 +29,7 @@
       '.sw-panel .btn{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none}' +
       '.sw-panel .btn-primary{background:#4f8ef7;color:#fff}.sw-panel .btn-primary:hover{opacity:0.9}' +
       '.sw-panel .btn-ghost{background:#1a1e28;color:#b0bac8;border:1px solid #2e3447}.sw-panel .btn-ghost:hover{background:#252a37;color:#fff}' +
-      '.sw-panel .prompt-item{margin-bottom:16px}.sw-panel .prompt-item label{font-size:11px;color:#94a3b8}' +
+      '.sw-panel .prompt-item{margin-bottom:16px}.sw-panel .prompt-item label{font-size:11px;color:#f59e0b;font-weight:600}' +
       '.sw-panel .prompt-category{margin-top:20px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #2e3447;font-size:13px;font-weight:600;color:#4f8ef7}' +
       '.sw-panel .prompt-category:first-child{margin-top:0}' +
       '.sw-panel .key-row{display:flex;align-items:center;gap:8px;padding:8px;background:#13161d;border:1px solid #1e2332;border-radius:6px;margin-bottom:6px;font-size:12px;color:#b0bac8}' +
@@ -56,13 +56,13 @@
       '<button class="btn btn-primary btn-sm" id="sw-user-save">save</button>' +
       '</div><p style="font-size:10px;color:#94a3b8;margin:0">체크된 항목만 요약문서 제목 아래에 표시됩니다.</p></div>' +
       '<label>기본 슬라이드 수 (페이지)</label>' +
-      '<input type="number" id="sw-misc-default-slide-count" min="5" max="30" value="15" style="width:80px;margin-bottom:12px">' +
+      '<input type="number" id="sw-misc-default-slide-count" min="5" max="200" value="15" style="width:80px;margin-bottom:12px">' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer"><input type="checkbox" id="sw-misc-default-include-cover" checked> 표지 포함 기본값</label>' +
       '<label style="margin-top:12px">기본 슬라이드 생성 유형</label>' +
       '<select id="sw-misc-default-slide-gen-type" style="width:100%;max-width:320px;margin-top:4px">' +
       '<option value="precision">A. 정밀 요약형</option><option value="presentation">B. 발표 최적화형</option><option value="notebook">C. 노트북/학습형</option>' +
       '<option value="critical">D. 비판적 검토형</option><option value="evidence">E. 시각적 증거형</option><option value="logic">F. 인과관계 도식형</option>' +
-      '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option></select>' +
+      '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option><option value="auto_visual">I. AII 자동 시각화형</option></select>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
@@ -328,7 +328,7 @@
     if (applyUpgradeBtn) applyUpgradeBtn.addEventListener('click', function () {
       if (typeof win.applySlideGenUpgrade === 'function') win.applySlideGenUpgrade();
       var d = (typeof win.getDefaultPrompts === 'function' && win.getDefaultPrompts()) || {};
-      var typeIds = (typeof win.SLIDE_GEN_TYPE_IDS !== 'undefined' && win.SLIDE_GEN_TYPE_IDS) || ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop'];
+      var typeIds = (typeof win.SLIDE_GEN_TYPE_IDS !== 'undefined' && win.SLIDE_GEN_TYPE_IDS) || ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop', 'auto_visual'];
       for (var t = 0; t < typeIds.length; t++) {
         var k = 'slide_gen_system_' + typeIds[t];
         if (d[k] && d[k].value) {

@@ -663,7 +663,7 @@
 <!-- Footer -->
 <footer id="slide-footer" style="display:none">
   <div style="font-size:11px;color:var(--text3);flex-shrink:0;padding-right:8px;">슬라이드</div>
-  <div id="thumbs-container" style="display:flex;gap:8px;align-items:center;overflow-x:auto;flex:1"></div>
+  <div id="thumbs-container" tabindex="0" onmousedown="this.focus()" style="display:flex;gap:8px;align-items:center;overflow-x:auto;flex:1"></div>
   <button class="thumb-add" onclick="addSlideAfter(activeSlideIndex,'blank')" title="슬라이드 추가">+</button>
 </footer>
 
