@@ -16,6 +16,27 @@
   function activeSlideIndex() { return window.getActiveSlideIndex ? window.getActiveSlideIndex() : 0; }
   function slideStyle() { return window.getSlideStyle ? window.getSlideStyle() : 'light'; }
   function writingStyle() { return window.getWritingStyle ? window.getWritingStyle() : 'academic-da'; }
+  function isTaskCancelled() {
+    return !!(typeof window !== 'undefined' && (window._aiTaskCancelled || window._bgJobCancelled));
+  }
+  function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  async function renderSlidesProgressively(allSlides) {
+    var staged = [];
+    for (var i = 0; i < allSlides.length; i++) {
+      if (isTaskCancelled()) throw new Error('TASK_CANCELLED');
+      staged.push(allSlides[i]);
+      setSlides(staged.slice());
+      if (window.renderSlides) window.renderSlides();
+      if (window.renderThumbs) window.renderThumbs();
+      if (window.renderGallery) window.renderGallery();
+      if (window.updateJobProgress) {
+        var pct = 40 + Math.round(((i + 1) / Math.max(1, allSlides.length)) * 45);
+        window.updateJobProgress('slideGen', pct, '슬라이드 생성 반영 중... (' + (i + 1) + '/' + allSlides.length + ')');
+      }
+      await wait(45);
+    }
+    return staged;
+  }
   function buildSlideMarkdownForVis(slide, idx) {
     var s = slide || {};
     var out = [];
@@ -29,22 +50,50 @@
     if (s.notes) out.push('\nNotes:\n' + String(s.notes));
     return out.join('\n');
   }
+  function hasFigureTableCue(slide) {
+    var s = slide || {};
+    var text = [
+      String(s.title || ''),
+      (s.bullets || []).join(' '),
+      String(s.notes || '')
+    ].join(' ').toLowerCase();
+    return /(figure|fig\.|table|chart|graph|diagram|caption|도표|도식|그림|표|캡션|그래프)/i.test(text);
+  }
+  function isWeakVisPrompt(prompt) {
+    var p = String(prompt || '').trim();
+    if (!p) return true;
+    if (p.length < 60) return true;
+    var detailTokens = /(axis|axes|legend|row|rows|column|columns|header|label|x-axis|y-axis|table|chart|graph|diagram|flow|timeline|variable|comparison|unit|annotat|callout|layout|grid)/i;
+    if (!detailTokens.test(p)) return true;
+    var genericOnly = /(academic (illustration|image|style)|professional infographic|minimal style|simple diagram|clean design)/i;
+    if (genericOnly.test(p) && p.length < 120) return true;
+    return false;
+  }
   async function autoFillMissingVisPrompts(slidesArr) {
-    if (!slidesArr || !slidesArr.length) return { requested: 0, generated: 0, failed: 0 };
-    if (typeof window.callGemini !== 'function') return { requested: 0, generated: 0, failed: 0, unavailable: true };
+    if (!slidesArr || !slidesArr.length) return { requested: 0, generated: 0, failed: 0, rewritten: 0 };
+    if (typeof window.callGemini !== 'function') return { requested: 0, generated: 0, failed: 0, rewritten: 0, unavailable: true };
     var targets = [];
     for (var i = 0; i < slidesArr.length; i++) {
       var s = slidesArr[i] || {};
-      if (!s.visPrompt || !String(s.visPrompt).trim()) targets.push(i);
+      var current = String(s.visPrompt || '').trim();
+      var cue = hasFigureTableCue(s);
+      if (!current) {
+        targets.push({ idx: i, mode: 'missing', cue: cue });
+      } else if (cue && isWeakVisPrompt(current)) {
+        targets.push({ idx: i, mode: 'rewrite', cue: cue });
+      }
     }
-    if (!targets.length) return { requested: 0, generated: 0, failed: 0 };
+    if (!targets.length) return { requested: 0, generated: 0, failed: 0, rewritten: 0 };
     if (window.showJobProgress) window.showJobProgress('slideAutoVisPrompt', 'visPrompt 자동 보강 중...', 0, '🧩');
     var generated = 0;
     var failed = 0;
+    var rewritten = 0;
     for (var t = 0; t < targets.length; t++) {
-      var idx = targets[t];
+      if (isTaskCancelled()) break;
+      var target = targets[t];
+      var idx = target.idx;
       var pct = Math.round((t / targets.length) * 100);
-      if (window.updateJobProgress) window.updateJobProgress('slideAutoVisPrompt', pct, '슬라이드 ' + (idx + 1) + ' visPrompt 보강 중...');
+      if (window.updateJobProgress) window.updateJobProgress('slideAutoVisPrompt', pct, '슬라이드 ' + (idx + 1) + (target.mode === 'rewrite' ? ' visPrompt 재작성 중...' : ' visPrompt 보강 중...'));
       try {
         var mdContent = buildSlideMarkdownForVis(slidesArr[idx], idx);
         var visPromptPack = (typeof window.getImggenVisPromptInstruction === 'function')
@@ -53,31 +102,54 @@
               system: 'You are an expert at creating detailed visual prompts for AI image generation. Output ONLY the prompt text.',
               user: 'Create a detailed English visual prompt for AI image generation based on this slide content. Output only the prompt.\n\n' + mdContent
             };
-        var res = await window.callGemini(visPromptPack.user, visPromptPack.system);
-        var text = (res && res.text ? res.text : res) || '';
-        var clean = String(text).replace(/```[\s\S]*?```/g, function (m) {
-          return m.replace(/```/g, '');
-        }).trim();
+        var baseUser = visPromptPack.user || '';
+        var qualityRule = '\n\n[Quality Filter]\n'
+          + '- If this slide includes Figure/Table cues, the prompt must explicitly include layout structure.\n'
+          + '- For table-like visuals: specify columns, rows, headers, labels, and units.\n'
+          + '- For chart-like visuals: specify x-axis, y-axis, legend, compared groups, and key values.\n'
+          + '- Avoid generic wording. Output only high-specificity English prompt text.';
+        if (target.mode === 'rewrite') {
+          var weakNow = String(slidesArr[idx].visPrompt || '').trim();
+          baseUser += '\n\nCurrent weak visPrompt:\n' + weakNow + '\n\nRewrite this into a stronger, more specific visual prompt.';
+        }
+        var clean = '';
+        var attemptUser = baseUser + qualityRule;
+        for (var attempt = 0; attempt < 2; attempt++) {
+          if (isTaskCancelled()) break;
+          var res = await window.callGemini(attemptUser, visPromptPack.system);
+          var text = (res && res.text ? res.text : res) || '';
+          clean = String(text).replace(/```[\s\S]*?```/g, function (m) {
+            return m.replace(/```/g, '');
+          }).trim();
+          if (!target.cue || !isWeakVisPrompt(clean)) break;
+          attemptUser = baseUser + qualityRule + '\n\n[Retry]\nThe previous result was still weak. Regenerate with explicit structural details and concrete labels.';
+        }
         if (!clean) {
+          failed += 1;
+          continue;
+        }
+        if (target.cue && isWeakVisPrompt(clean)) {
           failed += 1;
           continue;
         }
         slidesArr[idx].visPrompt = clean;
         generated += 1;
+        if (target.mode === 'rewrite') rewritten += 1;
       } catch (e) {
+        if (isTaskCancelled() || (e && e.name === 'AbortError')) break;
         failed += 1;
       }
     }
     if (window.updateJobProgress) window.updateJobProgress('slideAutoVisPrompt', 100, '✅ visPrompt 자동 보강 완료');
     if (window.hideJobProgress) window.hideJobProgress('slideAutoVisPrompt', 1000);
-    return { requested: targets.length, generated: generated, failed: failed };
+    return { requested: targets.length, generated: generated, failed: failed, rewritten: rewritten };
   }
   async function autoGenerateImagesForSlides(slidesArr) {
     if (!slidesArr || !slidesArr.length) return { requested: 0, generated: 0, failed: 0, skipped: 0 };
     if (typeof window.generateImage !== 'function') return { requested: 0, generated: 0, failed: 0, skipped: slidesArr.length, unavailable: true };
     var visFillResult = await autoFillMissingVisPrompts(slidesArr);
     var targets = [];
-    for (var i = 0; i < slidesArr.length; i++) {
+    for (var i = 1; i < slidesArr.length; i++) {
       var s = slidesArr[i] || {};
       if (s.visPrompt && String(s.visPrompt).trim() && !s.imageUrl) targets.push(i);
     }
@@ -86,6 +158,7 @@
     var generated = 0;
     var failed = 0;
     for (var t = 0; t < targets.length; t++) {
+      if (isTaskCancelled()) break;
       var idx = targets[t];
       var pct = Math.round((t / targets.length) * 100);
       if (window.updateJobProgress) window.updateJobProgress('slideAutoImg', pct, '슬라이드 ' + (idx + 1) + ' 이미지 생성 중...');
@@ -96,6 +169,9 @@
           slidesArr[idx].imageUrl = img;
           generated += 1;
           if (window.addToAiImgHistory) window.addToAiImgHistory(prompt, img, idx);
+          if (typeof window.imgBankAdd === 'function') {
+            try { window.imgBankAdd({ dataURL: img, name: 'slide_' + Date.now() + '_' + idx, prompt: prompt }); } catch (e) {}
+          }
           if (typeof window.pushSlideUndoState === 'function') window.pushSlideUndoState();
           setSlides(slidesArr.slice());
           if (window.renderSlides) window.renderSlides();
@@ -105,6 +181,7 @@
           failed += 1;
         }
       } catch (e) {
+        if (isTaskCancelled() || (e && e.name === 'AbortError')) break;
         failed += 1;
       }
     }
@@ -136,6 +213,27 @@
     return null;
   }
   function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+  function cloneSlidesForHistory(arr) {
+    try {
+      return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
+    } catch (e) {
+      return (arr || []).map(function (s, i) {
+        return {
+          id: s && s.id != null ? s.id : i,
+          title: s && s.title || '',
+          bullets: s && Array.isArray(s.bullets) ? s.bullets.slice() : [],
+          notes: s && s.notes || '',
+          visPrompt: s && s.visPrompt || '',
+          isCover: !!(s && s.isCover),
+          imageUrl: s && s.imageUrl || null,
+          imageUrl2: s && s.imageUrl2 || null,
+          innerSize: s && s.innerSize ? Object.assign({}, s.innerSize) : undefined,
+          slideImage1: s && s.slideImage1 ? Object.assign({}, s.slideImage1) : undefined,
+          slideImage2: s && s.slideImage2 ? Object.assign({}, s.slideImage2) : undefined
+        };
+      });
+    }
+  }
   function estimateAutoSlideCount(textLen, includeCover) {
     var chars = Math.max(1, parseInt(textLen || 0, 10));
     var byLength = Math.ceil(chars / 900);
@@ -144,8 +242,11 @@
   }
 
   async function generateSummary(type, options) {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
     if (!rawText()) return;
-    var customInstruction = (g('custom-instruction-val') && g('custom-instruction-val').value) || '';
+    var opts = options || {};
+    var customInstruction = (opts.customInstruction !== undefined && opts.customInstruction !== null)
+      ? String(opts.customInstruction) : ((g('custom-instruction-val') && g('custom-instruction-val').value) || '');
     var slideCount = parseInt((g('slide-count-val') && g('slide-count-val').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_slide_count')) || '15', 10) || 15;
     var includeCover = g('include-cover') ? g('include-cover').checked !== false : true;
     var wStyle = (g('writing-style-val') && g('writing-style-val').value) || writingStyle();
@@ -162,12 +263,17 @@
       var styleId = opts.styleId || 'research';
       var slideCountOpt = opts.slideCount != null ? opts.slideCount : slideCount;
 
-      var textToSummarize = rawText().substring(0, 15000);
+      var summaryCharLimit = parseInt(
+        (typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '80000',
+        10
+      ) || 80000;
+      summaryCharLimit = Math.max(10000, Math.min(500000, summaryCharLimit));
+      var textToSummarize = rawText().substring(0, summaryCharLimit);
       if (mode === 'translate' && typeof window.getRawTextForSummary === 'function') {
         if (window.showJobProgress) window.showJobProgress('translation', '🌐 원문 번역 중...', 5, '🌐');
         try {
           var translated = await window.getRawTextForSummary();
-          textToSummarize = (translated || '').substring(0, 15000);
+          textToSummarize = (translated || '').substring(0, summaryCharLimit);
         } catch (e) {
           if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ 번역 실패, 원문으로 요약합니다.');
         }
@@ -263,7 +369,11 @@
         clearInterval(_progTimer);
         if (box) box.style.display = 'none';
         if (window.hideJobProgress) window.hideJobProgress('summary', 500);
-        if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ 요약 실패: ' + e.message);
+        if (e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED')) {
+          if (window.showToast) window.showToast('⏹ 요약 생성이 중단되었습니다.');
+        } else if (window.showToast) {
+          window.showToast('❌ 요약 실패: ' + e.message);
+        }
       }
       return;
     }
@@ -328,8 +438,20 @@
       TEXT: rawText().substring(0, 15000)
     }));
     var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + targetSlideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n' + pagePolicyNote + '\n' + visualPolicy + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000));
+    if (slideGenType === 'auto_visual') {
+      prompt += '\n\n[강제 규칙 - 교재형 시각화]\n'
+        + '- 그림/표/도해를 설명하는 슬라이드는 visPrompt를 반드시 작성.\n'
+        + '- 원자료 캡션(제목, 변수, 단위, 비교군)을 visPrompt에 반영.\n'
+        + '- table-like layout 또는 chart axes/legend/unit를 명시.\n'
+        + '- 장식형 이미지 금지, 학습 목적 시각화만 허용.\n'
+        + '- visPrompt가 비어 있으면 해당 슬라이드는 실패로 간주.';
+    }
+    if (isAutoSlideMode && typeof window.getPromptOverride === 'function') {
+      var allCustom = window.getPromptOverride('slide_gen_all_custom');
+      if (allCustom && String(allCustom).trim()) customInstruction = String(allCustom).trim();
+    }
     if (customInstruction) prompt += '\n추가 지시: ' + customInstruction;
-    var slideSystem = (typeof window.getSlideGenSystemPrompt === 'function' && window.getSlideGenSystemPrompt(slideGenType)) || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
+    var slideSystem = (typeof window.getSlideGenSystemPrompt === 'function' && window.getSlideGenSystemPrompt(isAutoSlideMode ? 'all' : slideGenType)) || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
     try {
       var res = await window.callGemini(prompt, slideSystem);
       var text = res && res.text ? res.text : res;
@@ -348,7 +470,21 @@
           isCover: s.isCover || false
         };
       });
-      setSlides(newSlides);
+      var prevSlidesSnapshot = getSlidesArr();
+      var addToHistoryFn = isAutoSlideMode && window.addToAllSlideHistory ? window.addToAllSlideHistory : window.addToSlideHistory;
+      if (prevSlidesSnapshot && prevSlidesSnapshot.length && addToHistoryFn) {
+        var prevSlidesCloned = cloneSlidesForHistory(prevSlidesSnapshot);
+        var prevEntry = {
+          fileName: ((window.getFileName ? window.getFileName() : '') || '슬라이드') + ' (생성 전)',
+          slides: prevSlidesCloned,
+          manuscriptContent: (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(prevSlidesCloned) : '',
+          isBackupBeforeRegeneration: true
+        };
+        addToHistoryFn(prevEntry);
+        if (window.showToast) window.showToast('🗂 기존 슬라이드를 히스토리에 저장했습니다. (클릭 시 복원)');
+      }
+      if (window.updateJobProgress) window.updateJobProgress('slideGen', 35, '슬라이드 생성 결과 반영 중...');
+      newSlides = await renderSlidesProgressively(newSlides);
       setActiveSlideIndex(0);
       setPresentationScript([]);
       if (window.afterSlidesCreated) window.afterSlidesCreated();
@@ -356,12 +492,13 @@
       if (slideGenType === 'auto_visual') {
         autoImgResult = await autoGenerateImagesForSlides(newSlides);
       }
-      if (window.addToSlideHistory && window.getFileName) {
+      var addToHistoryFn = isAutoSlideMode && window.addToAllSlideHistory ? window.addToAllSlideHistory : window.addToSlideHistory;
+      if (addToHistoryFn && window.getFileName) {
         var manuscriptContent = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(newSlides) : '';
-        var entry = { fileName: window.getFileName(), slides: newSlides.map(function (s) { return { id: s.id, title: s.title, bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: s.imageUrl || null }; }), manuscriptContent: manuscriptContent };
-        window.addToSlideHistory(entry);
-        if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id;
-        if (typeof window.setManuscriptView === 'function') window.setManuscriptView('slides');
+        var entry = { fileName: window.getFileName(), slides: cloneSlidesForHistory(newSlides), manuscriptContent: manuscriptContent };
+        addToHistoryFn(entry);
+        if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id || null;
+        if (typeof window.setManuscriptView === 'function') window.setManuscriptView(isAutoSlideMode ? 'allslides' : 'slides');
         if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
       }
       if (window.showToast) {
@@ -371,6 +508,7 @@
           else {
             if (autoImgResult.visFill && autoImgResult.visFill.requested) {
               msg += ' / visPrompt 보강 ' + autoImgResult.visFill.generated + '개'
+                + (autoImgResult.visFill.rewritten ? (' (재작성 ' + autoImgResult.visFill.rewritten + '개 포함)') : '')
                 + (autoImgResult.visFill.failed ? (' (실패 ' + autoImgResult.visFill.failed + '개)') : '');
             }
             msg += ' / 이미지 생성 ' + autoImgResult.generated + '개' + (autoImgResult.failed ? (' (실패 ' + autoImgResult.failed + '개)') : '');
@@ -381,7 +519,9 @@
       if (window.showJobCompleteBadge) window.showJobCompleteBadge(newSlides.length + '개 슬라이드 생성 완료');
       if (window.renderLeftPanel) window.renderLeftPanel();
     } catch (e) {
-      if (e.name !== 'AbortError') {
+      if (e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED')) {
+        if (window.showToast) window.showToast('⏹ 슬라이드 생성이 중단되었습니다.');
+      } else {
         console.error(e);
         if (window.showToast) window.showToast('❌ 슬라이드 생성 실패: ' + e.message);
       }
@@ -390,6 +530,7 @@
   }
 
   async function generatePresentationScript() {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
     var s = getSlidesArr();
     if (!s.length) return;
     if (window.showLoading) window.showLoading('발표 원고 생성 중...', '슬라이드별 스크립트 작성', 20, true);
@@ -408,8 +549,8 @@
       if (window.addToManuscriptHistory && window.getFileName) {
         var s = getSlidesArr();
         var entry = { fileName: window.getFileName(), presentationScript: script.slice(), slides: (s || []).map(function (sl) { return { title: sl.title, bullets: sl.bullets || [], notes: sl.notes || '' }; }) };
-        window.addToManuscriptHistory(entry);
-        if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id;
+        var savedScriptId = window.addToManuscriptHistory(entry);
+        if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = savedScriptId || entry.id || null;
         if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
       }
       document.querySelectorAll('.panel-left .panel-tab').forEach(function (el) { el.classList.remove('active'); });
@@ -423,6 +564,7 @@
   }
 
   async function aiRewriteSlide(index) {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
     var s = getSlidesArr();
     if (!s[index]) return;
     if (window.showLoading) window.showLoading('슬라이드 ' + (index + 1) + ' AI 재작성 중...', '', 50, true);
@@ -446,6 +588,7 @@
   }
 
   async function aiExpandSlide(index) {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
     var s = getSlidesArr();
     if (!s[index]) return;
     var instruction = (typeof window.prompt === 'function' ? window.prompt('슬라이드에 추가할 내용을 지시하세요 (비워두면 자동 확장):') : '') || '';
@@ -520,6 +663,7 @@
   }
 
   async function addSlideAI(afterIndex, extraContent, promptHint, withImage) {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
     if (window.showJobProgress) window.showJobProgress('aiSlide', 'AI 슬라이드 생성 중...', 0, '🤖');
     try {
       var context = rawText() ? rawText().substring(0, 8000) : ('전체 슬라이드 맥락: ' + getSlidesArr().map(function (s) { return s.title; }).join(', '));
@@ -555,6 +699,9 @@
                 next[idx] = Object.assign({}, next[idx], { imageUrl: img });
                 setSlides(next);
                 if (window.addToAiImgHistory) window.addToAiImgHistory(newSlide.visPrompt, img, activeSlideIndex());
+                if (typeof window.imgBankAdd === 'function') {
+                  try { window.imgBankAdd({ dataURL: img, name: 'slide_ai_' + Date.now(), prompt: newSlide.visPrompt }); } catch (e) {}
+                }
                 if (window.renderSlides) window.renderSlides();
                 if (window.renderThumbs) window.renderThumbs();
                 if (window.renderGallery) window.renderGallery();

@@ -30,10 +30,10 @@
   /** 슬라이드 생성 유형 id → 시스템 지시 키 (slide_gen_system_precision 등) */
   var SLIDE_GEN_TYPE_IDS = ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop', 'auto_visual'];
 
-  /** 슬라이드 생성 시스템 지시: 선택된 유형(slideGenType)에 해당하는 override 또는 기본값 반환 */
+  /** 슬라이드 생성 시스템 지시: 선택된 유형(slideGenType)에 해당하는 override 또는 기본값 반환. type === 'all' 이면 All Slide(한번에 전체 생성) 전용 키 사용 */
   function getSlideGenSystemPrompt(slideGenType) {
     var type = slideGenType || 'precision';
-    var key = 'slide_gen_system_' + type;
+    var key = (type === 'all') ? 'slide_gen_all_system' : ('slide_gen_system_' + type);
     var override = getPromptOverride(key);
     if (override) return override;
     var defaults = getDefaultPrompts();
@@ -41,7 +41,7 @@
     return val || 'You are an academic slide generator. Korean for title/bullets/notes, English for visPrompt.';
   }
 
-  /** 슬라이드 생성 프롬프트만 업그레이드 기본값으로 적용(override에 저장). 8개 유형 모두 적용. 설정에서 "업그레이드 적용" 시 사용 */
+  /** 슬라이드 생성 프롬프트만 업그레이드 기본값으로 적용(override에 저장). 유형별 + All Slide 적용. 설정에서 "업그레이드 적용" 시 사용 */
   function applySlideGenUpgrade() {
     var defaults = getDefaultPrompts();
     var overrides = {};
@@ -49,6 +49,7 @@
       var key = 'slide_gen_system_' + SLIDE_GEN_TYPE_IDS[i];
       if (defaults[key] && defaults[key].value) overrides[key] = defaults[key].value;
     }
+    if (defaults.slide_gen_all_system && defaults.slide_gen_all_system.value) overrides.slide_gen_all_system = defaults.slide_gen_all_system.value;
     if (Object.keys(overrides).length === 0) return false;
     setPromptOverrides(overrides);
     return true;
@@ -71,10 +72,11 @@
     saveOverrides(o);
   }
 
-  /** 카테고리: 요약 | 슬라이드 생성 | 이미지 생성 | 번역 | 참고문헌 추출 | 기타 */
+  /** 카테고리: 요약 | 슬라이드 생성 | All Slide 생성 | 이미지 생성 | 번역 | 참고문헌 추출 | 기타 */
   var PROMPT_CATEGORIES = [
     { id: 'summary', title: '📖 요약 관련' },
     { id: 'slide', title: '🗂 슬라이드 생성 관련' },
+    { id: 'all_slide', title: '🧠 All Slide 생성 관련' },
     { id: 'image', title: '🎨 이미지 생성 관련' },
     { id: 'translate', title: '🌐 번역 관련' },
     { id: 'ref_extract', title: '📚 참고문헌 추출 (AI)' },
@@ -138,7 +140,7 @@
       logic: '## Type F: 인과관계 도식형 (Logic Flow)\n변수 간 메커니즘 시각화 중심. 독립변수(IV), 매개변수(MV), 종속변수(DV) 간의 관계를 화살표(->)와 단계별 프로세스로 요약하라. 연구의 전체적인 메커니즘을 한눈에 볼 수 있도록 논리의 흐름(Flow) 중심으로 텍스트를 배치하라. 결과 섹션에서는 어떤 경로(Path)가 유의미했는지에 집중하여 설명하라.',
       quiz: '## Type G: 상호작용형 (Interactive Quiz)\n퀴즈를 통한 능동적 학습 유도. 슬라이드를 질문-답변 구조로 설계하라. (예: 한 슬라이드에서 실험 결과를 묻고, 다음 슬라이드에서 실제 결과를 공개). 주요 수치나 용어에 빈칸([ ])을 만들어 학습자가 스스로 생각하게 유도하고, 마지막에는 연구 내용에 기반한 3가지 핵심 퀴즈를 출제하라.',
       workshop: '## Type H: 워크숍형 (Practical Action)\n실무 적용 및 액션 플랜 중심. 연구 결과를 실무(Business, Education 등)에 적용할 수 있는 3단계 액션 플랜(Action Plan)을 제시하라. 이론적 시사점을 넘어서서 그래서 무엇을 해야 하는가(So-what)에 대한 답을 제공하라. 현장에서 바로 사용할 수 있는 체크리스트나 실습 과제 형식을 포함하라.',
-      auto_visual: '## Type I: AII 자동 시각화형 (Auto Visualizer)\n문서 분량에 맞춰 슬라이드 수를 자동 조정하고(필요 시 사용자 범위 준수), 페이지별 시각화 전략을 먼저 결정하라. 원자료의 그림/표/도해를 가능한 한 보존해 재구성하되, 해석이 필요한 경우 주석·인사이트가 추가된 도식으로 변환하라. 시각화가 필요한 슬라이드에는 visPrompt를 매우 구체적인 영어 문장으로 작성하고, 불필요한 슬라이드는 visPrompt를 비워라.'
+      auto_visual: '## Type I: AII 자동 시각화형 (Auto Visualizer)\n교재형 학습자료를 전제로, 텍스트 요약만 하지 말고 시각 근거를 반드시 생성하라. 문서 분량에 맞춰 슬라이드 수를 자동 조정하고(필요 시 사용자 범위 준수), 각 슬라이드마다 "시각화 필요 여부"를 먼저 판단하라.\n\n시각화 강제 규칙:\n1) 원문에서 그림(Figure), 표(Table), 도해, 과정도, 비교표, 프레임워크, 통계 그래프가 언급되면 해당 슬라이드의 visPrompt는 반드시 비우지 말고 생성할 것.\n2) "그림/표를 설명하는 슬라이드"는 설명으로 끝내지 말고, 원자료 구조를 반영한 이미지 재생성 지시를 포함할 것.\n3) 표는 가능한 한 표 형태(행/열/헤더)로 유지되도록 프롬프트에 명시하고, 그래프는 축/범례/단위/비교군을 명시할 것.\n4) 원자료의 캡션(제목, 변수명, 단위, 조건, 집단, 시점)을 추출해 visPrompt에 반영할 것.\n5) 단순 장식 이미지는 금지하고, 개념 이해에 필요한 학습용 도식만 생성할 것.\n\n출력 품질 규칙:\n- visPrompt는 영어 1~3문장으로 구체적으로 작성하라.\n- 구도(composition), 핵심 객체, 레이아웃, 색상 톤, 스타일(academic infographic), 텍스트 라벨 포함 여부를 명시하라.\n- 표지(isCover=true)는 visPrompt를 비워도 되지만, 본문 슬라이드는 시각화가 필요하면 visPrompt를 반드시 채워라.'
     };
     var typeLabels = {
       precision: 'A. 정밀 요약형 (Precision Archive)',
@@ -151,17 +153,91 @@
       workshop: 'H. 워크숍형 (Practical Action)',
       auto_visual: 'I. AII 자동 시각화형 (Auto Visualizer)'
     };
+    var notebookSystemPrompt = [
+      '# Role',
+      '너는 전공 서적의 핵심 가치를 발췌하여 청중에게 깊이 있는 통찰을 전달하는 교육용 발표 설계 전문가, [Academic Presenter AI]이다.',
+      '톤: 지적이며 신뢰감 있는 학술적 톤 (~임, ~이다).',
+      '안전 규칙: 기존 기능을 변경하거나 기능을 버릴 때 반드시 사용자의 동의를 구한다.',
+      '',
+      '# Citation Rule (APA 7th Edition)',
+      '- 슬라이드의 모든 핵심 주장과 데이터에는 반드시 근거(저자, 연도)를 명기하라.',
+      '- 문장 단위로 APA 내체 인용을 포함하여 학술적 엄밀함을 유지하라.',
+      '- 본문(source)에서 정확한 근거 페이지나 위치를 확인하여 기입하라.',
+      '',
+      '# Textbook Structure Rule (교재 목차 규칙)',
+      '- 교재는 장/절/소절 구조를 따르므로, 번호 체계를 해석하여 슬라이드 흐름에 반영하라.',
+      '- 예: 2. 신호탐지이론 → 2.1 신호탐지 패러다임 → 2.2 민감도 → 3. 제목 → 3.1 소제목 → 3.2 소제목',
+      '- 큰 장(2, 3...)은 섹션 전환 슬라이드로, 소절(2.1, 2.2...)은 개념 설명/사례/시각화 슬라이드로 풀어라.',
+      '',
+      '# Presentation Core Principle (발표 설계 원칙)',
+      '1. Core Value First: 해당 단원의 내용이 전공 분야에서 왜 중요한지(Significance)를 먼저 제시하라.',
+      '2. Inquiry-Based Titles: 슬라이드 소제목은 단순 요약이 아니라 핵심을 꿰뚫는 질문(Key Question) 형식으로 구성하라.',
+      '3. Visual Integration: 교재의 그림(Figure)과 표(Table)는 설명의 핵심이다. 시각 자료가 필요한 슬라이드에는 반드시 시각화 생성 지시를 포함하라.',
+      '',
+      '# Figure/Table Mapping Rule (그림·표 번호 매핑)',
+      '- 원문에 Figure 2.5, 그림 2-5, Table 3.1, 표 3-1 등 번호가 보이면 해당 번호를 슬라이드 내용과 visPrompt에 반영하라.',
+      '- 그림 번호가 있는 슬라이드는 원자료의 캡션/변수/관계를 유지한 재구성 이미지를 생성하도록 지시하라.',
+      '- 표 번호가 있는 슬라이드는 table-like layout(열/행/헤더/단위/비교군)을 명시한 visPrompt를 작성하라.',
+      '- 그림/표를 설명만 하고 끝내지 말고, 반드시 이미지 생성 가능한 구체 프롬프트를 제공하라.',
+      '',
+      '# Must-Include Sections (슬라이드 구성 8단계)',
+      '1. Title: 도서명, 단원명(Chapter Title), 저자 및 발표자 정보',
+      '2. The Significance: 이 단원을 왜 배워야 하는가? 학문적 코어 가치와 중요성 제시',
+      '3. Vocabulary & Concepts: 단원을 이해하기 위한 필수 개념 정의 (원어 병기)',
+      '4. Deep Dive (Category-wise): 각 소제목별 핵심 질문을 던지고, 그에 대한 상세 분석 내용 기술',
+      '5. Visual Evidence: 본문의 Figure/Table 리스트 및 각 시각 자료가 증명하는 핵심 원리 설명',
+      '6. Real-world Scenarios: 이론이 실제 현장에서 어떻게 발현되는지 사례 분석',
+      '7. Summary & Critical Thinking: 핵심 내용 재정리 및 청중과 논의할 비판적 사고 질문',
+      '8. Glossary & References: 사용된 용어 사전 및 전체 참고문헌 리스트',
+      '',
+      '# Operational Instructions',
+      '- 시작 시 "선택하신 [Academic Presenter Mode]로 전공 서적 발표 구성을 시작합니다."라고 알릴 것.',
+      '- 슬라이드 제목에 "Slide 1" 같은 번호를 넣지 말고, 섹션명과 핵심 질문 중심 제목으로 작성하라.',
+      '- Figure/Table가 핵심인 페이지는 관련 번호(예: 그림 2.5, 표 3.1)를 bullets 또는 notes에 반드시 남겨라.',
+      '- 표(Table)가 복잡하면 표 전용 슬라이드와 해석 슬라이드를 분리해 구성하라.',
+      '- 출력은 순수 JSON 배열만 허용 (코드블록/마크다운 금지).',
+      '- 언어: title/bullets/notes는 한국어, visPrompt는 영어.',
+      '',
+      '# Generation Type: Academic Presenter (전공 발표형)',
+      '- 단원 주제 명시: 각 슬라이드 상단에 현재 다루는 단원의 큰 주제를 기록한다.',
+      '- 핵심 질문 제목: "왜 ~인가?" 형태의 질문형 제목을 적극 사용한다.',
+      '- 상세 분석: 교재 논리를 따라 충분한 맥락 설명을 제공한다.',
+      '- 이미지 생성 우선: Figure/Table 관련 슬라이드는 visPrompt를 빈 문자열로 두지 않는다.'
+    ].join('\n');
     ['precision', 'presentation', 'notebook', 'critical', 'evidence', 'logic', 'quiz', 'workshop', 'auto_visual'].forEach(function (tid) {
+      var value = (tid === 'notebook')
+        ? notebookSystemPrompt
+        : (slideGenBase + '\n\n# Generation Type (선택된 유형)\n\n' + (typeParagraphs[tid] || ''));
       out['slide_gen_system_' + tid] = {
         category: 'slide',
         label: '슬라이드 생성 — ' + (typeLabels[tid] || tid) + ' (시스템 지시)',
-        value: slideGenBase + '\n\n# Generation Type (선택된 유형)\n\n' + (typeParagraphs[tid] || '')
+        value: value
       };
     });
+    var pageRangeParagraph = [
+      '',
+      '# Page Range (범위 설정)',
+      '사용자가 페이지 범위(예: 최소-최대)를 지정한 경우:',
+      '- 생성 슬라이드 수는 반드시 해당 범위(min 이상, max 이하) 내에서 문서 분량과 정보 밀도에 맞춰 결정할 것.',
+      '- 예: 범위가 12-24이면 슬라이드 수는 12개 이상 24개 이하로만 산정할 것.',
+      '사용자가 범위를 비운 경우:',
+      '- 문서 분량과 정보 밀도에 맞춰 슬라이드 수를 자동 산정할 것. 불필요한 분할은 피하고, 과밀한 슬라이드는 분리할 것.'
+    ].join('\n');
+    var allSlideAutoVisualBlock = (typeParagraphs.auto_visual || '') + '\n\n' + pageRangeParagraph;
+    out.slide_gen_all_system = {
+      category: 'all_slide',
+      label: 'All Slide 생성 — AII 자동 시각화형 (Auto Visualizer) (시스템 지시)',
+      value: slideGenBase + '\n\n# Generation Type: AII 자동 시각화형 (Auto Visualizer) — All Slide 전용\n\n' + allSlideAutoVisualBlock
+    };
+    out.slide_gen_all_custom = {
+      category: 'all_slide',
+      label: 'All Slide 생성 — 커스텀 프롬프트 (추가 지시, UI 텍스트창보다 우선)',
+      value: ''
+    };
     out.slide_gen_user_prompt = {
       category: 'slide',
       label: '사용자 프롬프트 ({{TYPE_LABEL}}, {{SLIDE_COUNT}}, {{STYLE_GUIDE}}, {{COVER_NOTE}}, {{STRUCTURE_NOTE}}, {{NO_SLIDE_NUM_NOTE}}, {{PAGE_POLICY_NOTE}}, {{VISUAL_POLICY}}, {{TEXT}})',
-      value: '선택하신 {{TYPE_LABEL}}으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 {{SLIDE_COUNT}}개의 슬라이드를 생성하세요.\n스타일: {{STYLE_GUIDE}}\n{{COVER_NOTE}}\n{{STRUCTURE_NOTE}}\n{{NO_SLIDE_NUM_NOTE}}\n{{PAGE_POLICY_NOTE}}\n{{VISUAL_POLICY}}\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n{{TEXT}}'
+      value: '선택하신 {{TYPE_LABEL}}으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 {{SLIDE_COUNT}}개의 슬라이드를 생성하세요.\n스타일: {{STYLE_GUIDE}}\n{{COVER_NOTE}}\n{{STRUCTURE_NOTE}}\n{{NO_SLIDE_NUM_NOTE}}\n{{PAGE_POLICY_NOTE}}\n{{VISUAL_POLICY}}\n\n[교재형 시각화 우선 규칙]\n- 그림/표/도해를 설명하는 슬라이드는 반드시 이미지 생성용 visPrompt를 포함할 것.\n- 원자료의 Figure/Table 캡션과 핵심 변수명을 반영해 재구성할 것.\n- 표는 table-like layout(열/행/헤더)로 보이도록, 그래프는 축/범례/단위를 명시할 것.\n- 장식 목적 이미지는 금지하고, 학습 이해를 높이는 시각화만 생성할 것.\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English visual prompt for textbook-style figure/table reconstruction","isCover":false}]\n\n추가 강제 규칙:\n- visPrompt는 영어 1~3문장.\n- 표지(isCover=true)를 제외하고 시각화 필요 슬라이드의 visPrompt는 빈 문자열 금지.\n- 그림/표를 인용한 슬라이드에서 visPrompt가 비어 있으면 실패로 간주.\n\n텍스트:\n{{TEXT}}'
     };
     out.slide_gen_structure_note = {
       category: 'slide',

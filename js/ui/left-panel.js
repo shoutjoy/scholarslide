@@ -124,7 +124,17 @@
         + (_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
         + '</div>';
     }
-    content.innerHTML = fileSlotsHtml
+    var totalChars = rawText.length;
+    var summaryLimit = parseInt((typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '80000', 10) || 80000;
+    summaryLimit = Math.max(10000, Math.min(500000, summaryLimit));
+    var willTruncate = totalChars > summaryLimit;
+    var capacityInfo = '<div class="file-capacity-info" style="margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:10px;color:var(--text2);line-height:1.5">'
+      + '<div style="font-weight:600;color:var(--text);margin-bottom:4px">📊 원본 용량</div>'
+      + '<div>원문 총 ' + totalChars.toLocaleString() + '자</div>'
+      + '<div>요약 한도 ' + (summaryLimit / 1000).toFixed(0) + 'k자 (설정에서 변경 가능)</div>'
+      + (willTruncate ? '<div style="margin-top:4px;color:var(--warning)">⚠ 앞 ' + (summaryLimit / 1000).toFixed(0) + 'k자만 요약됩니다</div>' : '<div style="margin-top:4px;color:var(--success)">✓ 전체 원문이 요약 대상입니다</div>')
+      + '</div>';
+    content.innerHTML = fileSlotsHtml + capacityInfo
       + '<div style="margin-bottom:8px"><label class="label">문체 설정</label>'
       + '<select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="font-size:11px">'
       + '<option value="academic-da" ' + (writingStyle === 'academic-da' ? 'selected' : '') + '>학술체 (~이다)</option>'

@@ -35,17 +35,11 @@ const HELP_HOTKEYS = [
     { desc: '이전 슬라이드', keys: 'Ctrl + ←' },
     { desc: '다음 슬라이드', keys: 'Ctrl + →' },
   ]},
-  { section: '편집 (MD 에디터)', items: [
-    { desc: '줄 위로 이동', keys: 'Alt + ↑' },
-    { desc: '줄 아래로 이동', keys: 'Alt + ↓' },
-    { desc: '줄 / 선택 복제', keys: 'Shift + Alt + ↓' },
-    { desc: '실행 취소', keys: 'Ctrl + Z' },
-    { desc: '다시 실행', keys: 'Ctrl + Shift + Z' },
-    { desc: '다시 실행 (대체)', keys: 'Ctrl + Y' },
-    { desc: '현재 줄 삭제', keys: 'Alt + Y' },
-    { desc: '굵게', keys: 'Ctrl + B' },
-    { desc: '기울임', keys: 'Ctrl + I' },
-    { desc: '슬라이드에 적용', keys: 'Ctrl + Enter' },
+  { section: '편집', items: [
+    { desc: '슬라이드 실행 취소', keys: 'Ctrl + Z' },
+    { desc: '슬라이드 다시 실행', keys: 'Ctrl + Shift + Z' },
+    { desc: '불릿 굵게', keys: 'Ctrl + B' },
+    { desc: '불릿 기울임', keys: 'Ctrl + I' },
   ]},
   { section: '불릿 편집', items: [
     { desc: '새 불릿', keys: 'Enter' },

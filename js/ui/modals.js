@@ -23,7 +23,7 @@ function switchTab(tab) {
 
 function switchRightTab(tab) {
     rightTab = tab;
-    ['mdeditor', 'refs', 'design', 'gallery'].forEach(t => {
+    ['mdeditor', 'refs', 'design', 'gallery', 'imgbank'].forEach(t => {
         const btn = document.getElementById('rtab-' + t);
         const panel = document.getElementById(t + '-panel');
         if (btn) btn.classList.toggle('active', t === tab);
@@ -31,6 +31,7 @@ function switchRightTab(tab) {
     });
     if (tab === 'refs' && typeof renderRefsPanel === 'function') renderRefsPanel();
     if (tab === 'gallery' && typeof renderGalleryPanel === 'function') renderGalleryPanel();
+    if (tab === 'imgbank' && typeof renderImgBankPanel === 'function') renderImgBankPanel();
     if (tab === 'design' && typeof renderDesignPanel === 'function') renderDesignPanel();
 }
 

@@ -22,6 +22,7 @@
       '.sw-tabs{display:flex;gap:4px;margin-bottom:16px;flex-shrink:0}' +
       '.sw-tab{padding:8px 14px;background:#1a1e28;border:1px solid #2e3447;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:12px}' +
       '.sw-tab:hover{background:#252a37;color:#b0bac8}.sw-tab.active{background:#4f8ef7;border-color:#4f8ef7;color:#fff}' +
+      '.sw-prompt-filter-btn.active{background:var(--bg-hover,#252a37);color:var(--primary,#4f8ef7);border-color:var(--primary,#4f8ef7)}' +
       '.sw-panel{display:none}.sw-panel.active{display:block}' +
       '.sw-panel label{display:block;font-size:12px;font-weight:500;color:#94a3b8;margin-bottom:6px}' +
       '.sw-panel input,.sw-panel select,.sw-panel textarea{width:100%;padding:10px 12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8;font-size:13px;font-family:JetBrains Mono,Noto Sans KR,monospace}' +
@@ -58,11 +59,20 @@
       '<label>기본 슬라이드 수 (페이지)</label>' +
       '<input type="number" id="sw-misc-default-slide-count" min="5" max="200" value="15" style="width:80px;margin-bottom:12px">' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer"><input type="checkbox" id="sw-misc-default-include-cover" checked> 표지 포함 기본값</label>' +
+      '<label style="margin-top:12px">페이지 범위 기본값 (All Slide 등)</label>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;margin-bottom:12px">' +
+      '<input type="number" id="sw-misc-range-min" min="1" max="999" placeholder="최소" style="width:72px">' +
+      '<span style="color:var(--text3)">~</span>' +
+      '<input type="number" id="sw-misc-range-max" min="1" max="999" placeholder="최대" style="width:72px">' +
+      '</div>' +
       '<label style="margin-top:12px">기본 슬라이드 생성 유형</label>' +
       '<select id="sw-misc-default-slide-gen-type" style="width:100%;max-width:320px;margin-top:4px">' +
       '<option value="precision">A. 정밀 요약형</option><option value="presentation">B. 발표 최적화형</option><option value="notebook">C. 노트북/학습형</option>' +
       '<option value="critical">D. 비판적 검토형</option><option value="evidence">E. 시각적 증거형</option><option value="logic">F. 인과관계 도식형</option>' +
       '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option><option value="auto_visual">I. AII 자동 시각화형</option></select>' +
+      '<label style="margin-top:16px">원문 요약 글자 수</label>' +
+      '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="500000" step="1000" value="80000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
+      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 80,000자)</p>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
@@ -103,6 +113,17 @@
       '<option value="apa_search">APA search Prompt</option>' +
       '</select>' +
       '<div style="margin-bottom:12px"><button class="btn btn-ghost" id="sw-prompt-load-defaults">기본값 불러오기</button> <button class="btn btn-ghost" id="sw-prompt-apply-upgrade">슬라이드 생성 업그레이드 적용</button> <button class="btn btn-primary" id="sw-prompt-save-btn">저장</button> <button class="btn btn-ghost" id="sw-prompt-export-btn">프롬프트 내보내기</button> <button class="btn btn-ghost" id="sw-prompt-import-btn">프롬프트 불러오기</button> <input type="file" id="sw-prompt-import-input" accept=".md,.txt" style="display:none"></div>' +
+      '<div id="sw-prompts-filter" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center">' +
+      '<span style="font-size:12px;color:var(--text2);margin-right:4px">카테고리:</span>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn active" data-filter="all">전체</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="summary">요약</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="slide">슬라이드</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="all_slide">All Slide</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="image">이미지</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="translate">번역</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="ref_extract">참고문헌</button>' +
+      '<button type="button" class="btn btn-ghost btn-xs sw-prompt-filter-btn" data-filter="other">기타</button>' +
+      '</div>' +
       '<div id="sw-prompts-container"></div>' +
       '</div>';
   }
@@ -194,9 +215,15 @@
     var miscCount = $('sw-misc-default-slide-count');
     var miscCover = $('sw-misc-default-include-cover');
     var miscType = $('sw-misc-default-slide-gen-type');
+    var miscSummaryLimit = $('sw-misc-summary-char-limit');
+    var miscRangeMin = $('sw-misc-range-min');
+    var miscRangeMax = $('sw-misc-range-max');
     if (miscCount) miscCount.value = localStorage.getItem('ss_default_slide_count') || '15';
     if (miscCover) miscCover.checked = localStorage.getItem('ss_default_include_cover') !== 'false';
     if (miscType) miscType.value = localStorage.getItem('ss_slide_gen_type') || 'precision';
+    if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '80000';
+    if (miscRangeMin) miscRangeMin.value = localStorage.getItem('ss_slide_range_default_min') || '1';
+    if (miscRangeMax) miscRangeMax.value = localStorage.getItem('ss_slide_range_default_max') || '30';
 
     var loadUserInfo = function () {
       var data = {};
@@ -234,6 +261,14 @@
       if (miscCount) localStorage.setItem('ss_default_slide_count', miscCount.value || '15');
       if (miscCover) localStorage.setItem('ss_default_include_cover', miscCover.checked ? 'true' : 'false');
       if (miscType) localStorage.setItem('ss_slide_gen_type', miscType.value || 'precision');
+      if (miscRangeMin) localStorage.setItem('ss_slide_range_default_min', String(miscRangeMin.value || '1').trim() || '1');
+      if (miscRangeMax) localStorage.setItem('ss_slide_range_default_max', String(miscRangeMax.value || '30').trim() || '30');
+      if (miscSummaryLimit) {
+        var val = parseInt(miscSummaryLimit.value, 10);
+        if (!isNaN(val)) val = Math.max(10000, Math.min(500000, val));
+        else val = 80000;
+        localStorage.setItem('ss_summary_char_limit', String(val));
+      }
       if (typeof win.renderLeftPanel === 'function') win.renderLeftPanel();
       if (typeof win.showToast === 'function') win.showToast('적용되었습니다');
     });
@@ -277,11 +312,13 @@
     var presetSel = $('sw-scholara-i-preset-select');
     if (presetSel) presetSel.value = localStorage.getItem(LS_SCHOLARAI_PRESET) || 'none';
 
-    function loadPrompts() {
+    function loadPrompts(filterCategory) {
+      filterCategory = filterCategory || window._swCurrentPromptFilter || 'all';
       var defaults = (typeof win.getDefaultPrompts === 'function' && win.getDefaultPrompts()) || {};
       var categories = (typeof win.PROMPT_CATEGORIES !== 'undefined' && win.PROMPT_CATEGORIES) || [
         { id: 'summary', title: '📖 요약 관련' },
         { id: 'slide', title: '🗂 슬라이드 생성 관련' },
+        { id: 'all_slide', title: '🧠 All Slide 생성 관련' },
         { id: 'image', title: '🎨 이미지 생성 관련' },
         { id: 'translate', title: '🌐 번역 관련' },
         { id: 'ref_extract', title: '📚 참고문헌 추출 (AI)' },
@@ -292,6 +329,7 @@
       var html = '';
       for (var c = 0; c < categories.length; c++) {
         var cat = categories[c];
+        if (filterCategory !== 'all' && cat.id !== filterCategory) continue;
         var items = [];
         for (var key in defaults) {
           if (!defaults.hasOwnProperty(key)) continue;
@@ -306,13 +344,26 @@
           var d = items[i].d;
           var val = overrides[key] !== undefined && overrides[key] !== null ? String(overrides[key]) : (d.value || '');
           var esc = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          var rows = (key === 'slide_gen_system' || (key && key.indexOf('slide_gen_system_') === 0)) ? 14 : (key === 'slide_gen_user_prompt' ? 10 : (key === 'imggen_vis_prompt_instruction' || key === 'imggen_vis_prompt_system' ? 8 : 4));
+          var rows = (key === 'slide_gen_system' || key === 'slide_gen_all_system' || (key && key.indexOf('slide_gen_system_') === 0)) ? 14 : (key === 'slide_gen_user_prompt' ? 10 : (key === 'imggen_vis_prompt_instruction' || key === 'imggen_vis_prompt_system' ? 8 : 4));
           html += '<div class="prompt-item"><label>' + key + ' — ' + (d.label || key) + '</label><textarea data-key="' + key + '" rows="' + rows + '">' + esc + '</textarea></div>';
         }
       }
       var container = $('sw-prompts-container');
       if (container) container.innerHTML = html || '<p style="color:#94a3b8">기본 프롬프트 목록을 불러오려면 새로고침하세요.</p>';
+      document.querySelectorAll('#settings-panel-root .sw-prompt-filter-btn').forEach(function (b) {
+        b.classList.toggle('active', (b.getAttribute('data-filter') || 'all') === filterCategory);
+      });
     }
+
+    document.querySelectorAll('#settings-panel-root .sw-prompt-filter-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var filter = btn.getAttribute('data-filter') || 'all';
+        window._swCurrentPromptFilter = filter;
+        document.querySelectorAll('#settings-panel-root .sw-prompt-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        loadPrompts(filter);
+      });
+    });
 
     var loadDefaultsBtn = $('sw-prompt-load-defaults');
     if (loadDefaultsBtn) loadDefaultsBtn.addEventListener('click', function () {
@@ -335,6 +386,10 @@
           var ta = document.querySelector('#settings-panel-root textarea[data-key="' + k + '"]');
           if (ta) ta.value = d[k].value;
         }
+      }
+      if (d.slide_gen_all_system && d.slide_gen_all_system.value) {
+        var taAll = document.querySelector('#settings-panel-root textarea[data-key="slide_gen_all_system"]');
+        if (taAll) taAll.value = d.slide_gen_all_system.value;
       }
       if (typeof win.showToast === 'function') win.showToast('적용되었습니다');
     });

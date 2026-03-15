@@ -52,6 +52,8 @@ function renderGlobalProgress() {
   if (ids.length === 0) {
     bar.style.display = 'none';
     jobsEl.innerHTML = '';
+    var abortBtn0 = document.getElementById('global-progress-abort-btn');
+    if (abortBtn0) abortBtn0.style.display = 'none';
     return;
   }
   bar.style.display = 'flex';
@@ -60,12 +62,13 @@ function renderGlobalProgress() {
     const j = _globalProgressJobs[id];
     const pct = Math.min(100, Math.round(j.pct));
     const safeId = id.replace(/["'<>]/g, '');
-    return '<div class="global-progress-row" data-job-id="' + safeId + '" style="display:flex;align-items:center;gap:6px;padding:2px 0">' +
-      '<span class="global-progress-icon" style="font-size:12px;flex-shrink:0">' + (j.icon || '⏳') + '</span>' +
-      '<span class="global-progress-label" style="font-size:11px;color:var(--accent);font-weight:600;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(j.label) + '</span>' +
-      '<div style="width:56px;height:4px;background:var(--border2);border-radius:2px;flex-shrink:0;overflow:hidden">' +
-      '<div class="global-progress-fill" style="height:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:' + pct + '%;transition:width 0.3s"></div></div>' +
-      '<span class="global-progress-pct" style="font-size:10px;color:var(--text3);min-width:24px;text-align:right">' + pct + '%</span>' +
+    return '<div class="global-progress-row" data-job-id="' + safeId + '">' +
+      '<span class="global-progress-icon">' + (j.icon || '⏳') + '</span>' +
+      '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">' +
+      '<span class="global-progress-label">' + escapeHtml(j.label) + '</span>' +
+      '<div style="width:100%;height:8px;background:var(--border2);border-radius:4px;overflow:hidden">' +
+      '<div class="global-progress-fill" style="width:' + pct + '%"></div></div></div>' +
+      '<span class="global-progress-pct">' + pct + '%</span>' +
       '</div>';
   }).join('');
 }
@@ -73,6 +76,8 @@ function renderGlobalProgress() {
 /** 작업 ID별 진행 표시 (요약/번역 등 동시에 여러 개 표시) */
 function showJobProgress(id, label, pct, icon) {
   _globalProgressJobs[id] = { label: label || '처리 중...', pct: pct == null ? 0 : pct, icon: icon || '⏳' };
+  var abortBtn1 = document.getElementById('global-progress-abort-btn');
+  if (abortBtn1) abortBtn1.style.display = 'inline-block';
   renderGlobalProgress();
 }
 
@@ -142,13 +147,21 @@ function hideLoading() {
   if (abortBtn) abortBtn.style.display = 'none';
   hideGlobalProgress(1000);
 }
-function abortCurrentTask() { if (_abortController) _abortController.abort(); hideLoading(); showToast('⏹ 작업 중단됨'); }
+function abortCurrentTask() {
+  if (typeof window !== 'undefined') window._aiTaskCancelled = true;
+  if (_abortController) _abortController.abort();
+  if (typeof window._cancelBgJob === 'function' && window._bgJob && window._bgJob.running) window._cancelBgJob();
+  Object.keys(_globalProgressJobs).forEach(function (id) { delete _globalProgressJobs[id]; });
+  renderGlobalProgress();
+  hideLoading();
+  showToast('⏹ AI 작업 중단됨');
+}
 
 /** 작업 완료 알림: header-current-filename 우측에 빨간딱지로 표시. 클릭 시 확인(색 제거) */
 function showJobCompleteBadge(label) {
   var el = document.getElementById('job-complete-badge');
   if (!el) return;
-  el.textContent = (label || '작업 완료') + ' · 확인하게';
+  el.textContent = (label || '작업 완료') + ' · 확인하세요';
   el.style.display = 'inline-flex';
   el.classList.remove('job-complete-seen');
   el.title = '요청하신 업무를 마무리했습니다. 클릭하면 확인됨';
@@ -180,11 +193,10 @@ function switchRightTab(tab) {
   rightTab = tab;
   document.querySelectorAll('.panel-right .panel-tab').forEach(el => el.classList.remove('active'));
   const activeBtn = document.getElementById('rtab-' + tab); if (activeBtn) activeBtn.classList.add('active');
-  ['mdeditor-panel', 'refs-panel', 'design-panel', 'gallery-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
-  if (tab === 'mdeditor') { document.getElementById('mdeditor-panel').style.display = 'flex'; mdLoadFromSlide(); }
-  else if (tab === 'sources') { switchRightTab('mdeditor'); return; }
-  else if (tab === 'refs') { document.getElementById('refs-panel').style.display = 'block'; renderRefsPanel(); }
-  else if (tab === 'design') { document.getElementById('design-panel').style.display = 'block'; updateDesignPanel(); }
+  ['refs-panel', 'design-panel', 'gallery-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  if (tab === 'sources') { switchRightTab('design'); return; }
+  if (tab === 'refs') { document.getElementById('refs-panel').style.display = 'block'; renderRefsPanel(); }
+  else if (tab === 'design') { document.getElementById('design-panel').style.display = 'flex'; if (typeof updateDesignPanel === 'function') updateDesignPanel(); }
   else if (tab === 'gallery') { document.getElementById('gallery-panel').style.display = 'block'; renderGallery(); }
 }
 

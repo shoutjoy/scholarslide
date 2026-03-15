@@ -7,6 +7,7 @@ const IDB_NAME = 'ScholarSlide_v3';
 const IDB_STORE = 'autosave';
 const IDB_KEY = 'current_workspace';
 const IDB_SNAPSHOTS = 'snapshots';
+const IDB_IMGBANK = 'imgbank';
 let _idb = null;
 let _autosaveTimer = null;
 let _autosaveDirty = false;
@@ -15,11 +16,15 @@ let _autosaveLastAt = null;
 function openIDB() {
   return new Promise((resolve, reject) => {
     if (_idb) { resolve(_idb); return; }
-    const req = indexedDB.open(IDB_NAME, 2);
+    const req = indexedDB.open(IDB_NAME, 3);
     req.onupgradeneeded = e => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
       if (!db.objectStoreNames.contains(IDB_SNAPSHOTS)) db.createObjectStore(IDB_SNAPSHOTS);
+      if (!db.objectStoreNames.contains(IDB_IMGBANK)) {
+        const os = db.createObjectStore(IDB_IMGBANK, { keyPath: 'id', autoIncrement: true });
+        os.createIndex('createdAt', 'createdAt', { unique: false });
+      }
     };
     req.onsuccess = e => { _idb = e.target.result; resolve(_idb); };
     req.onerror = e => reject(e.target.error);
@@ -71,6 +76,42 @@ async function idbDelete(store, key) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+async function imgBankGetAll() {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_IMGBANK, 'readonly');
+    const req = tx.objectStore(IDB_IMGBANK).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+async function imgBankAdd(entry) {
+  const db = await openIDB();
+  const item = {
+    dataURL: entry.dataURL || '',
+    name: entry.name || ('img_' + Date.now()),
+    createdAt: entry.createdAt || new Date().toISOString(),
+    prompt: entry.prompt != null ? String(entry.prompt) : ''
+  };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_IMGBANK, 'readwrite');
+    const req = tx.objectStore(IDB_IMGBANK).add(item);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+async function imgBankDelete(id) {
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_IMGBANK, 'readwrite');
+    tx.objectStore(IDB_IMGBANK).delete(id);
     tx.oncomplete = resolve;
     tx.onerror = e => reject(e.target.error);
   });
@@ -195,6 +236,7 @@ function applyWorkspaceSnapshot(snap) {
   if (rawText && typeof enableMainBtns === 'function') enableMainBtns();
   if (typeof applySlideZoom === 'function') applySlideZoom();
   if (typeof applySlideFontScale === 'function') applySlideFontScale();
+  if (typeof applySlideTextImgRatio === 'function') applySlideTextImgRatio();
   if (typeof renderLeftPanel === 'function') renderLeftPanel();
   if (typeof renderRefsPanel === 'function') renderRefsPanel();
   if (typeof window.updateHeaderSlideMode === 'function') window.updateHeaderSlideMode();

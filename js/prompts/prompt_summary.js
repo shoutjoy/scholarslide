@@ -1,6 +1,6 @@
 /**
  * ScholarSlide — 요약 프롬프트 관리
- * 학술 논문/전문자료 요약: 세밀도(세밀한/기본/핵심), 원문 1/3 이상 보존, 논문 구조·필요성·이론적 배경·APA 인용 반영
+ * 세밀한 요약: 주요 제목과 내용으로 상세 요약 (논문·교재·보고서 공통). 기본/핵심은 논문 구조·APA 인용 반영.
  */
 (function (global) {
   'use strict';
@@ -25,20 +25,32 @@
   }
 
   function getGranularityInstruction(granularity) {
-    var common = [
+    var commonAll = [
+      '원문이 여러 장(chapter)·섹션으로 구성된 경우, 제공된 전체 분량에 등장하는 모든 장과 섹션을 빠짐없이 요약할 것. 앞부분(1~2장)만 요약하지 말고, 원문 끝까지 균형 있게 모든 챕터를 포함할 것.'
+    ];
+    var commonResearch = [
       '논문·학술 자료이므로 논문 구조(서론-이론-방법-결과-논의)에 맞춰 요약할 것.',
       '연구의 필요성(배경·문제의식)을 명확히 서술할 것.',
       '이론적 배경에서는 각 이론·개념에 대한 설명을 빠짐없이 정리할 것.',
       '인용은 반드시 APA 양식으로 (저자, 연도) 또는 저자(연도) 형태를 유지할 것. 원문에 나온 모든 주요 인용을 누락하지 말 것.'
     ];
+    var commonGeneral = [
+      '원문의 주요 제목(헤딩)·장·절 구조를 그대로 유지하고, 각 제목 아래 내용을 상세히 요약할 것.',
+      '논문, 교재, 보고서 등 문서 유형에 관계없이 해당 원문의 구조와 흐름에 맞춰 요약할 것.',
+      '원문에 인용(저자, 연도 등)이 있으면 그 형식을 유지할 것.'
+    ];
     if (granularity === 'detail') {
       return [
         '【세밀한 요약】',
-        '원문 분량의 1/3 이상을 담을 만큼 충실히 요약할 것. 핵심 문장·수치·논리 전개를 가능한 한 보존할 것.',
+        '주요 제목과 내용으로 상세한 요약을 할 것. 원문의 제목·섹션 구조를 따라 각 항목별로 내용을 충실히 요약할 것.',
+        '원문 분량의 1/3 이상을 담을 만큼 상세히 적을 것. 핵심 문장·수치·논리 전개를 가능한 한 보존할 것.',
         '',
-        common.join('\n')
+        commonAll.join('\n'),
+        '',
+        commonGeneral.join('\n')
       ].join('\n');
     }
+    var common = commonAll.concat(commonResearch);
     if (granularity === 'basic') {
       return [
         '【기본 요약】',
@@ -59,7 +71,7 @@
     {
       id: 'detail',
       label: '세밀한 요약 (Detailed)',
-      systemInstruction: 'You are an academic summarization specialist. Preserve at least one-third of the source content, follow paper structure, and include all key citations in APA (Author, Year) format.',
+      systemInstruction: 'You are a summarization specialist. Create a detailed summary that follows the source document\'s main titles and sections. Preserve at least one-third of the content. Apply to any document type: research papers, textbooks, reports. Keep the original structure (chapters, headings, sections) and summarize the content under each heading in detail. If the source uses citations, preserve their format (e.g. APA Author, Year).',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');
         var titleInstr = getDocTitleInstruction((opts && opts.docTitle) || '');
@@ -67,14 +79,11 @@
           titleInstr,
           g,
           '',
-          '요약 시 반드시 포함할 항목:',
-          '1. 연구의 필요성·배경·문제 제기',
-          '2. 이론적 배경 — 관련 이론·선행연구를 개념 설명과 함께 정리, 인용(저자, 연도) 유지',
-          '3. 연구 방법·설계·분석',
-          '4. 연구 결과(핵심 발견·수치·해석)',
-          '5. 논의·시사점·한계·제언',
-          '',
-          '출력은 위 항목별로 제목을 붙여 구조화할 것. 원문의 인용은 APA 형식으로 그대로 반영할 것.',
+          '요약 시 지침:',
+          '1. 원문에 나온 주요 제목(장·절·소제목)을 그대로 사용하고, 각 제목 아래 해당 내용을 상세히 요약할 것.',
+          '2. 논문이면 연구 배경·이론·방법·결과·논의 순으로, 교재면 챕터·섹션 순서대로 원문 구조를 따를 것.',
+          '3. 핵심 개념·정의·수치·논리 전개를 빠짐없이 담을 것. 원문에 인용이 있으면 형식을 유지할 것.',
+          '4. 출력은 원문의 제목 계층(#, ##, ### 등)을 유지한 구조화된 형태로 할 것.',
           '',
           'Document:',
           text
@@ -152,7 +161,7 @@
     },
     {
       id: 'structural',
-      label: '구조 요약 (Structural)',
+      label: '교재 요약 (Textbook)',
       systemInstruction: 'You are an academic structure analyst. Summarize each section (necessity, theory, method, results, discussion) with clear theory explanations and APA citations.',
       getPrompt: function (text, opts) {
         var g = getGranularityInstruction((opts && opts.granularity) || 'detail');

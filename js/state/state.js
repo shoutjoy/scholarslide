@@ -2,7 +2,7 @@
    STATE
    ========================================================= */
 let rawText = '', fileName = '', slides = [], sources = [], activeSlideIndex = 0;
-let leftTab = 'summary', rightTab = 'mdeditor', summaryText = '', presentationScript = [];
+let leftTab = 'summary', rightTab = 'design', summaryText = '', presentationScript = [];
 let slideStyle = 'light', presIndex = 0, presNotesVisible = false;
 let writingStyle = 'academic-da'; // 'academic-da' | 'academic-im' | 'polite'
 let _abortController = null;

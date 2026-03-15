@@ -10,6 +10,24 @@
   window._manuscriptSubView = window._manuscriptSubView || 'content'; // 'content' | 'history'
   window._selectedManuscriptHistoryId = window._selectedManuscriptHistoryId || null;
 
+  /** 슬라이드 비율 값 → CSS aspect-ratio */
+  var SLIDE_RATIO_MAP = {
+    '16:9': '16/9',
+    '4:3': '4/3',
+    'a4_landscape': '297/210',
+    '3:4': '3/4',
+    '9:16': '9/16',
+    'a4_portrait': '210/297',
+    '1:1': '1'
+  };
+
+  window.applySlideAspectRatio = function () {
+    var raw = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
+    var ratio = SLIDE_RATIO_MAP[raw] || '16/9';
+    var root = document.documentElement || document.body;
+    if (root && root.style) root.style.setProperty('--slide-aspect-ratio', ratio);
+  };
+
   /**
    * 슬라이드 배열 → 마크다운 원고 문자열
    */
@@ -54,6 +72,9 @@
     if (!item && typeof window.getSlideHistory === 'function') {
       item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && typeof window.getAllSlideHistory === 'function') {
+      item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (!item) return;
     window._selectedManuscriptHistoryId = id;
     if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
@@ -74,12 +95,30 @@
     if (!item && typeof window.getSlideHistory === 'function') {
       item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && typeof window.getAllSlideHistory === 'function') {
+      item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (!item || !item.slides || !item.slides.length) {
       if (typeof showToast === 'function') showToast('⚠️ 저장된 슬라이드가 없습니다.');
       return;
     }
-    var restored = item.slides.map(function (s, i) {
-      return { id: s.id != null ? s.id : i, title: s.title || '', bullets: s.bullets || [], notes: s.notes || '', visPrompt: s.visPrompt || '', isCover: s.isCover || false, imageUrl: s.imageUrl || null };
+    var restored = [];
+    try {
+      restored = JSON.parse(JSON.stringify(item.slides || []));
+    } catch (e) {
+      restored = (item.slides || []).map(function (s, i) { return Object.assign({ id: i }, s || {}); });
+    }
+    restored = restored.map(function (s, i) {
+      return Object.assign({
+        id: s && s.id != null ? s.id : i,
+        title: '',
+        bullets: [],
+        notes: '',
+        visPrompt: '',
+        isCover: false,
+        imageUrl: null,
+        imageUrl2: null
+      }, s || {});
     });
     window.setSlides(restored);
     if (typeof window.setActiveSlideIndex === 'function') window.setActiveSlideIndex(0);
@@ -264,12 +303,15 @@
     if (!item && id && typeof window.getSlideHistory === 'function') {
       item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && id && typeof window.getAllSlideHistory === 'function') {
+      item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (item) {
       fileName = item.fileName || '원고';
-      if (item.type === 'slides' && item.manuscriptContent) {
+      if ((item.type === 'slides' || item.type === 'all_slides') && item.manuscriptContent) {
         text = item.manuscriptContent;
-        title = '슬라이드 생성';
-        subtitle = '📋 슬라이드생성';
+        title = item.type === 'all_slides' ? 'All Slide 생성' : '슬라이드 생성';
+        subtitle = item.type === 'all_slides' ? '🧠 All Slide생성' : '📋 슬라이드생성';
       } else if ((item.type === 'script' || !item.type) && item.presentationScript && item.presentationScript.length) {
         text = scriptToMarkdown(item.presentationScript, item.slides);
         title = '발표 원고';
@@ -277,7 +319,7 @@
       }
     }
     if (!text || !text.trim()) {
-      if (currentView === 'slides') {
+      if (currentView === 'slides' || currentView === 'allslides') {
         window.openSlidesInNewWindow();
         return;
       }
@@ -340,11 +382,25 @@
       + '<option value="workshop" ' + (slideGenType === 'workshop' ? 'selected' : '') + '>H. 워크숍형 (Practical Action)</option>'
       + '<option value="auto_visual" ' + (slideGenType === 'auto_visual' ? 'selected' : '') + '>I. AII 자동 시각화형 (Auto Visualizer)</option></select></div>';
 
+    var slideAspectRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
+    var slideRatioRow = '<div style="margin-bottom:8px"><label class="label">슬라이드 비율</label>'
+      + '<select class="control" id="slide-aspect-ratio" style="font-size:11px;width:100%;margin-top:4px" onchange="var v=this.value;if(typeof localStorage!==\'undefined\')localStorage.setItem(\'ss_slide_aspect_ratio\',v);if(typeof window.applySlideAspectRatio===\'function\')window.applySlideAspectRatio();">'
+      + '<option value="16:9" ' + (slideAspectRatio === '16:9' ? 'selected' : '') + '>16:9</option>'
+      + '<option value="4:3" ' + (slideAspectRatio === '4:3' ? 'selected' : '') + '>4:3</option>'
+      + '<option value="a4_landscape" ' + (slideAspectRatio === 'a4_landscape' ? 'selected' : '') + '>A4 가로</option>'
+      + '<option value="3:4" ' + (slideAspectRatio === '3:4' ? 'selected' : '') + '>3:4</option>'
+      + '<option value="9:16" ' + (slideAspectRatio === '9:16' ? 'selected' : '') + '>9:16</option>'
+      + '<option value="a4_portrait" ' + (slideAspectRatio === 'a4_portrait' ? 'selected' : '') + '>A4 세로</option>'
+      + '<option value="1:1" ' + (slideAspectRatio === '1:1' ? 'selected' : '') + '>1:1</option>'
+      + '</select></div>';
     var slideCountRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>'
       + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="200" style="width:64px;text-align:center"/>'
       + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>';
+    var slideRangeMin = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_range_default_min')) || '';
+    var slideRangeMax = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_range_default_max')) || '';
+    var slideRangeDefault = (slideRangeMin && slideRangeMax) ? (slideRangeMin + '-' + slideRangeMax) : '';
     var slideRangeRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><label class="label" style="margin:0;white-space:nowrap">페이지 범위</label>'
-      + '<input type="text" class="control" id="slide-range-val" placeholder="예: 12-24 (비우면 자동)" style="width:160px;font-size:11px"/>'
+      + '<input type="text" class="control" id="slide-range-val" placeholder="예: 12-24 (비우면 자동)" value="' + esc(slideRangeDefault) + '" style="width:160px;font-size:11px"/>'
       + '<span style="font-size:10px;color:var(--text3)">AII 버튼에서 문서량 기반 자동 조정</span></div>';
 
     var slideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
@@ -368,9 +424,11 @@
 
     var toggleActiveScript = view === 'script' ? ' active' : '';
     var toggleActiveSlides = view === 'slides' ? ' active' : '';
+    var toggleActiveAllSlides = view === 'allslides' ? ' active' : '';
     var row5 = '<div class="translate-row" style="margin-bottom:8px">'
       + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveScript + '" onclick="setManuscriptView(\'script\')">발표원고</button>'
       + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveSlides + '" onclick="setManuscriptView(\'slides\')">슬라이드생성</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveAllSlides + '" onclick="setManuscriptView(\'allslides\')">All Slide생성</button>'
       + '</div>';
 
     var selectedId = window._selectedManuscriptHistoryId || null;
@@ -381,6 +439,9 @@
       }
       if (!selectedItem && typeof window.getSlideHistory === 'function') {
         selectedItem = (window.getSlideHistory() || []).find(function (h) { return h.id === selectedId; });
+      }
+      if (!selectedItem && typeof window.getAllSlideHistory === 'function') {
+        selectedItem = (window.getAllSlideHistory() || []).find(function (h) { return h.id === selectedId; });
       }
     }
 
@@ -407,7 +468,7 @@
 
     var contentFromSelected = '';
     if (selectedItem && subView === 'content') {
-      if (selectedItem.type === 'slides' && selectedItem.manuscriptContent) {
+      if ((selectedItem.type === 'slides' || selectedItem.type === 'all_slides') && selectedItem.manuscriptContent) {
         contentFromSelected = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">' + esc(selectedItem.manuscriptContent) + '</div>';
       } else if ((selectedItem.type === 'script' || selectedItem.type === undefined) && selectedItem.presentationScript && selectedItem.presentationScript.length) {
         var scriptPartsSel = [];
@@ -422,9 +483,9 @@
       }
     }
 
-    /* 생성내용: 현재 탭(발표원고/슬라이드생성)에 맞는 것만 표시. 슬라이드생성에는 슬라이드만, 발표원고에는 원고만 */
+    /* 생성내용: 현재 탭(발표원고/슬라이드생성/All Slide생성)에 맞는 것만 표시 */
     var useSelectedForContent = selectedItem && subView === 'content' &&
-      (view === 'script' ? (selectedItem.type === 'script' || selectedItem.type === undefined) : selectedItem.type === 'slides');
+      (view === 'script' ? (selectedItem.type === 'script' || selectedItem.type === undefined) : (selectedItem.type === 'slides' || selectedItem.type === 'all_slides'));
 
     var contentHistory = '';
     if (subView === 'history') {
@@ -439,16 +500,27 @@
         historyList = window.getSlideHistory() || [];
         clearFn = 'clearSlideHistory';
         removeFn = 'removeFromSlideHistory';
+      } else if (view === 'allslides' && typeof window.getAllSlideHistory === 'function') {
+        historyList = window.getAllSlideHistory() || [];
+        clearFn = 'clearAllSlideHistory';
+        removeFn = 'removeFromAllSlideHistory';
       }
       if (historyList.length) {
         contentHistory = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="' + clearFn + '(); _selectedManuscriptHistoryId=null; renderLeftPanel();">일괄 지우기</button></div><div style="display:flex;flex-direction:column;gap:6px">';
         for (var hi = 0; hi < historyList.length; hi++) {
           var h = historyList[hi];
           var created = h.createdAt ? new Date(h.createdAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-          var displayTitle = h.displayTitle || ((h.fileName || '제목 없음') + (h.type === 'slides' ? ' 슬라이드' : ' 발표 원고'));
+          var displayTitle = h.displayTitle || ((h.fileName || '제목 없음') + (h.type === 'all_slides' ? ' All Slide' : (h.type === 'slides' ? ' 슬라이드' : ' 발표 원고')));
+          var badges = '';
+          if (h && h.isBackupBeforeRegeneration) badges += '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;font-size:9px;background:rgba(148,163,184,.25);color:var(--text2)">생성 전 백업</span>';
+          if (h && h.isManualSnapshot) badges += '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;font-size:9px;background:rgba(79,142,247,.2);color:var(--accent)">수동 저장</span>';
           var isSelected = h.id === selectedId;
           var itemStyle = 'padding:8px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:8px' + (isSelected ? ';border-color:var(--accent);background:var(--accent-glow)' : '');
-          contentHistory += '<div class="manuscript-history-item" data-id="' + esc(h.id) + '" style="' + itemStyle + '" onclick="selectManuscriptHistoryItem(\'' + String(h.id || '').replace(/'/g, "\\'") + '\')"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">' + esc(displayTitle) + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(created) + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); ' + removeFn + '(\'' + String(h.id || '').replace(/'/g, "\\'") + '\'); if(_selectedManuscriptHistoryId===\'' + String(h.id || '').replace(/'/g, "\\'") + '\')_selectedManuscriptHistoryId=null; renderLeftPanel();" title="삭제">&#10005;</button></div>';
+          var safeId = String(h.id || '').replace(/'/g, "\\'");
+          var onClickExpr = (view === 'slides' || view === 'allslides')
+            ? "restoreManuscriptToSlides('" + safeId + "')"
+            : "selectManuscriptHistoryItem('" + safeId + "')";
+          contentHistory += '<div class="manuscript-history-item" data-id="' + esc(h.id) + '" style="' + itemStyle + '" onclick="' + onClickExpr + '"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">' + esc(displayTitle) + badges + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(created) + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); ' + removeFn + '(\'' + safeId + '\'); if(_selectedManuscriptHistoryId===\'' + safeId + '\')_selectedManuscriptHistoryId=null; renderLeftPanel();" title="삭제">&#10005;</button></div>';
         }
         contentHistory += '</div>';
         var sel = selectedItem || (selectedId ? historyList.find(function (h) { return h.id === selectedId; }) : null);
@@ -460,16 +532,16 @@
           + '<button type="button" class="btn btn-ghost btn-xs"' + (canView ? '' : ' disabled') + ' onclick="openManuscriptInNewWindow(_selectedManuscriptHistoryId)" title="새창보기에 띄워서 보기">새창보기</button>'
           + '</div>';
       } else {
-        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">' + (view === 'script' ? '발표 생성' : '슬라이드 생성') + ' 히스토리가 없습니다.</p>';
+        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">' + (view === 'script' ? '발표 생성' : (view === 'allslides' ? 'All Slide 생성' : '슬라이드 생성')) + ' 히스토리가 없습니다.</p>';
       }
     }
 
     var mainContent = subView === 'history' ? contentHistory : (useSelectedForContent ? contentFromSelected : (view === 'script' ? contentScript : contentSlides));
 
-    var labelContent = view === 'script' ? '발표 상세 내용' : '슬라이드 생성 내용';
-    var labelHistory = view === 'script' ? '발표 생성 히스토리' : '슬라이드 생성히스토리';
-    var labelNewWindow = view === 'script' ? '발표 새창보기' : '슬라이드 새창보기';
-    var labelFullscreen = view === 'script' ? '발표 전체화면' : '슬라이드 전체화면';
+    var labelContent = view === 'script' ? '발표 상세 내용' : (view === 'allslides' ? 'All Slide 생성 내용' : '슬라이드 생성 내용');
+    var labelHistory = view === 'script' ? '발표 생성 히스토리' : (view === 'allslides' ? 'All Slide 생성히스토리' : '슬라이드 생성히스토리');
+    var labelNewWindow = view === 'script' ? '발표 새창보기' : (view === 'allslides' ? 'All Slide 새창보기' : '슬라이드 새창보기');
+    var labelFullscreen = view === 'script' ? '발표 전체화면' : (view === 'allslides' ? 'All Slide 전체화면' : '슬라이드 전체화면');
 
     var row6 = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
       + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'content' ? ' active' : '') + '" onclick="setManuscriptSubView(\'content\')">' + labelContent + '</button>'
@@ -484,6 +556,7 @@
 
     return fileBadge
       + slideGenTypeRow
+      + slideRatioRow
       + slideCountRow
       + slideGenButtonRow
       + slideRangeRow
@@ -499,4 +572,6 @@
   window.buildManuscriptTabContent = buildManuscriptTabContent;
   window.setManuscriptView = setManuscriptView;
   window.setManuscriptSubView = setManuscriptSubView;
+
+  if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio();
 })();

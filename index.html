@@ -37,6 +37,13 @@
 <!-- Toast -->
 <div id="toast"></div>
 
+<!-- 백그라운드 진행률: 왼쪽 하단 플로팅 패널 (크게 표시) -->
+<div id="global-progress-bar" class="global-progress-panel" style="display:none">
+  <div class="global-progress-panel-title">백그라운드 작업</div>
+  <div id="global-progress-jobs"></div>
+  <button id="global-progress-abort-btn" class="btn btn-ghost btn-sm global-progress-abort" style="display:none" onclick="abortCurrentTask()">⏹ 중단</button>
+</div>
+
 <!-- ── PRESENTATION MODE ── -->
 <div id="presentation-mode">
   <div class="pres-main-row">
@@ -57,7 +64,7 @@
     <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(10)" title="폰트 확대">+</button>
     <div class="pres-sep"></div>
     <button class="pres-btn" onclick="presNav(-1)">◀ 이전</button>
-    <span class="pres-counter" id="pres-counter">1 / 1</span>
+    <span class="pres-counter" id="pres-counter" onclick="promptPresJump()" title="페이지 번호 입력하여 이동">1 / 1</span>
     <button class="pres-btn" onclick="presNav(1)">다음 ▶</button>
     <button class="pres-btn" onclick="togglePresNotes()">📝 노트</button>
     <button class="pres-btn" style="color:var(--danger)" onclick="exitPresentation()">✕ 종료</button>
@@ -107,6 +114,27 @@
     <div class="modal-footer" style="justify-content:flex-end">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('confirm-modal')">취소</button>
       <button class="btn btn-primary btn-sm" id="confirm-ok-btn">✓ 실행</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 배치 일괄적용: 기준 페이지 선택 ── -->
+<div id="layout-ref-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'layout-ref-modal')">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">📐 배치 일괄적용 — 기준 페이지</div>
+      <button class="modal-close" onclick="closeModal('layout-ref-modal')">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:12px">선택한 페이지의 창 크기·배치를 모든 슬라이드에 동일하게 적용합니다.</p>
+      <label class="label" style="margin-bottom:6px">기준이 될 페이지</label>
+      <select class="control" id="layout-ref-page-select" style="width:100%;font-size:13px">
+        <!-- 옵션은 JS에서 채움 -->
+      </select>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('layout-ref-modal')">취소</button>
+      <button class="btn btn-primary btn-sm" id="layout-ref-apply-btn">✓ 적용</button>
     </div>
   </div>
 </div>
@@ -362,6 +390,7 @@
           <button class="btn btn-primary btn-sm" onclick="applyCrop()">✂ 크롭 적용</button>
           <span style="flex:1"></span>
           <button class="btn btn-ghost btn-sm" onclick="downloadCroppedImage()">⬇ 저장</button>
+          <button class="btn btn-ghost btn-sm" onclick="imgBankSaveCurrent()" title="IndexedDB에 저장">inDB 저장</button>
           <button class="btn btn-ghost btn-sm" style="color:var(--warning)" onclick="resetToOriginal()">↺ 원본</button>
         </div>
 
@@ -374,16 +403,14 @@
         <!-- Hidden orig-preview-img kept for JS compat -->
         <img id="orig-preview-img" style="display:none"/>
 
-        <!-- AI Image Edit section -->
-        <details style="margin-top:12px">
-          <summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--accent2);padding:4px 0;user-select:none">🤖 AI 이미지 재생성 (Gemini) ▸</summary>
-          <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px">
-            <div style="font-size:10px;color:var(--text3)">프롬프트로 이미지를 AI가 재생성합니다 (Gemini Flash Image Generation)</div>
-            <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
-            <button class="btn btn-secondary btn-sm" onclick="aiEditImage()" id="img-ai-gen-btn" style="align-self:flex-start">🎨 AI 재생성</button>
-            <div id="img-ai-status" style="font-size:10px;color:var(--text3)"></div>
-          </div>
-        </details>
+      </div>
+      <!-- AI Image Edit section (항상 표시: 빈 상태에서도 바로 생성 가능) -->
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:700;color:var(--accent2)">🤖 AI 이미지 재생성 (Gemini)</div>
+        <div style="font-size:10px;color:var(--text3)">빈 상태에서도 프롬프트로 새 이미지를 생성할 수 있습니다. 기존 이미지가 있으면 편집 모드로 동작합니다.</div>
+        <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
+        <button class="btn btn-secondary btn-sm" onclick="aiEditImage()" id="img-ai-gen-btn" style="align-self:flex-start">🎨 AI 재생성</button>
+        <div id="img-ai-status" style="font-size:10px;color:var(--text3)"></div>
       </div>
     </div>
     <div class="modal-footer" style="justify-content:flex-end;flex-shrink:0">
@@ -391,6 +418,24 @@
       <button class="btn btn-primary btn-sm" id="img-apply-btn" onclick="applyImageToSlide()">✓ 슬라이드에 삽입</button>
     </div>
   </div>
+</div>
+
+<!-- ── IMGBANK MODAL (inDB 갤러리, 헤더 드래그 이동) ── -->
+<div id="imgbank-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'imgbank-modal')">
+  <div id="imgbank-modal-box" class="modal-box modal-wide" onclick="event.stopPropagation()" style="max-width:92vw;max-height:88vh;width:900px;display:flex;flex-direction:column">
+    <div class="modal-header imgbank-modal-drag" id="imgbank-modal-drag">
+      <div class="modal-title">🖼 imgBank (inDB)</div>
+      <button class="modal-close" onclick="closeModal('imgbank-modal')">&#x2715;</button>
+    </div>
+    <div class="modal-body" style="flex:1;min-height:0;display:flex;flex-direction:column;padding:0">
+      <div id="imgbank-modal-content" style="flex:1;min-height:320px;display:flex;flex-direction:column"></div>
+    </div>
+  </div>
+</div>
+
+<!-- imgBank 앱 내 크게보기 (프리뷰 이미지 클릭 시) -->
+<div id="imgbank-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:10000;align-items:center;justify-content:center;cursor:pointer;flex-direction:column" onclick="window._imgBankCloseLightbox && window._imgBankCloseLightbox()">
+  <img id="imgbank-lightbox-img" src="" alt="" style="max-width:95vw;max-height:95vh;object-fit:contain;pointer-events:none" />
 </div>
 
 <!-- ── EXPORT PPTX MODAL ── -->
@@ -436,13 +481,9 @@
     <div class="badge">v4.35 Pro</div>
     <span id="header-current-filename" class="header-filename" title="현재 열린 파일"></span>
     <span id="job-complete-badge" class="job-complete-badge" onclick="clearJobCompleteBadge()" title="요청하신 업무를 마무리했습니다. 클릭하면 확인됨" style="display:none"></span>
-    <!-- 전역 백그라운드 진행률 표시 (다중 작업: 요약·번역 등 모두 표시) -->
-    <div id="global-progress-bar" style="display:none;flex-direction:column;align-items:flex-start;gap:2px;margin-left:14px;padding:6px 12px;background:rgba(79,142,247,0.1);border:1px solid rgba(79,142,247,0.3);border-radius:12px;max-width:320px">
-      <div id="global-progress-jobs"></div>
-      <button id="global-progress-abort-btn" class="btn btn-ghost btn-xs" style="display:none;margin-top:4px;color:var(--danger)" onclick="abortCurrentTask()">⏹ 중단</button>
-    </div>
   </div>
   <div class="header-actions">
+    <span id="app-theme-toggle" style="display:inline-flex;align-items:center;margin-right:8px" title="앱 다크/라이트 모드"></span>
     <span class="header-slide-mode" style="display:inline-flex;align-items:center;gap:2px;margin-right:6px" title="슬라이드 모드">
       <button class="btn btn-ghost btn-sm header-mode-btn active" id="header-slide-mode-light" onclick="setSlideStyle('light')" title="라이트 모드">☀️ 라이트</button>
       <button class="btn btn-ghost btn-sm header-mode-btn" id="header-slide-mode-dark" onclick="setSlideStyle('dark')" title="다크 모드">🌙 다크</button>
@@ -455,6 +496,7 @@
     </button>
     <!-- 자동저장 상태 표시 -->
     <span id="autosave-indicator" title="자동저장 상태" style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px;white-space:nowrap;padding:0 4px"></span>
+    <button class="btn btn-ghost btn-sm" onclick="openImgBankModal()" title="이미지 DB (inDB)">🖼 imgBank</button>
     <button class="btn btn-ghost btn-sm" id="save-session-btn" onclick="openProjectModal()" disabled>💾 프로젝트</button>
     <button class="btn btn-ghost btn-sm" onclick="openLoadModal()">📂 불러오기</button>
     <button class="btn btn-ghost btn-sm" id="present-btn" onclick="startPresentation()" disabled title="처음부터 발표 (F5)">▶ 발표</button>
@@ -504,10 +546,11 @@
           <button onclick="changeSlideFontScale(10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="폰트 확대">+</button>
         </div>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" id="fetch-sources-btn" onclick="switchRightTab('mdeditor')" disabled>📝 MD에디터</button>
-        <button class="btn btn-ghost btn-sm" id="gen-script-btn" onclick="askThenGenerateScript()" disabled>📝 발표 원고</button>
+      <div class="center-toolbar-actions" style="display:flex;gap:4px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" id="ext-present-btn" title="외부 창에서 발표보기" style="display:none">🖥 외부 발표</button>
+        <button class="btn btn-ghost btn-sm" id="slide-sync-btn" onclick="toggleSlideSync()" disabled title="내부/외부 슬라이드 번호 동기화">🔗 동기화 OFF</button>
+        <button class="btn btn-ghost btn-sm" id="save-slide-history-btn" onclick="saveCurrentSlidesToHistory()" disabled title="이미지 추가/삭제 등 편집한 슬라이드를 슬라이드 히스토리에 저장">💾 편집 슬라이드 저장</button>
+        <button class="btn btn-ghost btn-sm" id="apply-layout-all-btn" onclick="applyCurrentSlideLayoutToAll()" disabled title="기준 페이지를 선택한 뒤, 그 페이지의 창 크기·배치를 모든 슬라이드에 일괄 적용">📐 배치 일괄적용</button>
         <button class="btn btn-primary btn-sm" id="visualize-btn" onclick="askThenVisualizeAll()" disabled>✨ 일괄시각화</button>
         <button class="btn btn-ghost btn-sm" id="slide-reset-btn" onclick="slideReset()" disabled>🔄 슬라이드 초기화</button>
       </div>
@@ -525,106 +568,12 @@
   <div class="resize-handle" id="rh-cr" onmousedown="startResize(event,'cr')"></div>
   <section class="panel-right" id="panel-right">
     <div class="panel-tabs">
-      <button class="panel-tab active" onclick="switchRightTab('mdeditor')" id="rtab-mdeditor">MDeditor</button>
+      <button class="panel-tab active" onclick="switchRightTab('design')" id="rtab-design">디자인</button>
       <button class="panel-tab" onclick="switchRightTab('refs')" id="rtab-refs">참고문헌</button>
-      <button class="panel-tab" onclick="switchRightTab('design')" id="rtab-design">디자인</button>
       <button class="panel-tab" onclick="switchRightTab('gallery')" id="rtab-gallery">갤러리</button>
+      <button class="panel-tab" onclick="openImgBankModal()" id="rtab-imgbank" title="이미지 DB (inDB)">🖼 imgBank</button>
     </div>
     <div class="panel-content" id="right-panel-content">
-
-      <!-- MDeditor panel -->
-      <div id="mdeditor-panel" style="display:flex;flex-direction:column;height:100%;padding:14px;box-sizing:border-box">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-shrink:0">
-          <span style="font-size:11px;font-weight:700;color:var(--text2)">📝 MD 에디터</span>
-          <div class="md-page-indicator" id="md-page-indicator-top" title="현재 편집 중인 슬라이드">-/-</div>
-          <div style="display:flex;gap:4px">
-            <button class="btn btn-ghost btn-xs" onclick="mdLoadFromSlide()" title="하단에서 선택한 슬라이드를 MD 에디터에 로드">↓ 로드</button>
-            <button class="btn btn-primary btn-xs" onclick="mdApplyToSlide()" title="슬라이드에 적용 (Ctrl+Enter)">✓ 적용</button>
-          </div>
-        </div>
-        <!-- Toolbar Row 1: Text styling -->
-        <div class="md-toolbar" style="flex-shrink:0">
-          <button class="md-btn" onclick="mdFmt('bold')" title="굵게 (Ctrl+B)"><b>B</b></button>
-          <button class="md-btn" onclick="mdFmt('italic')" title="기울임 (Ctrl+I)"><i>I</i></button>
-          <button class="md-btn" onclick="mdFmt('strike')" title="취소선"><s>S</s></button>
-          <span class="md-sep"></span>
-          <button class="md-btn" onclick="mdFmt('h1')" title="제목 1 (H1 — # 텍스트)">H1</button>
-          <button class="md-btn" onclick="mdFmt('h2')" title="제목 2 (H2 — ## 텍스트)">H2</button>
-          <button class="md-btn" onclick="mdFmt('h3')" title="제목 3 (H3 — ### 텍스트)">H3</button>
-          <span class="md-sep"></span>
-          <button class="md-btn" onclick="mdFmt('ul')" title="글머리 목록 (- 항목 또는 * 항목)">•</button>
-          <button class="md-btn" onclick="mdFmt('ol')" title="번호 목록 (1. 항목)">1.</button>
-          <span class="md-sep"></span>
-          <button class="md-btn" onclick="mdFmt('code')" title="인라인 코드 (`코드`) 또는 코드블록 (```언어```)"><code style="font-size:9px">{}</code></button>
-          <button class="md-btn" onclick="mdFmt('codeblock')" title="코드 블록 (```언어 ... ```)">```</button>
-          <span class="md-sep"></span>
-          <button class="md-btn md-btn-insert" onclick="openLinkModal()" title="링크 삽입 — 표시 텍스트, URL, 새 창 여부 설정">🔗 링크 삽입</button>
-          <button class="md-btn md-btn-insert" onclick="openYoutubeModal()" title="영상 삽입 — YouTube URL을 붙여넣어 슬라이드에 동영상 임베드">▶ 영상 삽입</button>
-        </div>
-        <!-- Toolbar Row 2: Color + Font size -->
-        <div class="md-toolbar md-toolbar-row2" style="flex-shrink:0">
-          <!-- Color swatches -->
-          <div class="md-color-swatches">
-            <div class="md-swatch" style="background:#f87171" onclick="mdFmt('color','#f87171')" title="빨강 (#f87171)"></div>
-            <div class="md-swatch" style="background:#60a5fa" onclick="mdFmt('color','#60a5fa')" title="파랑 (#60a5fa)"></div>
-            <div class="md-swatch" style="background:#34d399" onclick="mdFmt('color','#34d399')" title="초록 (#34d399)"></div>
-            <div class="md-swatch" style="background:#fbbf24" onclick="mdFmt('color','#fbbf24')" title="노랑 (#fbbf24)"></div>
-            <div class="md-swatch" style="background:#e879f9" onclick="mdFmt('color','#e879f9')" title="보라 (#e879f9)"></div>
-            <div class="md-swatch" style="background:#fff" onclick="mdFmt('color','#ffffff')" title="흰색 (#ffffff)"></div>
-            <div class="md-swatch md-swatch-picker" title="사용자 지정 색상 선택">
-              <input type="color" id="md-color-picker" value="#4f8ef7" onchange="mdFmt('color',this.value)" title="색상 선택기 — 원하는 색을 직접 선택"/>
-              <span>🎨</span>
-            </div>
-          </div>
-          <span class="md-sep"></span>
-          <!-- Font size control: - [num] + with dropdown -->
-          <div class="md-fontsize-ctrl">
-            <button class="md-size-btn" onclick="mdAdjustFontSize(-1)" title="글자 크기 1pt 감소">−</button>
-            <div class="md-size-num" id="md-size-display" title="더블클릭하면 직접 입력 가능" ondblclick="mdSizeInputMode()">12</div>
-            <input type="number" id="md-size-input" class="md-size-input" value="12" min="7" max="80" style="display:none" onblur="mdSizeConfirm()" onkeydown="if(event.key==='Enter')mdSizeConfirm()"/>
-            <button class="md-size-btn" onclick="mdAdjustFontSize(1)" title="글자 크기 1pt 증가">＋</button>
-            <select class="md-select md-size-select" id="md-size-select" onchange="mdSelectFontSize(this.value)" title="자주 쓰는 글자 크기 선택">
-              <option value="">pt</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-              <option value="9">9</option>
-              <option value="10">10</option>
-              <option value="12" selected>12</option>
-              <option value="14">14</option>
-              <option value="16">16</option>
-              <option value="18">18</option>
-              <option value="20">20</option>
-              <option value="24">24</option>
-              <option value="28">28</option>
-              <option value="36">36</option>
-              <option value="48">48</option>
-            </select>
-            <button class="md-btn" onclick="mdApplyFontSize()" title="선택한 텍스트에 현재 글자 크기 적용" style="font-size:9px;padding:2px 6px">적용</button>
-          </div>
-        </div>
-        <!-- Editor/Preview Split (resizable) -->
-        <textarea id="md-editor-ta" class="control md-editor-ta-full"
-          placeholder="슬라이드를 선택 후 [로드] → 편집 → [적용]&#10;&#10;# 제목 (H1)&#10;## 소제목 (H2)&#10;**굵게** *기울임*&#10;- 글머리 목록 (* 도 가능)&#10;1. 번호 목록&#10;`인라인 코드`&#10;```js&#10;코드 블록&#10;```&#10;[링크텍스트](URL)&#10;youtube:https://youtu.be/..."
-          oninput="mdUpdatePreview()" onkeydown="if(event.ctrlKey && event.key==='Enter'){event.preventDefault();mdApplyToSlide();}"></textarea>
-
-        <div class="md-splitter" id="md-splitter" title="드래그하여 에디터/미리보기 높이 조절"></div>
-
-        <!-- V4.1 Preview + Apply model -->
-        <div id="md-preview-wrap" style="margin-top:10px;flex-shrink:0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:11px;font-weight:700;color:var(--text2)">👀 미리보기</span>
-            <div style="display:flex;align-items:center;gap:6px">
-              <div class="md-page-indicator" id="md-page-indicator-bottom" title="현재 편집 중인 슬라이드">-/-</div>
-              <div class="md-ws-indicator" id="md-ws-indicator" title="현재 슬라이드의 남는 여백(대략)">여백 -</div>
-            </div>
-            <button class="btn btn-ghost btn-xs" onclick="mdLoadFromSlide(); mdUpdatePreview();" title="슬라이드에서 다시 로드">↻ 새로고침</button>
-          </div>
-          <div id="md-preview" class="md-preview-box"></div>
-          <div style="font-size:10px;color:var(--text3);margin-top:6px">입력은 에디터에서 설계하고, <b>✓ 적용</b>을 눌렀을 때만 슬라이드가 변경됩니다.</div>
-        </div>
-
-        <div style="font-size:9px;color:var(--text3);margin-top:4px;flex-shrink:0">마크다운: **굵게** *기울임* ## 제목 - 목록 1. 번호 `코드`</div>
-      </div>
 
       <!-- refs panel -->
       <div id="refs-panel" style="display:none">
@@ -640,8 +589,8 @@
         <div id="refs-list"><p class="placeholder-msg">참고문헌을 추가하세요.</p></div>
       </div>
 
-      <!-- design panel -->
-      <div id="design-panel" style="display:none">
+      <!-- design panel (기본 표시) -->
+      <div id="design-panel" style="display:flex;flex-direction:column;height:100%">
         <p class="placeholder-msg">슬라이드를 선택하면<br>디자인 옵션이 나타납니다.</p>
       </div>
 
@@ -651,6 +600,9 @@
         <p class="placeholder-msg" id="gallery-placeholder">생성된 이미지가 없습니다.</p>
         <div class="gallery-grid" id="gallery-grid"></div>
       </div>
+
+      <!-- imgBank panel: inDB gallery + preview with zoom/pan -->
+      <div id="imgbank-panel" style="display:none;flex-direction:column;height:100%;padding:0 8px;box-sizing:border-box"></div>
 
       <!-- AI image history panel (hidden, shown inside design) -->
       <div id="ai-img-history-list" style="display:none"></div>
@@ -670,9 +622,11 @@
 </div>
 <script src="js/core/state.js"></script>
 <script src="js/core/helpers.js"></script>
+<script src="js/ui/app-theme.js"></script>
 <script src="js/core/api-keys.js"></script>
 <script src="js/core/prompt-store.js"></script>
 <script src="js/core/storage.js"></script>
+<script src="js/features/imgbank.js"></script>
 <script src="js/features/references.js"></script>
 <script src="js/upload/file-upload.js"></script>
   <script src="js/features/refs-viewer.js"></script>
@@ -752,7 +706,7 @@
             <input type="radio" name="summary-granularity" value="key" style="accent-color:var(--accent)"/> 핵심 요약
           </label>
         </div>
-        <p style="font-size:10px;color:var(--text3);margin-top:4px">세밀한: 원문 1/3 이상·논문 구조·이론·APA 인용 유지 (기본값)</p>
+        <p style="font-size:10px;color:var(--text3);margin-top:4px">세밀한: 주요 제목과 내용으로 상세 요약 (논문·교재 공통, 기본값)</p>
       </div>
       <div>
         <label class="label">요약 방식</label>
@@ -769,6 +723,11 @@
       <div id="summary-slide-count-row" style="display:none">
         <label class="label">슬라이드 수</label>
         <input type="number" class="control" id="summary-options-slide-count" value="12" min="5" max="30" style="width:80px;text-align:center"/>
+      </div>
+      <div>
+        <label class="label">커스텀 지시사항 (프롬프트)</label>
+        <textarea class="control" id="summary-options-custom-instruction" rows="2" placeholder="예: supplement·information theory까지 요약, 20페이지 분량 괜찮음..." style="width:100%;resize:vertical;min-height:3.5em"></textarea>
+        <p style="font-size:10px;color:var(--text3);margin-top:4px">요약 시 AI에 전달되는 추가 지시사항입니다. 좌측 패널의 커스텀 지시사항과 연동됩니다.</p>
       </div>
     </div>
     <div class="modal-footer" style="justify-content:flex-end">

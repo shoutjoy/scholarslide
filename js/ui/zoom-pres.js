@@ -67,6 +67,7 @@
     }
     var md = typeof window.markdownToHtml === 'function' ? window.markdownToHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
     var slidesForExt = sl.map(function (s) {
+      var textPct = (s.imageUrl && s.innerSize && s.innerSize.widthPct != null) ? Math.max(20, Math.min(80, s.innerSize.widthPct)) : 55;
       return {
         title: s.title,
         titleHtml: md(s.title),
@@ -74,7 +75,8 @@
         bulletsHtml: (s.bullets || []).map(function (b) { return md(b); }),
         isCover: s.isCover,
         imageUrl: s.imageUrl,
-        notes: s.notes
+        notes: s.notes,
+        textPct: textPct
       };
     });
     var slidesJSON = JSON.stringify(slidesForExt);
@@ -88,24 +90,29 @@
       + '.pres-inner{position:relative;flex-shrink:0;transition:transform 0.2s ease}'
       + '.pres-controls{display:flex;align-items:center;justify-content:center;gap:8px;padding:7px 14px;background:rgba(10,12,20,0.98);border-top:1px solid #1e2332;flex-shrink:0;flex-wrap:wrap}'
       + '.pb{background:rgba(79,142,247,0.18);border:1px solid rgba(79,142,247,0.35);color:#9ecbff;border-radius:8px;padding:5px 13px;font-size:12px;cursor:pointer;white-space:nowrap}.pb:hover{background:rgba(79,142,247,0.35)}'
-      + '.pb.sm{padding:5px 9px;font-size:13px;font-weight:700;min-width:30px}.counter{font-size:13px;color:#9ecbff;min-width:56px;text-align:center}'
+      + '.pb.sm{padding:5px 9px;font-size:13px;font-weight:700;min-width:30px}.counter{font-size:13px;color:#9ecbff;min-width:56px;text-align:center;cursor:pointer;padding:2px 6px;border-radius:6px;border:1px solid transparent}.counter:hover{border-color:rgba(79,142,247,0.35);background:rgba(79,142,247,0.14)}'
       + '.zv{font-size:10px;color:rgba(158,203,255,0.65);min-width:36px;text-align:center}.sep{width:1px;height:18px;background:rgba(79,142,247,0.2);flex-shrink:0}'
       + '.notes{background:rgba(12,16,24,0.97);color:#a0aab8;font-size:12px;padding:7px 18px;line-height:1.6;display:none;border-top:1px solid #1e2332;max-height:110px;overflow-y:auto}.notes.show{display:block}'
       + '</style></head><body><div class="pres-area" id="pres-area"><div class="pres-inner" id="pres-inner"></div></div>'
-      + '<div class="pres-controls"><button class="pb" onclick="nav(-1)">◀ 이전</button><span class="counter" id="counter">1/1</span><button class="pb" onclick="nav(1)">다음 ▶</button><div class="sep"></div>'
+      + '<div class="pres-controls"><button class="pb" onclick="nav(-1)">◀ 이전</button><span class="counter" id="counter" onclick="jumpPrompt()" title="페이지 번호 입력하여 이동">1/1</span><button class="pb" onclick="nav(1)">다음 ▶</button><div class="sep"></div>'
       + '<button class="pb sm" onclick="chZoom(-10)">−</button><span class="zv" id="zv">100%</span><button class="pb sm" onclick="chZoom(10)">+</button>'
       + '<button class="pb" onclick="fitZoom()">⊡ 맞추기</button><div class="sep"></div>'
       + '<button class="pb sm" onclick="chFontScale(-0.1)">A−</button><span class="zv" id="fv">100%</span><button class="pb sm" onclick="chFontScale(0.1)">A+</button><div class="sep"></div>'
       + '<button class="pb" onclick="toggleNotes()">📝 노트</button><button class="pb" onclick="window.close()">✕ 닫기</button></div><div class="notes" id="notes"></div>'
-      + '<script>var SL=' + slidesJSON + ';var SC=' + scriptJSON + ';var SM="' + String(styleMode).replace(/"/g, '\\"') + '";var idx=' + startIdx + ';var fontScale=' + fontScale + ';var nv=false;var zoom=100;'
+      + '<script>var SL=' + slidesJSON + ';var SC=' + scriptJSON + ';var SM="' + String(styleMode).replace(/"/g, '\\"') + '";var idx=' + startIdx + ';var fontScale=' + fontScale + ';var nv=false;var zoom=100;var _syncLock=false;'
       + 'function escH(s){return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}'
       + 'function applyZoom(){var el=document.getElementById("pres-inner");if(el)el.style.transform="scale("+(zoom/100)+")";var zv=document.getElementById("zv");if(zv)zv.textContent=zoom+"%";}'
       + 'function chZoom(d){zoom=Math.max(25,Math.min(300,zoom+d));applyZoom();}'
       + 'function chFontScale(d){fontScale=Math.max(0.3,Math.min(3,fontScale+d));var fv=document.getElementById("fv");if(fv)fv.textContent=Math.round(fontScale*100)+"%";render();}'
       + 'function fitZoom(){var area=document.getElementById("pres-area"),inner=document.getElementById("pres-inner");if(!area||!inner)return;var aw=area.clientWidth-32,ah=area.clientHeight-32,iw=inner.offsetWidth||900,ih=inner.offsetHeight||506;if(!iw||!ih)return;zoom=Math.round(Math.max(25,Math.min(200,Math.min(aw/iw,ah/ih)*100)));applyZoom();}'
-      + 'function render(){var s=SL[idx];if(!s)return;var inner=document.getElementById("pres-inner"),area=document.getElementById("pres-area");var baseW=Math.min((area.clientWidth||1200)*0.9,1100),baseH=Math.round(baseW*9/16);inner.style.width=baseW+"px";inner.style.height=baseH+"px";var isDark=SM==="dark"||s.isCover;var bg=s.isCover?"background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)":isDark?"background:linear-gradient(135deg,#1a1a2e,#16213e)":"background:#fff";var tc=isDark?"color:#e8f4fd":"color:#1a1a2e",bc=s.isCover?"color:#d8e4f0":(isDark?"color:#b8d4f0":"color:#333"),dot=s.isCover?"display:none":"background:#4f8ef7";var tMin=Math.round(18*fontScale),tMax=Math.round(40*fontScale),tVw=(3.2*fontScale).toFixed(1),bMin=Math.round(10*fontScale),bMax=Math.round(20*fontScale),bVw=(1.6*fontScale).toFixed(1);var titleHtml=s.titleHtml!=null?s.titleHtml:escH(s.title),bulletsHtml=s.bulletsHtml||[];var h="<div style=\\"position:absolute;inset:0;padding:5% 6%;display:flex;flex-direction:column;"+bg+(s.isCover?";align-items:center;justify-content:center;text-align:center":"")+"\\">";h+="<div style=\\"position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;"+(s.isCover?"display:none":"")+"\\"></div>";h+="<div style=\\"font-size:clamp("+tMin+"px,"+tVw+"vw,"+tMax+"px);font-weight:700;line-height:1.2;margin-bottom:4%;"+tc+(s.isCover?";border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:18px;margin-bottom:14px":"")+"\\">"+titleHtml+"</div><div style=\\"flex:1\\">";if(bulletsHtml.length>0){bulletsHtml.forEach(function(html){h+="<div style=\\"display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start\\"><div style=\\"width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;"+dot+"\\"></div><div style=\\"font-size:clamp("+bMin+"px,"+bVw+"vw,"+bMax+"px);line-height:1.5;"+bc+"\\">"+html+"</div></div>";});}else{(s.bullets||[]).forEach(function(b){h+="<div style=\\"display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start\\"><div style=\\"width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;"+dot+"\\"></div><div style=\\"font-size:clamp("+bMin+"px,"+bVw+"vw,"+bMax+"px);line-height:1.5;"+bc+"\\">"+escH(b)+"</div></div>";});}h+="</div></div>";if(s.imageUrl)h+="<img style=\\"position:absolute;right:0;top:0;bottom:0;width:38%;object-fit:cover\\" src=\\""+s.imageUrl+"\\" alt=\\"\\"/>";inner.innerHTML=h;document.getElementById("counter").textContent=(idx+1)+"/"+SL.length;var nd=document.getElementById("notes");nd.textContent=SC[idx]||s.notes||"";if(nv)nd.classList.add("show");else nd.classList.remove("show");applyZoom();var fv=document.getElementById("fv");if(fv)fv.textContent=Math.round(fontScale*100)+"%";}'
-      + 'function nav(d){idx=Math.max(0,Math.min(SL.length-1,idx+d));render();}function toggleNotes(){nv=!nv;document.getElementById("notes").classList.toggle("show",nv);}'
+      + 'function render(){var s=SL[idx];if(!s)return;var inner=document.getElementById("pres-inner"),area=document.getElementById("pres-area");var baseW=Math.min((area.clientWidth||1200)*0.9,1100),baseH=Math.round(baseW*9/16);inner.style.width=baseW+"px";inner.style.height=baseH+"px";var isDark=SM==="dark"||s.isCover;var bg=s.isCover?"background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)":isDark?"background:linear-gradient(135deg,#1a1a2e,#16213e)":"background:#fff";var tc=isDark?"color:#e8f4fd":"color:#1a1a2e",bc=s.isCover?"color:#d8e4f0":(isDark?"color:#b8d4f0":"color:#333"),dot=s.isCover?"display:none":"background:#4f8ef7";var tMin=Math.round(18*fontScale),tMax=Math.round(40*fontScale),tVw=(3.2*fontScale).toFixed(1),bMin=Math.round(10*fontScale),bMax=Math.round(20*fontScale),bVw=(1.6*fontScale).toFixed(1);var titleHtml=s.titleHtml!=null?s.titleHtml:escH(s.title),bulletsHtml=s.bulletsHtml||[];var textPct=(s.imageUrl&&s.textPct!=null)?Math.max(20,Math.min(80,s.textPct)):55;var imgW=100-textPct;var rootPad=(s.imageUrl&&!s.isCover)?"5% "+imgW+"% 5% 6%":"5% 6%";var h="<div style=\\"position:absolute;inset:0;padding:"+rootPad+";display:flex;flex-direction:column;"+bg+(s.isCover?";align-items:center;justify-content:center;text-align:center":"")+"\\">";h+="<div style=\\"position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;"+(s.isCover?"display:none":"")+"\\"></div>";h+="<div style=\\"font-size:clamp("+tMin+"px,"+tVw+"vw,"+tMax+"px);font-weight:700;line-height:1.2;margin-bottom:4%;"+tc+(s.isCover?";border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:18px;margin-bottom:14px":"")+"\\">"+titleHtml+"</div><div style=\\"flex:1\\">";if(bulletsHtml.length>0){bulletsHtml.forEach(function(html){h+="<div style=\\"display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start\\"><div style=\\"width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;"+dot+"\\"></div><div style=\\"font-size:clamp("+bMin+"px,"+bVw+"vw,"+bMax+"px);line-height:1.5;"+bc+"\\">"+html+"</div></div>";});}else{(s.bullets||[]).forEach(function(b){h+="<div style=\\"display:flex;gap:10px;margin-bottom:1.8%;align-items:flex-start\\"><div style=\\"width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:0.45em;"+dot+"\\"></div><div style=\\"font-size:clamp("+bMin+"px,"+bVw+"vw,"+bMax+"px);line-height:1.5;"+bc+"\\">"+escH(b)+"</div></div>";});}h+="</div></div>";if(s.imageUrl)h+="<img style=\\"position:absolute;right:0;top:0;bottom:0;width:"+imgW+"%;object-fit:contain;object-position:left top;background:#f8fbff\\" src=\\""+s.imageUrl+"\\" alt=\\"\\"/>";inner.innerHTML=h;document.getElementById("counter").textContent=(idx+1)+"/"+SL.length;var nd=document.getElementById("notes");nd.textContent=SC[idx]||s.notes||"";if(nv)nd.classList.add("show");else nd.classList.remove("show");applyZoom();var fv=document.getElementById("fv");if(fv)fv.textContent=Math.round(fontScale*100)+"%";}'
+      + 'function notifySync(){try{if(window.opener&&!window.opener.closed){window.opener.postMessage({type:"ss_sync_slide",index:idx,origin:"external"},"*");}}catch(e){}}'
+      + 'function nav(d){idx=Math.max(0,Math.min(SL.length-1,idx+d));render();if(!_syncLock)notifySync();}'
+      + 'function jumpPrompt(){var v=prompt("이동할 페이지 번호를 입력하세요 (1-"+SL.length+")",String(idx+1));if(v===null)return;var n=parseInt(v,10);if(!isFinite(n)||n<1||n>SL.length){alert("유효한 페이지 번호를 입력하세요.");return;}idx=n-1;render();if(!_syncLock)notifySync();}'
+      + 'function toggleNotes(){nv=!nv;document.getElementById("notes").classList.toggle("show",nv);}'
+      + 'window.addEventListener("message",function(ev){var d=ev&&ev.data;if(!d||d.type!=="ss_sync_slide")return;var ni=parseInt(d.index,10);if(!isFinite(ni)||ni<0||ni>=SL.length)return;if(ni===idx)return;_syncLock=true;idx=ni;render();setTimeout(function(){_syncLock=false;},0);});'
       + 'document.addEventListener("keydown",function(e){if(e.key==="ArrowRight"||e.key===" "){e.preventDefault();nav(1);}else if(e.key==="ArrowLeft"){e.preventDefault();nav(-1);}else if(e.key==="Escape")window.close();else if(e.key==="n"||e.key==="N")toggleNotes();else if(e.ctrlKey&&e.key==="9"){e.preventDefault();chZoom(-10);}else if(e.ctrlKey&&e.key==="0"){e.preventDefault();chZoom(10);}else if(!e.ctrlKey&&(e.key==="+"||e.key==="="))chZoom(10);else if(!e.ctrlKey&&e.key==="-")chZoom(-10);else if(e.key==="f"||e.key==="F")fitZoom();});'
++ 'document.addEventListener("wheel",function(e){e.preventDefault();if(e.deltaY>0)nav(1);else if(e.deltaY<0)nav(-1);},{passive:false});'
       + 'window.addEventListener("resize",function(){render();setTimeout(fitZoom,30);});render();setTimeout(fitZoom,60);</scr' + 'ipt></body></html>';
 
     try {
@@ -118,9 +125,12 @@
         return;
       }
       if (typeof window.registerChildWindow === 'function') window.registerChildWindow(w);
+      if (typeof window !== 'undefined') window._extPresWindow = w;
       setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+      return w;
     } catch (e) {
       if (typeof window.showToast === 'function') window.showToast('⚠️ 외부 발표 창을 열 수 없습니다');
+      return null;
     }
   }
 

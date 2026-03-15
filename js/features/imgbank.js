@@ -1,0 +1,270 @@
+/**
+ * ScholarSlide — imgBank (이미지 DB)
+ * IndexedDB 저장, 좌측 매트릭스 갤러리 + 우측 프리뷰(확대/축소, 드래그 팬, 화살표 이동), Export/Import
+ */
+(function () {
+  'use strict';
+
+  var _imgBankSelected = null;
+  var _imgBankDrag = { active: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 };
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /** @param {HTMLElement} [container] - 렌더할 컨테이너. 없으면 우측 패널(#imgbank-panel) 사용 */
+  function renderImgBankPanel(container) {
+    var panel = container || document.getElementById('imgbank-panel');
+    if (!panel) return;
+
+    panel.innerHTML = '<div class="imgbank-layout">'
+      + '<div class="imgbank-left">'
+      + '<div class="imgbank-toolbar">'
+      + '<span style="font-size:11px;font-weight:700;color:var(--text2)">🖼 imgBank (inDB)</span>'
+      + '<div style="display:flex;gap:4px;flex-wrap:wrap">'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="document.getElementById(\'imgbank-import-input\').click()">📥 Import</button>'
+      + '<input type="file" id="imgbank-import-input" accept=".json" style="display:none" onchange="window.imgBankImportFile(event)"/>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="window.imgBankExport()">📤 Export</button>'
+      + '</div></div>'
+      + '<div class="imgbank-grid" id="imgbank-grid"></div>'
+      + '</div>'
+      + '<div class="imgbank-right">'
+      + '<div class="imgbank-preview-toolbar">'
+      + '<span style="font-size:10px;color:var(--text3)">프리뷰</span>'
+      + '<div style="display:flex;align-items:center;gap:4px">'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="window._imgBankPrev()" title="이전 이미지">←</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="window._imgBankNext()" title="다음 이미지">→</button>'
+      + '</div></div>'
+      + '<div class="imgbank-preview-wrap" id="imgbank-preview-wrap">'
+      + '<div class="imgbank-preview-inner" id="imgbank-preview-inner">'
+      + '<img id="imgbank-preview-img" alt="" style="display:none;cursor:pointer;pointer-events:auto" title="클릭 시 앱 내에서 크게 보기"/>'
+      + '</div></div>'
+      + '<p id="imgbank-preview-placeholder" style="font-size:11px;color:var(--text3);text-align:center;padding:24px">왼쪽에서 이미지를 선택하세요</p>'
+      + '<div id="imgbank-preview-prompt" class="imgbank-preview-prompt" style="display:none;font-size:11px;color:var(--text2);padding:8px;border-top:1px solid var(--border2);max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>'
+      + '<div class="imgbank-preview-actions" id="imgbank-preview-actions" style="display:none;flex-wrap:wrap;gap:6px;padding:8px;border-top:1px solid var(--border2)">'
+      + '<button type="button" class="btn btn-primary btn-xs" onclick="window._imgBankOpenFullscreen()" title="새 탭에서 크게 보기">🔍 크게 보기</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" onclick="window._imgBankInsertToSlide()" title="현재 슬라이드에 삽입">✓ 슬라이드에 삽입</button>'
+      + '<button type="button" class="btn btn-ghost btn-xs" style="color:var(--danger)" onclick="window._imgBankDeleteSelected()" title="imgBank에서 삭제">🗑 삭제</button>'
+      + '</div></div></div>';
+
+    var grid = document.getElementById('imgbank-grid');
+    var img = document.getElementById('imgbank-preview-img');
+    var placeholder = document.getElementById('imgbank-preview-placeholder');
+
+    if (!grid) return;
+    if (img) img.addEventListener('click', function () {
+      if (_imgBankSelected && _imgBankSelected.dataURL) window._imgBankOpenInAppZoom();
+    });
+
+    /** 그리드 순서 기준 이전/다음 이미지 */
+    window._imgBankPrev = function () {
+      var list = window._imgBankList || [];
+      if (!list.length) return;
+      var idx = _imgBankSelected ? list.findIndex(function (x) { return x.id === _imgBankSelected.id; }) : 0;
+      idx = idx <= 0 ? list.length - 1 : idx - 1;
+      window._imgBankSelect(list[idx]);
+    };
+    window._imgBankNext = function () {
+      var list = window._imgBankList || [];
+      if (!list.length) return;
+      var idx = _imgBankSelected ? list.findIndex(function (x) { return x.id === _imgBankSelected.id; }) : -1;
+      idx = idx >= list.length - 1 ? 0 : idx + 1;
+      window._imgBankSelect(list[idx]);
+    };
+
+    function onPreviewKey(e) {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      if (e.key === 'ArrowLeft') { e.preventDefault(); window._imgBankPrev(); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); window._imgBankNext(); }
+    }
+    document.addEventListener('keydown', onPreviewKey);
+
+    window._imgBankSelectById = function (id) {
+      var list = window._imgBankList || [];
+      var item = list.find(function (x) { return x.id === id; });
+      window._imgBankSelect(item || null);
+    };
+
+    window._imgBankSelect = function (item) {
+      _imgBankSelected = item;
+      if (placeholder) placeholder.style.display = item ? 'none' : 'block';
+      if (img) {
+        img.style.display = item ? 'block' : 'none';
+        img.src = item ? (item.dataURL || '') : '';
+      }
+      var promptEl = document.getElementById('imgbank-preview-prompt');
+      if (promptEl) {
+        var promptText = (item && item.prompt) ? String(item.prompt).trim() : '';
+        promptEl.textContent = promptText;
+        promptEl.style.display = promptText ? 'block' : 'none';
+      }
+      var actions = document.getElementById('imgbank-preview-actions');
+      if (actions) actions.style.display = item ? 'flex' : 'none';
+      document.querySelectorAll('.imgbank-grid-item').forEach(function (el) {
+        el.classList.toggle('selected', el.getAttribute('data-id') === (item ? String(item.id) : ''));
+      });
+    };
+
+    window._imgBankOpenFullscreen = function () {
+      if (!_imgBankSelected || !_imgBankSelected.dataURL) return;
+      if (typeof openImageFullscreen === 'function') openImageFullscreen(_imgBankSelected.dataURL, { fromImgBank: _imgBankSelected.id });
+    };
+    window._imgBankOpenInAppZoom = function () {
+      if (!_imgBankSelected || !_imgBankSelected.dataURL) return;
+      var lb = document.getElementById('imgbank-lightbox');
+      var lbImg = document.getElementById('imgbank-lightbox-img');
+      if (lb && lbImg) { lbImg.src = _imgBankSelected.dataURL; lb.style.display = 'flex'; }
+    };
+    window._imgBankCloseLightbox = function () {
+      var lb = document.getElementById('imgbank-lightbox');
+      if (lb) lb.style.display = 'none';
+    };
+    window._imgBankInsertToSlide = function () {
+      if (!_imgBankSelected || !_imgBankSelected.dataURL) return;
+      if (typeof insertImgBankImageToSlide === 'function') insertImgBankImageToSlide(_imgBankSelected.dataURL);
+      else if (typeof showToast === 'function') showToast('⚠️ 슬라이드 삽입 기능을 사용할 수 없습니다.');
+    };
+    window._imgBankDeleteSelected = function () {
+      if (!_imgBankSelected || _imgBankSelected.id == null) return;
+      if (!confirm('선택한 이미지를 imgBank에서 삭제할까요?')) return;
+      if (typeof imgBankDelete !== 'function') return;
+      var id = _imgBankSelected.id;
+      imgBankDelete(id).then(function () {
+        _imgBankSelected = null;
+        if (typeof showToast === 'function') showToast('🗑 삭제됨');
+        loadGrid();
+        if (placeholder) placeholder.style.display = 'block';
+        if (img) { img.style.display = 'none'; img.src = ''; }
+        var actions = document.getElementById('imgbank-preview-actions');
+        if (actions) actions.style.display = 'none';
+      }).catch(function () {
+        if (typeof showToast === 'function') showToast('❌ 삭제 실패');
+      });
+    };
+
+    function loadGrid() {
+      if (typeof imgBankGetAll !== 'function') { grid.innerHTML = '<p style="color:var(--text3);font-size:11px;padding:12px">IndexedDB를 사용할 수 없습니다.</p>'; return; }
+      imgBankGetAll().then(function (list) {
+        if (!list || !list.length) {
+          grid.innerHTML = '<p style="color:var(--text3);font-size:11px;padding:12px">저장된 이미지가 없습니다.<br>이미지 업로드 모달에서 [inDB 저장]으로 추가하세요.</p>';
+          return;
+        }
+        grid.innerHTML = list.map(function (item) {
+          var thumb = item.dataURL ? '<img src="' + esc(item.dataURL) + '" alt="" class="imgbank-thumb-img"/>' : '<div class="imgbank-thumb-empty">🖼</div>';
+          return '<div class="imgbank-grid-item" data-id="' + esc(item.id) + '" onclick="window._imgBankSelectById(' + item.id + ')">' + thumb + '<span class="imgbank-thumb-label">' + esc(item.name || '#' + item.id) + '</span></div>';
+        }).join('');
+        window._imgBankList = list;
+      }).catch(function () {
+        grid.innerHTML = '<p style="color:var(--danger);font-size:11px;padding:12px">로드 실패</p>';
+      });
+    }
+
+    loadGrid();
+  }
+
+  window.imgBankSaveCurrent = function () {
+    var dataURL = typeof _finalCroppedDataURL !== 'undefined' ? _finalCroppedDataURL : (typeof _origImageDataURL !== 'undefined' ? _origImageDataURL : null);
+    if (!dataURL) {
+      if (typeof showToast === 'function') showToast('⚠️ 저장할 이미지가 없습니다.');
+      return;
+    }
+    if (typeof imgBankAdd !== 'function') {
+      if (typeof showToast === 'function') showToast('⚠️ imgBank를 사용할 수 없습니다.');
+      return;
+    }
+    imgBankAdd({ dataURL: dataURL, name: 'img_' + Date.now() }).then(function () {
+      if (typeof showToast === 'function') showToast('✅ inDB에 저장되었습니다.');
+      var modal = document.getElementById('imgbank-modal');
+      var content = document.getElementById('imgbank-modal-content');
+      if (modal && modal.classList.contains('open') && content && typeof renderImgBankPanel === 'function') renderImgBankPanel(content);
+    }).catch(function () {
+      if (typeof showToast === 'function') showToast('❌ 저장 실패');
+    });
+  };
+
+  window.imgBankExport = function () {
+    if (typeof imgBankGetAll !== 'function') return;
+    imgBankGetAll().then(function (list) {
+      var data = JSON.stringify(list);
+      var a = document.createElement('a');
+      a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(data);
+      a.download = 'scholarslide_imgbank_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click();
+      if (typeof showToast === 'function') showToast('✅ Export 완료 (' + (list.length) + '장)');
+    });
+  };
+
+  window.imgBankImportFile = function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var list = JSON.parse(reader.result);
+        if (!Array.isArray(list)) list = [list];
+        if (typeof imgBankAdd !== 'function') { if (typeof showToast === 'function') showToast('❌ imgBank를 사용할 수 없습니다.'); return; }
+        var done = 0;
+        list.forEach(function (item) {
+          imgBankAdd({ dataURL: item.dataURL, name: item.name || ('img_' + Date.now() + '_' + done), createdAt: item.createdAt, prompt: item.prompt }).then(function () {
+            done++;
+            if (done >= list.length) {
+              var modal = document.getElementById('imgbank-modal');
+              var content = document.getElementById('imgbank-modal-content');
+              if (modal && modal.classList.contains('open') && content && typeof renderImgBankPanel === 'function') renderImgBankPanel(content);
+              else if (typeof renderImgBankPanel === 'function') renderImgBankPanel();
+              if (typeof showToast === 'function') showToast('✅ Import 완료 (' + list.length + '장)');
+            }
+          }).catch(function () { done++; });
+        });
+        if (list.length === 0 && typeof showToast === 'function') showToast('⚠️ 가져올 항목이 없습니다.');
+      } catch (err) {
+        if (typeof showToast === 'function') showToast('❌ 파일 형식 오류');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+    window.renderImgBankPanel = renderImgBankPanel;
+
+  /** imgBank 모달 열기 (헤더/탭에서 호출) — 배치·드래그 초기화 */
+  window.openImgBankModal = function () {
+    var modal = document.getElementById('imgbank-modal');
+    var content = document.getElementById('imgbank-modal-content');
+    var box = document.getElementById('imgbank-modal-box');
+    var dragHandle = document.getElementById('imgbank-modal-drag');
+    if (!modal || !content) return;
+    modal.classList.add('open');
+    if (typeof renderImgBankPanel === 'function') renderImgBankPanel(content);
+
+    if (box) {
+      var w = box.offsetWidth || 900;
+      var h = box.offsetHeight || 400;
+      box.style.left = Math.max(16, (window.innerWidth - w) / 2) + 'px';
+      box.style.top = Math.max(16, (window.innerHeight - h) / 2) + 'px';
+      box.style.transform = 'none';
+    }
+
+    if (!window._imgBankDragInited && dragHandle) {
+      window._imgBankDragInited = true;
+      dragHandle.addEventListener('mousedown', function (e) {
+        if (e.target.closest('.modal-close')) return;
+        e.preventDefault();
+        _imgBankDrag.active = true;
+        _imgBankDrag.startX = e.clientX;
+        _imgBankDrag.startY = e.clientY;
+        _imgBankDrag.startLeft = box.getBoundingClientRect().left;
+        _imgBankDrag.startTop = box.getBoundingClientRect().top;
+      });
+      document.addEventListener('mousemove', function (e) {
+        if (!_imgBankDrag.active || !box) return;
+        box.style.left = (_imgBankDrag.startLeft + (e.clientX - _imgBankDrag.startX)) + 'px';
+        box.style.top = (_imgBankDrag.startTop + (e.clientY - _imgBankDrag.startY)) + 'px';
+      });
+      document.addEventListener('mouseup', function () {
+        _imgBankDrag.active = false;
+      });
+    }
+  };
+})();

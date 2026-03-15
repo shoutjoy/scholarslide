@@ -111,6 +111,9 @@ async function callGemini(prompt, systemInstruction = '', useSearch = false) {
 
 async function generateImage(prompt) {
   let key; try { key = getImageApiKey(); } catch { return null; }
+  if (window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
+  if (!_abortController) _abortController = new AbortController();
+  const signal = _abortController.signal;
   const modelId = typeof getImageModelId === 'function' ? getImageModelId() : 'gemini-2.5-flash-image';
   const textPrompt = `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones.`;
 
@@ -119,7 +122,8 @@ async function generateImage(prompt) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } })
+        body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } }),
+        signal: signal
       });
       if (res.ok) { const data = await res.json(); if (data.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`; }
     } catch (e) { console.warn('[imagen-4]', e.message); }
@@ -130,7 +134,8 @@ async function generateImage(prompt) {
       body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: textPrompt }] }],
         generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
-      })
+      }),
+      signal: signal
     });
     if (res.ok) {
       const data = await res.json();
@@ -147,7 +152,8 @@ async function generateImage(prompt) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallback}:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: textPrompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } })
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: textPrompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } }),
+        signal: signal
       });
       if (res.ok) { const data = await res.json(); const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData); if (imgPart?.inlineData?.data) return `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`; }
     } catch (e) { console.warn('[' + fallback + ']', e.message); }
@@ -155,7 +161,8 @@ async function generateImage(prompt) {
   try {
     const res3 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } })
+      body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, 16:9, white background: ${prompt}` }], parameters: { sampleCount: 1 } }),
+      signal: signal
     });
     if (res3.ok) { const data3 = await res3.json(); if (data3.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${data3.predictions[0].bytesBase64Encoded}`; }
   } catch (e3) { console.warn('[imagen-4 fallback]', e3.message); }
@@ -165,10 +172,13 @@ async function generateImage(prompt) {
 async function refineImageAPI(base64, instruction) {
   let key; try { key = getApiKey(); } catch { return null; }
   if (!base64) return null;
+  if (window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
+  if (!_abortController) _abortController = new AbortController();
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-image-generation:generateContent?key=${key}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `Refine this academic diagram: ${instruction}. Keep professional style.` }, { inlineData: { mimeType: 'image/png', data: base64.split(',')[1] } }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } })
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `Refine this academic diagram: ${instruction}. Keep professional style.` }, { inlineData: { mimeType: 'image/png', data: base64.split(',')[1] } }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } }),
+      signal: _abortController.signal
     });
     if (!res.ok) return null;
     const data = await res.json(); const imgPart = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
@@ -185,6 +195,55 @@ async function refineImageAPI(base64, instruction) {
 let _imageApiKey = ''; // overrides _activeApiKey for image generation if set
 
 // Slide zoom / font scale / external presentation → js/ui/zoom-pres.js (changeSlideZoom, applySlideZoom, applySlideFontScale, openExternalPresentation, _setSlideZoom, _setSlideFontScale, getSlideFontScale)
+// 텍스트/이미지 비율: 일괄 적용(툴바) + 개별 저장(디바이더 드래그)
+let _slideTextRatioPct = 55;
+let _slideSyncEnabled = false;
+let _syncGuard = false;
+
+function updateSlidesCountLabel() {
+  const cnt = document.getElementById('slides-count');
+  if (!cnt) return;
+  cnt.textContent = slides.length + ' 슬라이드';
+  cnt.style.display = slides.length ? 'inline' : 'none';
+  cnt.title = '현재 슬라이드 수';
+}
+
+function updateSlideSyncButton() {
+  const btn = document.getElementById('slide-sync-btn');
+  if (!btn) return;
+  btn.textContent = _slideSyncEnabled ? '🔗 동기화 ON' : '🔗 동기화 OFF';
+  btn.style.color = _slideSyncEnabled ? 'var(--accent)' : '';
+  btn.title = _slideSyncEnabled
+    ? '클릭: 내부/외부 슬라이드 번호 동기화 끄기'
+    : '클릭: 내부/외부 슬라이드 번호 동기화 켜기';
+}
+
+function sendSlideSyncToExternal(index) {
+  if (!_slideSyncEnabled) return;
+  const w = window._extPresWindow;
+  if (!w || w.closed) return;
+  try {
+    w.postMessage({ type: 'ss_sync_slide', index: index, origin: 'internal' }, '*');
+  } catch (e) { /* noop */ }
+}
+
+function toggleSlideSync() {
+  if (!slides || !slides.length) {
+    if (typeof showToast === 'function') showToast('⚠️ 슬라이드가 없습니다');
+    return;
+  }
+  _slideSyncEnabled = !_slideSyncEnabled;
+  updateSlideSyncButton();
+  if (_slideSyncEnabled) {
+    if (!window._extPresWindow || window._extPresWindow.closed) {
+      if (typeof window.openExternalPresentation === 'function') window.openExternalPresentation();
+    }
+    setTimeout(function () { sendSlideSyncToExternal(activeSlideIndex); }, 200);
+    if (typeof showToast === 'function') showToast('🔗 내부/외부 슬라이드 동기화 ON');
+  } else {
+    if (typeof showToast === 'function') showToast('🔗 내부/외부 슬라이드 동기화 OFF');
+  }
+}
 
 // ⑨ Image API key
 
@@ -719,10 +778,10 @@ function openSummaryWindow() {
 
 function afterSlidesCreated() {
   renderSlides(); renderThumbs();
-  const cnt = document.getElementById('slides-count');
-  if (cnt) { cnt.textContent = slides.length + ' 슬라이드'; cnt.style.display = 'inline'; }
-  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'save-session-btn', 'fetch-sources-btn', 'gen-script-btn', 'present-btn', 'present-from-current-btn']
+  updateSlidesCountLabel();
+  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'save-session-btn', 'gen-script-btn', 'present-btn', 'present-from-current-btn', 'slide-sync-btn', 'apply-layout-all-btn', 'save-slide-history-btn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+  updateSlideSyncButton();
   const extBtn = document.getElementById('ext-present-btn');
   if (extBtn) extBtn.style.display = '';
   const footer = document.getElementById('slide-footer'); if (footer) footer.style.display = 'flex';
@@ -743,7 +802,7 @@ function renderThumbs() {
     </div>`).join('');
 }
 
-function selectSlide(index, fromThumb) {
+function selectSlide(index, fromThumb, syncSource) {
   activeSlideIndex = index;
   document.querySelectorAll('.slide-wrapper').forEach((el, i) => el.classList.toggle('active', i === index));
   document.querySelectorAll('.thumb').forEach((el, i) => el.classList.toggle('active', i === index));
@@ -751,18 +810,64 @@ function selectSlide(index, fromThumb) {
   const el = document.getElementById(`sw-${index}`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  // ✅ 하단 썸네일에서 선택 시 MD에디터 탭으로 전환
-  if (fromThumb && rightTab !== 'mdeditor') {
-    switchRightTab('mdeditor');
+  // 하단 썸네일에서 선택 시 디자인 탭으로 전환
+  if (fromThumb && rightTab !== 'design') {
+    switchRightTab('design');
   }
-
-  // MD 에디터 자동 로드 + 페이지 표시 업데이트
-  try {
-    if (typeof window.mdLoadFromSlide === 'function') window.mdLoadFromSlide();
-    if (typeof window.mdUpdatePageIndicators === 'function') window.mdUpdatePageIndicators();
-    if (typeof window.updateWhitespaceBadges === 'function') window.updateWhitespaceBadges();
-  } catch (e) { }
+  if (_slideSyncEnabled && syncSource !== 'external') {
+    sendSlideSyncToExternal(index);
+  }
 }
+
+window.addEventListener('message', function (event) {
+  var data = event && event.data;
+  if (!data || data.type !== 'ss_sync_slide') return;
+  if (!_slideSyncEnabled) return;
+  var idx = parseInt(data.index, 10);
+  if (!isFinite(idx) || idx < 0 || idx >= slides.length) return;
+  if (_syncGuard) return;
+  if (idx === activeSlideIndex) return;
+  _syncGuard = true;
+  try {
+    selectSlide(idx, false, 'external');
+  } finally {
+    setTimeout(function () { _syncGuard = false; }, 0);
+  }
+});
+
+/** 크게 보기 창 ↔ 메인 창 연동 (삽입/자르기/지우기/이미지 전달) */
+window.addEventListener('message', function (event) {
+  var data = event && event.data;
+  if (!data || typeof data !== 'object') return;
+  if (data.type === 'imgViewerReady' && window._imgViewerPending && event.source) {
+    try {
+      event.source.postMessage({
+        type: 'setImage',
+        dataURL: window._imgViewerPending.dataURL,
+        fromImgBank: window._imgViewerPending.fromImgBank
+      }, '*');
+    } catch (e) { }
+    window._imgViewerPending = null;
+    return;
+  }
+  if (data.type === 'imgViewerInsert' && data.dataURL) {
+    insertImgBankImageToSlide(data.dataURL);
+    if (typeof showToast === 'function') showToast('✅ 슬라이드에 삽입했습니다');
+    return;
+  }
+  if (data.type === 'imgViewerCrop' && data.dataURL) {
+    openImageModalWithDataURL(data.dataURL);
+    return;
+  }
+  if (data.type === 'imgViewerDelete' && data.id != null && typeof imgBankDelete === 'function') {
+    imgBankDelete(data.id).then(function () {
+      if (typeof showToast === 'function') showToast('🗑 imgBank에서 삭제됨');
+    }).catch(function () {
+      if (typeof showToast === 'function') showToast('❌ 삭제 실패');
+    });
+    return;
+  }
+});
 
 /** 텍스트 레이어(제목·불릿·텍스트창) 내용 전체 지우기 */
 function clearSlideTextLayer(slideIndex) {
@@ -838,8 +943,7 @@ function slideUndo() {
     renderSlides(); renderThumbs(); if (typeof renderGallery === 'function') renderGallery();
     if (typeof updateDesignPanel === 'function') updateDesignPanel();
     if (typeof mdUpdatePageIndicators === 'function') mdUpdatePageIndicators();
-    const countEl = document.getElementById('slides-count');
-    if (countEl) countEl.textContent = slides.length + ' 슬라이드';
+    updateSlidesCountLabel();
     showToast('↩ 실행 취소');
   } catch (e) { showToast('❌ 실행 취소 실패'); }
 }
@@ -855,8 +959,7 @@ function slideRedo() {
     renderSlides(); renderThumbs(); if (typeof renderGallery === 'function') renderGallery();
     if (typeof updateDesignPanel === 'function') updateDesignPanel();
     if (typeof mdUpdatePageIndicators === 'function') mdUpdatePageIndicators();
-    const countEl = document.getElementById('slides-count');
-    if (countEl) countEl.textContent = slides.length + ' 슬라이드';
+    updateSlidesCountLabel();
     showToast('↪ 다시 실행');
   } catch (e) { showToast('❌ 다시 실행 실패'); }
 }
@@ -878,9 +981,9 @@ document.addEventListener('focusout', function (e) {
 
 function openImageModal2(slideIdx) {
   const idx = slideIdx !== undefined ? slideIdx : activeSlideIndex;
-  openImageModal(idx);
-  // After image is applied, it goes to imageUrl2 instead of imageUrl
   window._applyAsSecondImage = true;
+  // 두 번째 이미지 추가는 항상 빈 상태에서 시작 (기존 첫 번째 이미지 프리로드 금지)
+  openImageModal(idx, { asSecondImage: true, preloadExisting: false });
 }
 
 function deleteSlide(i) {
@@ -889,7 +992,7 @@ function deleteSlide(i) {
   slides.splice(i, 1);
   if (activeSlideIndex >= slides.length) activeSlideIndex = slides.length - 1;
   renderSlides(); renderThumbs();
-  document.getElementById('slides-count').textContent = slides.length + ' 슬라이드';
+  updateSlidesCountLabel();
 }
 
 function addNewSlide() { addSlideAfter(activeSlideIndex, 'blank'); }
@@ -901,7 +1004,7 @@ function addNewSlide() { addSlideAfter(activeSlideIndex, 'blank'); }
 function askThenVisualizeAll() {
   if (!slides.length) { showToast('⚠️ 슬라이드가 없습니다'); return; }
   if (_bgJob.running) { showToast('⚠️ 이미 이미지 생성이 진행 중입니다'); return; }
-  const toGen = slides.filter(s => s.visPrompt && !s.imageUrl).length;
+  const toGen = slides.filter((s, idx) => idx > 0 && s.visPrompt && !s.imageUrl).length;
   const hasImg = slides.filter(s => s.imageUrl).length;
   if (!toGen) { showToast(hasImg ? `ℹ️ 모든 슬라이드에 이미 이미지가 있습니다` : '⚠️ 시각화할 슬라이드가 없습니다'); return; }
 
@@ -948,23 +1051,30 @@ function openVisualizeModal(toGen, hasImg) {
 }
 
 async function startVisualizeAll() {
+  window._aiTaskCancelled = false;
   const overwrite = document.getElementById('viz-overwrite')?.checked;
   const extraPrompt = document.getElementById('viz-extra-prompt')?.value?.trim() || '';
   document.getElementById('visualize-modal')?.remove();
 
-  const targets = slides.filter(s => s.visPrompt && (overwrite ? true : !s.imageUrl));
+  const targets = slides.filter((s, idx) => idx > 0 && s.visPrompt && (overwrite ? true : !s.imageUrl));
   if (!targets.length) { showToast('⚠️ 생성할 슬라이드가 없습니다'); return; }
 
   _bgJobStart(targets.length, '준비 중...');
 
   for (let j = 0; j < targets.length; j++) {
-    if (window._bgJobCancelled) break;
+    if (window._bgJobCancelled || window._aiTaskCancelled) break;
     const s = targets[j];
     const i = slides.indexOf(s);
     const prompt = extraPrompt ? s.visPrompt + '. ' + extraPrompt : s.visPrompt;
     _bgJobTick(j, `슬라이드 ${i + 1}: ${prompt.substring(0, 50)}`);
 
-    const img = await generateImage(prompt);
+    let img = null;
+    try {
+      img = await generateImage(prompt);
+    } catch (e) {
+      if (e && e.name === 'AbortError') break;
+      img = null;
+    }
     if (img) {
       if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
       slides[i].imageUrl = img;
@@ -974,7 +1084,7 @@ async function startVisualizeAll() {
     _bgJobTick(j + 1, `슬라이드 ${i + 1} 완료`);
   }
 
-  _bgJobEnd(window._bgJobCancelled
+  _bgJobEnd((window._bgJobCancelled || window._aiTaskCancelled)
     ? `⏹ 중단됨 — ${(window._bgJob && window._bgJob.done) || 0}/${(window._bgJob && window._bgJob.total) || 0}개 생성`
     : `✅ 이미지 생성 완료 (${targets.length}개)`);
   renderSlides(); renderThumbs(); renderGallery();
@@ -1012,7 +1122,7 @@ function renderGallery() {
   if (grid) grid.innerHTML = imaged.map(s => {
     const idx = slides.indexOf(s);
     return `<div class="gallery-item">
-      <img src="${s.imageUrl}" alt="" onclick="selectSlide(${idx});switchRightTab('design')" style="cursor:pointer"/>
+      <img src="${s.imageUrl}" alt="" onclick="selectSlide(${idx})" style="cursor:pointer"/>
       <div class="gallery-item-num">슬라이드 ${idx + 1}</div>
       <button class="gallery-item-dl" onclick="event.stopPropagation();downloadGalleryImage(${idx})" title="이미지 다운로드">⬇</button>
     </div>`;
@@ -1066,6 +1176,7 @@ function startPresentation() {
   document.getElementById('presentation-mode').classList.add('show');
   renderPresSlide();
   document.addEventListener('keydown', handlePresKey);
+  document.addEventListener('wheel', handlePresWheel, { passive: false });
   setupPresCanvasResize();
   setTimeout(fitPresZoom, 80); // 초기 자동 맞춤
 }
@@ -1080,6 +1191,7 @@ function startPresentationFromCurrent() {
   document.getElementById('presentation-mode').classList.add('show');
   renderPresSlide();
   document.addEventListener('keydown', handlePresKey);
+  document.addEventListener('wheel', handlePresWheel, { passive: false });
   setupPresCanvasResize();
   setTimeout(fitPresZoom, 80);
 }
@@ -1104,10 +1216,18 @@ function resizePresCanvas() {
 function exitPresentation() {
   document.getElementById('presentation-mode').classList.remove('show');
   document.removeEventListener('keydown', handlePresKey);
+  document.removeEventListener('wheel', handlePresWheel);
   window.removeEventListener('resize', resizePresCanvas);
   _presFromCurrent = false;
   updatePresLeftLabel();
   clearPresCanvas();
+}
+
+function handlePresWheel(e) {
+  if (!document.getElementById('presentation-mode')?.classList.contains('show')) return;
+  e.preventDefault();
+  if (e.deltaY > 0) presNav(1);
+  else if (e.deltaY < 0) presNav(-1);
 }
 
 function handlePresKey(e) {
@@ -1127,6 +1247,19 @@ function handlePresKey(e) {
 function presNav(dir) {
   presIndex = Math.max(0, Math.min(slides.length - 1, presIndex + dir));
   clearPresCanvas(); renderPresSlide();
+}
+function promptPresJump() {
+  if (!slides || !slides.length) return;
+  const v = window.prompt(`이동할 페이지 번호를 입력하세요 (1-${slides.length})`, String(presIndex + 1));
+  if (v === null) return;
+  const n = parseInt(v, 10);
+  if (!isFinite(n) || n < 1 || n > slides.length) {
+    if (typeof showToast === 'function') showToast('⚠️ 유효한 페이지 번호를 입력하세요.');
+    return;
+  }
+  presIndex = n - 1;
+  clearPresCanvas();
+  renderPresSlide();
 }
 
 let _presZoom = 100;
@@ -1172,6 +1305,13 @@ function renderPresSlide() {
   const container = document.getElementById('pres-slide-container');
   const isCover = slide.isCover;
   const isDark = slideStyle === 'dark' || isCover;
+  const hasSideImage = !!slide.imageUrl && !isCover;
+  const textPct = hasSideImage && slide.innerSize && slide.innerSize.widthPct != null
+    ? Math.max(20, Math.min(80, slide.innerSize.widthPct))
+    : 55;
+  const imgPct = 100 - textPct;
+  const rightPadPct = hasSideImage ? Math.max(24, Math.min(60, imgPct + 4)) : 6;
+  const rootPadding = hasSideImage ? ('5% ' + rightPadPct + '% 5% 6%') : '5% 6%';
   const bgCss = isCover ? 'background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)'
     : isDark ? 'background:linear-gradient(135deg,#1a1a2e,#16213e)' : 'background:#fff';
   const titleColor = isDark ? 'color:#e8f4fd' : 'color:#1a1a2e';
@@ -1187,7 +1327,7 @@ function renderPresSlide() {
     ? ('position:absolute;left:' + (slide.titlePosition.left || 0) + 'px;top:' + (slide.titlePosition.top || 0) + 'px') : '';
 
   const innerHTML = `
-    <div style="position:absolute;inset:0;padding:5% 6%;display:flex;flex-direction:column;overflow:hidden;${bgCss};${isCover ? 'align-items:center;justify-content:center;text-align:center' : ''}">
+    <div style="position:absolute;inset:0;padding:${rootPadding};display:flex;flex-direction:column;overflow:hidden;${bgCss};${isCover ? 'align-items:center;justify-content:center;text-align:center' : ''}">
       <div style="position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;${isCover ? 'display:none' : ''}"></div>
       <div style="${titleStyle};font-weight:700;line-height:1.2;margin-bottom:4%;font-family:var(--font-head);${titleColor};${titlePosStyle}${isCover ? ';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:20px;margin-bottom:16px' : ''};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(slide.title)}</div>
       <div style="flex:1;min-width:0;overflow:hidden;">
@@ -1197,7 +1337,7 @@ function renderPresSlide() {
         </div>`).join('')}
       </div>
     </div>
-    ${slide.imageUrl ? `<img style="position:absolute;right:0;top:0;bottom:0;width:40%;object-fit:cover;" src="${slide.imageUrl}" alt=""/>` : ''}
+    ${slide.imageUrl ? `<img style="position:absolute;right:0;top:0;bottom:0;width:${imgPct}%;object-fit:contain;object-position:left top;background:#f8fbff;" src="${slide.imageUrl}" alt=""/>` : ''}
   `;
   container.innerHTML = innerHTML;
 
@@ -1333,7 +1473,10 @@ function openSummaryOptionsModal() {
   var slideCountRow = document.getElementById('summary-slide-count-row');
   var slideCountInput = document.getElementById('summary-options-slide-count');
   var mainSlideCount = document.getElementById('slide-count-val');
+  var customInModal = document.getElementById('summary-options-custom-instruction');
+  var customInPanel = document.getElementById('custom-instruction-val');
   if (slideCountInput && mainSlideCount && mainSlideCount.value) slideCountInput.value = mainSlideCount.value;
+  if (customInModal) customInModal.value = (customInPanel && customInPanel.value) ? customInPanel.value : '';
   function updateSlideCountVisibility() {
     var styleRadios = document.querySelectorAll('input[name="summary-style"]');
     var styleId = 'research';
@@ -1370,8 +1513,13 @@ function confirmSummaryOptions() {
     var sc = document.getElementById('summary-options-slide-count');
     if (sc && sc.value) slideCount = parseInt(sc.value, 10) || 12;
   }
+  var customInstruction = '';
+  var customInModal = document.getElementById('summary-options-custom-instruction');
+  if (customInModal && customInModal.value) customInstruction = customInModal.value.trim();
+  var customInPanel = document.getElementById('custom-instruction-val');
+  if (customInPanel) customInPanel.value = customInstruction;
   closeModal('summary-options-modal');
-  generateSummary('full', { mode: mode, styleId: styleId, slideCount: slideCount, granularity: granularity });
+  generateSummary('full', { mode: mode, styleId: styleId, slideCount: slideCount, granularity: granularity, customInstruction: customInstruction });
 }
 
 
@@ -1511,15 +1659,13 @@ function slideReset() {
   if (cntEl) cntEl.style.display = 'none';
   const extBtn = document.getElementById('ext-present-btn');
   if (extBtn) extBtn.style.display = 'none';
-  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'fetch-sources-btn', 'save-session-btn', 'gen-script-btn', 'present-btn', 'present-from-current-btn']
+  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'save-session-btn', 'gen-script-btn', 'present-btn', 'present-from-current-btn', 'slide-sync-btn', 'apply-layout-all-btn', 'save-slide-history-btn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
+  _slideSyncEnabled = false;
+  updateSlideSyncButton();
   renderSlides();
   renderThumbs();
   if (typeof renderLeftPanel === 'function') renderLeftPanel();
-  const mdTa = document.getElementById('md-editor-ta');
-  if (mdTa) { mdTa.value = ''; if (typeof mdUpdatePreview === 'function') mdUpdatePreview(); }
-  const mdPreview = document.getElementById('md-preview');
-  if (mdPreview) mdPreview.textContent = '';
   showToast('🔄 슬라이드 초기화 완료');
 }
 
@@ -1541,16 +1687,14 @@ function clearAll() {
   const footer = document.getElementById('slide-footer'); if (footer) footer.style.display = 'none';
   const cntEl = document.getElementById('slides-count'); if (cntEl) cntEl.style.display = 'none';
   const extBtn = document.getElementById('ext-present-btn'); if (extBtn) extBtn.style.display = 'none';
-  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'fetch-sources-btn', 'save-session-btn', 'gen-script-btn', 'present-btn']
+  ['export-btn', 'visualize-btn', 'slide-reset-btn', 'save-session-btn', 'gen-script-btn', 'present-btn', 'slide-sync-btn', 'apply-layout-all-btn', 'save-slide-history-btn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
+  _slideSyncEnabled = false;
+  updateSlideSyncButton();
   const canvas = document.getElementById('slides-canvas');
   if (canvas) canvas.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎞</div><p>슬라이드가 없습니다</p></div>`;
   const srcList = document.getElementById('sources-list');
   if (srcList) srcList.innerHTML = '<p class="placeholder-msg">검색어를 입력하고 출처 검색을 실행하세요.</p>';
-  const mdTa = document.getElementById('md-editor-ta');
-  if (mdTa) { mdTa.value = ''; if (typeof mdUpdatePreview === 'function') mdUpdatePreview(); }
-  const mdPreview = document.getElementById('md-preview');
-  if (mdPreview) mdPreview.textContent = '';
   renderRefsPanel(); renderLeftPanel(); showToast('🗑 초기화 완료');
 }
 
@@ -1772,8 +1916,11 @@ let _origImageDataURL = null;      // original uploaded image (never mutated)
 let _imgPasteZoneActive = false;   // true after user clicks paste zone (Ctrl+V 붙여넣기용)
 
 // ── Open image modal ─────────────────────────────────────
-function openImageModal(slideIdx) {
+function openImageModal(slideIdx, options) {
+  const opts = options || {};
   _targetSlideForImage = slideIdx !== undefined ? slideIdx : activeSlideIndex;
+  const isSecondImageMode = !!(opts.asSecondImage || window._applyAsSecondImage);
+  if (!isSecondImageMode) window._applyAsSecondImage = false;
   _finalCroppedDataURL = null;
   _currentCropImg = null;
   _origImageDataURL = null;
@@ -1784,8 +1931,11 @@ function openImageModal(slideIdx) {
   const dropZone = document.getElementById('img-drop-zone');
   const cropArea = document.getElementById('crop-area');
 
-  // ✅ 슬라이드에 이미지가 이미 있으면 바로 크롭 편집 모드로 열기
-  const existingImg = slides[_targetSlideForImage]?.imageUrl;
+  // 두 번째 이미지 모드에서는 기본적으로 빈 상태로 시작
+  const shouldPreload = opts.preloadExisting !== false;
+  const existingImg = shouldPreload
+    ? (isSecondImageMode ? slides[_targetSlideForImage]?.imageUrl2 : slides[_targetSlideForImage]?.imageUrl)
+    : null;
 
   if (existingImg) {
     if (row) row.style.display = 'none';
@@ -1798,6 +1948,10 @@ function openImageModal(slideIdx) {
 
   const applyBtn = document.getElementById('img-apply-btn');
   if (applyBtn) applyBtn.disabled = false;
+  const aiPromptEl = document.getElementById('img-ai-prompt');
+  const aiStatusEl = document.getElementById('img-ai-status');
+  if (aiPromptEl) aiPromptEl.value = '';
+  if (aiStatusEl) aiStatusEl.textContent = '';
 
   // Setup drag-drop (업로드 박스에만)
   if (dropZone) {
@@ -1909,6 +2063,36 @@ function loadImageForCrop(e) {
   };
   reader.readAsDataURL(file);
   if (e.target) e.target.value = '';
+}
+
+/** dataURL로 이미지 모달·크롭 UI 열기 (크게 보기 → 자르기 연동) */
+function openImageModalWithDataURL(dataURL) {
+  if (!dataURL) return;
+  _targetSlideForImage = activeSlideIndex;
+  const row = document.getElementById('img-upload-paste-row');
+  const dropZone = document.getElementById('img-drop-zone');
+  const cropArea = document.getElementById('crop-area');
+  if (row) row.style.display = 'none';
+  if (dropZone) dropZone.style.display = 'none';
+  if (cropArea) cropArea.style.display = 'block';
+  openModal('img-modal');
+  const img = new Image();
+  img.onload = () => {
+    _currentCropImg = img;
+    _origImageDataURL = dataURL;
+    _finalCroppedDataURL = dataURL;
+    _cropSelection = { x: 0, y: 0, w: img.width, h: img.height };
+    const origPrev = document.getElementById('orig-preview-img');
+    const curPrev = document.getElementById('crop-result-img');
+    if (origPrev) origPrev.src = dataURL;
+    if (curPrev) curPrev.src = dataURL;
+    _cropRatio = 'free';
+    document.querySelectorAll('.crop-ratio-btn').forEach(b => b.classList.remove('active'));
+    const freeBtn = document.querySelector('.crop-ratio-btn');
+    if (freeBtn) freeBtn.classList.add('active');
+    if (typeof drawCropCanvas === 'function') setTimeout(drawCropCanvas, 80);
+  };
+  img.src = dataURL;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -2316,28 +2500,93 @@ function deleteHistoryImage(idx) {
   showToast('🗑 이력 항목 삭제됨');
 }
 
-function openImageFullscreen(dataURL) {
+/** imgBank/슬라이드에서 선택한 이미지를 현재 슬라이드에 삽입 */
+function insertImgBankImageToSlide(dataURL) {
+  if (!dataURL || !slides.length) return;
+  const idx = activeSlideIndex;
+  if (!slides[idx]) return;
+  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
+  const slide = slides[idx];
+  slide.imageUrl = dataURL;
+  slide.slideImage1 = null;
+  slide.layerOrder = ['image', 'text'];
+  renderSlides();
+  renderThumbs();
+  renderGallery();
+  updateDesignPanel();
+  if (typeof showToast === 'function') showToast('✅ 슬라이드에 삽입 완료');
+}
+
+/** 크게 보기 창: 우측 상단 툴바(줌/다운로드/문서삽입/자르기/지우기/닫기) */
+function openImageFullscreen(dataURL, opts) {
+  opts = opts || {};
+  const fromImgBank = opts.fromImgBank != null ? opts.fromImgBank : null;
+  window._imgViewerPending = { dataURL: dataURL, fromImgBank: fromImgBank };
   const w = window.open('', '_blank');
   if (!w) return;
   if (typeof registerChildWindow === 'function') registerChildWindow(w);
-  w.document.write(`<!DOCTYPE html><html><head><title>이미지 미리보기</title>
-  <style>body{margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh}
-  img{max-width:98vw;max-height:98vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.8)}
-  </style></head><body><img src="${dataURL}"/></body></html>`);
+  const html = buildImageViewerHtml();
+  w.document.write(html);
+  w.document.close();
 }
 
-// ── AI로 시각 프롬프트 작성 (MDeditor 내용 참고) ──
+function buildImageViewerHtml() {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>이미지 크게 보기</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh;overflow:hidden}
+.fs-toolbar{position:fixed;top:12px;right:12px;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:rgba(0,0,0,0.85);padding:8px 12px;border-radius:10px;border:1px solid #333}
+.fs-toolbar button{padding:6px 10px;border-radius:6px;border:1px solid #444;background:#222;color:#ddd;cursor:pointer;font-size:12px}
+.fs-toolbar button:hover{background:#333;color:#fff;border-color:#4f8ef7}
+.fs-toolbar .fs-zoom-val{min-width:40px;text-align:center;font-size:12px}
+.fs-area{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab}
+.fs-area:active{cursor:grabbing}
+.fs-wrap{transform-origin:center center;transition:transform 0.08s ease-out}
+.fs-wrap img{max-width:95vw;max-height:95vh;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.6)}
+</style></head><body>
+<div class="fs-toolbar">
+  <button type="button" onclick="fsZoom(-0.25)" title="축소">−</button>
+  <span class="fs-zoom-val" id="fs-zoom-val">100%</span>
+  <button type="button" onclick="fsZoom(0.25)" title="확대">+</button>
+  <button type="button" onclick="fsDownload()" title="다운로드">⬇ 다운로드</button>
+  <button type="button" onclick="fsInsert()" title="문서에 삽입">문서에 삽입</button>
+  <button type="button" onclick="fsCrop()" title="자르기">✂ 자르기</button>
+  <button type="button" id="fs-btn-delete" style="display:none;color:#f87171" onclick="fsDelete()" title="imgBank에서 삭제">지우기</button>
+  <button type="button" onclick="window.close()" title="닫기">닫기</button>
+</div>
+<div class="fs-area" id="fs-area">
+  <div class="fs-wrap" id="fs-wrap"><img id="fs-img" alt=""/></div>
+</div>
+<script>
+(function(){
+  var scale=1,tx=0,ty=0,startX=0,startY=0,startTx=0,startTy=0,dragging=false;
+  var wrap=document.getElementById('fs-wrap');
+  var img=document.getElementById('fs-img');
+  var fromImgBank=null;
+  function apply(){if(wrap){wrap.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')';} var v=document.getElementById('fs-zoom-val'); if(v) v.textContent=Math.round(scale*100)+'%';}
+  window.fsZoom=function(d){scale=Math.max(0.25,Math.min(4,scale+d)); apply();};
+  window.fsDownload=function(){if(!img.src) return; var a=document.createElement('a'); a.href=img.src; a.download='image_'+Date.now()+'.png'; a.click();};
+  window.fsInsert=function(){if(!img.src||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerInsert',dataURL:img.src},'*'); }catch(e){}};
+  window.fsCrop=function(){if(!img.src||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerCrop',dataURL:img.src},'*'); window.close(); }catch(e){}};
+  window.fsDelete=function(){if(fromImgBank==null||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerDelete',id:fromImgBank},'*'); window.close(); }catch(e){}};
+  document.getElementById('fs-area').addEventListener('mousedown',function(e){if(e.button!==0) return; dragging=true; startX=e.clientX; startY=e.clientY; startTx=tx; startTy=ty;});
+  document.addEventListener('mousemove',function(e){if(!dragging) return; tx=startTx+e.clientX-startX; ty=startTy+e.clientY-startY; apply();});
+  document.addEventListener('mouseup',function(){dragging=false;});
+  window.addEventListener('message',function(e){if(!e.data||e.data.type!=='setImage') return; img.src=e.data.dataURL||''; fromImgBank=e.data.fromImgBank!= null?e.data.fromImgBank:null; var btn=document.getElementById('fs-btn-delete'); if(btn) btn.style.display=fromImgBank!=null?'inline-block':'none'; scale=1; tx=0; ty=0; apply();});
+  if(window.opener) window.opener.postMessage({type:'imgViewerReady'},'*');
+})();
+<\/script>
+</body></html>`;
+}
+
+// ── AI로 시각 프롬프트 작성 (슬라이드 내용 기반) ──
 async function generateVisPromptFromMdEditor() {
   const slide = slides[activeSlideIndex];
   if (!slide) { showToast('⚠️ 슬라이드를 선택하세요'); return; }
-  const ta = document.getElementById('md-editor-ta');
-  let mdContent = ta ? ta.value.trim() : '';
-  if (!mdContent) {
-    mdContent = (slide.title ? '# ' + slide.title + '\n\n' : '') +
-      (slide.bullets && slide.bullets.length ? slide.bullets.map(b => '- ' + b).join('\n') + '\n' : '') +
-      (slide.notes ? '> ' + slide.notes : '');
-  }
-  if (!mdContent.trim()) { showToast('⚠️ MDeditor에 내용을 입력하거나 슬라이드를 로드(↓)하세요'); return; }
+  const mdContent = (slide.title ? '# ' + slide.title + '\n\n' : '') +
+    (slide.bullets && slide.bullets.length ? slide.bullets.map(b => '- ' + b).join('\n') + '\n' : '') +
+    (slide.notes ? '> ' + slide.notes : '');
+  if (!mdContent.trim()) { showToast('⚠️ 슬라이드에 제목·불릿·노트를 입력하세요'); return; }
   const inst = typeof getImggenVisPromptInstruction === 'function' ? getImggenVisPromptInstruction(mdContent) : null;
   if (!inst) { showToast('⚠️ prompt-store 로드 필요'); return; }
   const inputEl = document.getElementById('vis-prompt-input');
@@ -2859,8 +3108,10 @@ function renderSlides() {
   const canvas = document.getElementById('slides-canvas');
   if (!slides.length) {
     canvas.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🎞</div><p>슬라이드가 없습니다</p></div>`;
+    updateSlidesCountLabel();
     applySlideZoom();
     applySlideFontScale();
+    applySlideTextImgRatio();
     return;
   }
   canvas.innerHTML = slides.map((slide, index) => {
@@ -2871,16 +3122,14 @@ function renderSlides() {
     const imageZ = layerOrder.indexOf('image');
     const layerStyleText = 'position:relative;z-index:' + (textZ >= 0 ? textZ : 0);
     const layerStyleImage = 'position:relative;z-index:' + (imageZ >= 0 ? imageZ : 1);
-    const TEXT_IMAGE_MIN = 0, TEXT_IMAGE_MAX = 100;
+    const TEXT_IMAGE_MIN = 20, TEXT_IMAGE_MAX = 80;
     const textPct = slide.imageUrl && slide.innerSize && slide.innerSize.widthPct != null
       ? Math.max(TEXT_IMAGE_MIN, Math.min(TEXT_IMAGE_MAX, slide.innerSize.widthPct))
       : 55;
     const innerSizeStyle = slide.imageUrl
-      ? (slide.innerSize && slide.innerSize.widthPct != null
-          ? ('flex: 0 0 ' + textPct + '%; min-width: 0;' + (slide.innerSize.heightPct != null ? ' height:' + Math.min(100, Math.max(20, slide.innerSize.heightPct)) + '%; min-height:0;' : ''))
-          : 'flex: 0 0 55%; min-width: 0;')
+      ? ('flex: 1 1 ' + textPct + '%; min-width: 0;' + (slide.innerSize && slide.innerSize.heightPct != null ? ' height:' + Math.min(100, Math.max(20, slide.innerSize.heightPct)) + '%; min-height:0;' : ''))
       : '';
-    const imagePaneFlexStyle = slide.imageUrl ? ('flex: 0 0 ' + (100 - textPct) + '%;') : '';
+    const imagePaneFlexStyle = slide.imageUrl ? ('flex: 1 1 ' + (100 - textPct) + '%; min-width: 0;') : '';
     const layerStyleTextWithInner = layerStyleText + (innerSizeStyle ? ' ' + innerSizeStyle : '');
     const layerStyleImageWithFlex = layerStyleImage + (imagePaneFlexStyle ? ' ' + imagePaneFlexStyle : '');
     const extraAreaStyle = [];
@@ -2929,11 +3178,13 @@ function renderSlides() {
             <div class="title-position-handle" title="드래그하여 제목 위치 조절">T</div>
             <span class="title-size-handle title-size-down" title="제목 크기 줄이기" onclick="event.stopPropagation();changeTitleFontSize(${index},-2)">A−</span>
             <span class="title-size-handle title-size-up" title="제목 크기 키우기" onclick="event.stopPropagation();changeTitleFontSize(${index},2)">A+</span>
-            <textarea class="slide-title-input" rows="2" style="font-size:calc(${titleFontSize}px * var(--slide-font-scale, 1))"
-            onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"
-            onfocus="_trackFocus(this,'title',${index})"
-            oninput="updateSlideTitle(${index},this.value);autoResize(this)"
-          >${escapeHtml(slide.title)}</textarea>
+            <div class="title-rendered" onclick="event.stopPropagation();showTitleEditor(${index})" style="font-size:calc(${titleFontSize}px * var(--slide-font-scale, 1));line-height:1.2;word-break:break-word;cursor:text">${markdownToHtml(slide.title)}</div>
+            <textarea class="slide-title-input" rows="2" style="display:none;font-size:calc(${titleFontSize}px * var(--slide-font-scale, 1))"
+              onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"
+              onfocus="_trackFocus(this,'title',${index})"
+              onblur="hideTitleEditor(${index},this.value)"
+              oninput="updateSlideTitle(${index},this.value);autoResize(this)"
+            >${escapeHtml(slide.title)}</textarea>
           </div>
           ${extraHtml ? `<div class="slide-extra-text-area slide-extra-above" id="slide-extra-area-${index}" data-slide-index="${index}"${extraAreaStyleStr}><div class="slide-extra-area-toolbar"><span class="slide-extra-position-handle" title="드래그하여 영역 위치 조절">⋮⋮</span><button type="button" class="slide-extra-move-btn" title="클릭 후 드래그하여 영상/이미지 영역 이동">위치 이동</button></div><div class="slide-extra-text-rendered" id="slide-extra-rendered-${index}" onclick="event.stopPropagation();switchRightTab('design');selectSlide(${index})">${extraHtml}</div><div class="slide-extra-resize-handle" title="드래그하여 영역 높이 조절"></div></div>` : ''}
           <div class="slide-bullets-wrap ${(slide.bulletSize && (slide.bulletSize.w > 0 || slide.bulletSize.h > 0)) ? 'bullet-resized' : ''}" id="slide-bullets-wrap-${index}" data-slide-index="${index}"${bulletPositionStyleStr}><div class="bullet-position-handle" title="드래그하여 본문 위치 조절">H</div>${bulletResizeHandles}<div class="slide-bullets">
@@ -2972,11 +3223,13 @@ function renderSlides() {
     </div>`;
   }).join('');
   setTimeout(() => document.querySelectorAll('.slide-title-input,.speaker-notes-text').forEach(autoResize), 60);
+  updateSlidesCountLabel();
   updateDesignPanel();
 
   // 슬라이드 폰트(보기) 확대율 유지
   applySlideZoom();
   applySlideFontScale();
+  applySlideTextImgRatio();
 
   // 여백/페이지 표시 동기화
   try { mdUpdatePageIndicators(); } catch (e) { }
@@ -3041,7 +3294,9 @@ function applyYoutubeResizedStyles() {
       var titleWrap = document.getElementById('slide-title-wrap-' + index);
       if (titleWrap) {
         var ta = titleWrap.querySelector('.slide-title-input');
+        var rd = titleWrap.querySelector('.title-rendered');
         if (ta) ta.style.fontSize = 'calc(' + slide.titleFontSize + 'px * var(--slide-font-scale, 1))';
+        if (rd) rd.style.fontSize = 'calc(' + slide.titleFontSize + 'px * var(--slide-font-scale, 1))';
       }
     }
     if (slide.bulletSize && (slide.bulletSize.w > 0 || slide.bulletSize.h > 0)) {
@@ -3593,7 +3848,7 @@ function applyYoutubeResizedStyles() {
 // ── 텍스트/이미지 레이어 구분 디바이더 드래그로 비율 조절 ─────────────────────
 (function () {
   var _div = { active: false, slideIndex: -1, card: null, inner: null, startX: 0, cardWidth: 0, startPct: 0 };
-  var MIN_PCT = 0, MAX_PCT = 100;
+  var MIN_PCT = 20, MAX_PCT = 80;
 
   function onMove(e) {
     if (!_div.active || !_div.card || !_div.inner) return;
@@ -3610,11 +3865,13 @@ function applyYoutubeResizedStyles() {
   function onUp() {
     if (!_div.active) return;
     if (_div.slideIndex >= 0 && typeof slides !== 'undefined' && slides[_div.slideIndex]) {
-      var pct = parseFloat(_div.inner.style.flex) || 55;
+      var pct = parseFloat(_div.inner.style.flex) || 50;
       pct = Math.max(MIN_PCT, Math.min(MAX_PCT, pct));
       if (pct > 0 && pct < 100) {
         slides[_div.slideIndex].innerSize = slides[_div.slideIndex].innerSize || {};
         slides[_div.slideIndex].innerSize.widthPct = pct;
+        _slideTextRatioPct = pct;
+        if (typeof applySlideTextImgRatio === 'function') applySlideTextImgRatio();
         if (typeof _markDirty === 'function') _markDirty();
       }
     }
@@ -3645,13 +3902,190 @@ function applyYoutubeResizedStyles() {
     _div.startX = e.clientX;
     _div.cardWidth = card.getBoundingClientRect().width;
     var flex = (inner.style.flex || '').match(/[\d.]+/);
-    _div.startPct = flex ? parseFloat(flex[0]) : 55;
+    _div.startPct = flex ? parseFloat(flex[0]) : 50;
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, true);
 })();
 
+/** 텍스트/이미지 비율: 툴바 −/+ 클릭 시 모든 이미지 슬라이드에 일괄 적용. 개별 슬라이드는 디바이더 드래그로 저장됨 */
+function changeSlideTextImgRatio(delta) {
+  const MIN = 20, MAX = 80;
+  _slideTextRatioPct = Math.max(MIN, Math.min(MAX, _slideTextRatioPct + delta));
+  var sl = (typeof window.getSlides === 'function' ? window.getSlides() : null) || slides || [];
+  if (!sl.length) {
+    applySlideTextImgRatio();
+    return;
+  }
+  var changed = false;
+  sl.forEach(function (s) {
+    if (s.imageUrl) {
+      s.innerSize = s.innerSize || {};
+      s.innerSize.widthPct = _slideTextRatioPct;
+      changed = true;
+    }
+  });
+  if (!changed) {
+    applySlideTextImgRatio();
+    return;
+  }
+  if (typeof _markDirty === 'function') _markDirty();
+  if (typeof renderSlides === 'function') renderSlides();
+  if (typeof renderThumbs === 'function') renderThumbs();
+  applySlideTextImgRatio();
+}
+function promptSlideTextImgRatio() {
+  const MIN = 20, MAX = 80;
+  var current = Math.round(_slideTextRatioPct);
+  var raw = window.prompt('TEXT 비율을 입력하세요 (20~80).\nIMG는 100%에서 자동 계산됩니다.', String(current));
+  if (raw === null) return;
+  var n = parseInt(String(raw).trim(), 10);
+  if (!isFinite(n) || n < MIN || n > MAX) {
+    if (typeof showToast === 'function') showToast('⚠️ 20~80 사이 숫자를 입력하세요.');
+    return;
+  }
+  changeSlideTextImgRatio(n - current);
+}
+function applySlideTextImgRatio() {
+  if (slides && slides.length) {
+    var first = slides.find(function (s) { return s && s.imageUrl; });
+    if (first && first.innerSize && first.innerSize.widthPct != null) _slideTextRatioPct = Math.max(20, Math.min(80, first.innerSize.widthPct));
+    else _slideTextRatioPct = 55;
+  } else {
+    _slideTextRatioPct = 55;
+  }
+  var lbl = document.getElementById('slide-text-ratio-val');
+  var imgLbl = document.getElementById('slide-img-ratio-val');
+  var textPct = Math.max(0, Math.min(100, Math.round(_slideTextRatioPct)));
+  var imgPct = 100 - textPct;
+  if (lbl) lbl.textContent = textPct + '%';
+  if (imgLbl) imgLbl.textContent = imgPct + '%';
+}
+
+/** 배치 일괄적용: 기준 페이지 선택 모달 열기 */
+function openLayoutRefModal() {
+  if (!Array.isArray(slides) || !slides.length) { showToast('⚠️ 슬라이드가 없습니다'); return; }
+  var sel = document.getElementById('layout-ref-page-select');
+  if (!sel) return;
+  sel.innerHTML = slides.map(function (s, i) {
+    var label = (i + 1) + '페이지';
+    if (i === activeSlideIndex) label += ' (현재 선택)';
+    return '<option value="' + i + '">' + label + '</option>';
+  }).join('');
+  sel.value = String(activeSlideIndex);
+  var applyBtn = document.getElementById('layout-ref-apply-btn');
+  if (applyBtn) {
+    applyBtn.onclick = function () {
+      var idx = parseInt(sel.value, 10);
+      if (!isFinite(idx) || idx < 0 || idx >= slides.length) { showToast('⚠️ 기준 페이지를 선택하세요'); return; }
+      closeModal('layout-ref-modal');
+      applyLayoutFromReferencePage(idx);
+    };
+  }
+  openModal('layout-ref-modal');
+}
+
+/** 지정한 기준 페이지의 창(배치) 크기·구조를 모든 슬라이드에 일괄 적용 */
+function applyLayoutFromReferencePage(refIndex) {
+  if (!Array.isArray(slides) || !slides.length) return;
+  var src = slides[refIndex];
+  if (!src) { showToast('⚠️ 기준 슬라이드를 찾을 수 없습니다'); return; }
+
+  function cloneObj(o) {
+    if (o == null || typeof o !== 'object') return o;
+    if (Array.isArray(o)) return o.slice();
+    var c = {};
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) c[k] = cloneObj(o[k]);
+    return c;
+  }
+
+  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
+
+  var layoutKeys = ['innerSize', 'bulletSize', 'bulletPosition', 'slideImage1', 'slideImage2', 'extraAreaHeight', 'extraAreaPosition', 'extraImageSize', 'titlePosition', 'titleFontSize', 'layerOrder'];
+  var template = {};
+  layoutKeys.forEach(function (k) {
+    if (src[k] != null) template[k] = cloneObj(src[k]);
+  });
+
+  var applied = 0;
+  slides.forEach(function (s, i) {
+    if (!s || i === refIndex) return;
+    layoutKeys.forEach(function (k) {
+      if (template[k] !== undefined) {
+        s[k] = cloneObj(template[k]);
+      }
+    });
+    applied++;
+  });
+
+  if (template.innerSize && template.innerSize.widthPct != null) _slideTextRatioPct = Math.max(20, Math.min(80, template.innerSize.widthPct));
+  if (typeof _markDirty === 'function') _markDirty();
+  if (typeof renderSlides === 'function') renderSlides();
+  if (typeof renderThumbs === 'function') renderThumbs();
+  if (typeof renderGallery === 'function') renderGallery();
+  if (typeof applySlideTextImgRatio === 'function') applySlideTextImgRatio();
+  if (typeof updateWhitespaceBadges === 'function') updateWhitespaceBadges();
+  showToast('✅ ' + (refIndex + 1) + '페이지 기준으로 ' + applied + '개 슬라이드에 창 크기·배치를 일괄 적용했습니다');
+}
+
+/** 현재 슬라이드의 창(배치) 크기·구조를 모든 슬라이드에 일괄 적용 — 기준 페이지 선택 모달을 연다 */
+function applyCurrentSlideLayoutToAll() {
+  openLayoutRefModal();
+}
+
+/** 현재 편집 중인 슬라이드를 사용자가 수동으로 생성 히스토리에 저장 */
+function saveCurrentSlidesToHistory() {
+  if (!Array.isArray(slides) || !slides.length) { showToast('⚠️ 저장할 슬라이드가 없습니다'); return; }
+  if (typeof window.addToSlideHistory !== 'function') { showToast('⚠️ 히스토리 기능을 사용할 수 없습니다'); return; }
+  var cloned = [];
+  try {
+    cloned = JSON.parse(JSON.stringify(slides));
+  } catch (e) {
+    cloned = slides.map(function (s, i) { return Object.assign({ id: i }, s || {}); });
+  }
+  var baseName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '슬라이드';
+  var entry = {
+    fileName: baseName + ' (수동 저장)',
+    slides: cloned,
+    manuscriptContent: (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(cloned) : '',
+    isManualSnapshot: true
+  };
+  var savedId = window.addToSlideHistory(entry);
+  if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = savedId || null;
+  if (typeof window.setManuscriptView === 'function') window.setManuscriptView('slides');
+  if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('history');
+  if (typeof renderLeftPanel === 'function') renderLeftPanel();
+  showToast('💾 편집한 슬라이드를 슬라이드 히스토리에 저장했습니다');
+}
+
 // Bullet edit helpers (click rendered → show textarea)
+function showTitleEditor(si) {
+  const wrap = document.querySelector(`#sw-${si} .slide-title-wrap`);
+  if (!wrap) return;
+  const rendered = wrap.querySelector('.title-rendered');
+  const editor = wrap.querySelector('.slide-title-input');
+  if (rendered) rendered.style.display = 'none';
+  if (editor) {
+    editor.style.display = 'block';
+    autoResize(editor);
+    editor.focus();
+    const len = editor.value.length;
+    editor.selectionStart = editor.selectionEnd = len;
+    _trackFocus(editor, 'title', si);
+  }
+}
+function hideTitleEditor(si, val) {
+  updateSlideTitle(si, val);
+  const wrap = document.querySelector(`#sw-${si} .slide-title-wrap`);
+  if (!wrap) return;
+  const rendered = wrap.querySelector('.title-rendered');
+  const editor = wrap.querySelector('.slide-title-input');
+  if (rendered) {
+    rendered.innerHTML = markdownToHtml(val);
+    rendered.style.display = 'block';
+  }
+  if (editor) editor.style.display = 'none';
+}
 function showBulletEditor(si, bi) {
   const bulletEl = document.querySelectorAll(`#sw-${si} .slide-bullet`)[bi];
   if (!bulletEl) return;
@@ -4151,8 +4585,16 @@ async function aiEditImage() {
       _origImageDataURL = dataURL;
       _finalCroppedDataURL = dataURL;
       _cropSelection = { x: 0, y: 0, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+      const row = document.getElementById('img-upload-paste-row');
+      const dropZone = document.getElementById('img-drop-zone');
+      const cropArea = document.getElementById('crop-area');
+      if (row) row.style.display = 'none';
+      if (dropZone) dropZone.style.display = 'none';
+      if (cropArea) cropArea.style.display = 'block';
       const wrap = document.getElementById('crop-result-wrap');
+      const origPrev = document.getElementById('orig-preview-img');
       const curPrev = document.getElementById('crop-result-img');
+      if (origPrev) { origPrev.src = dataURL; }
       if (curPrev) { curPrev.src = dataURL; }
       if (wrap) { wrap.style.display = 'block'; }
       drawCropCanvas();
@@ -4365,15 +4807,22 @@ document.addEventListener('DOMContentLoaded', () => {
   try { loadAiImgHistory(); } catch (e) { console.warn(e); }
   try { initApiKey(); } catch (e) { console.warn(e); }
   try { renderLeftPanel(); } catch (e) { console.warn(e); }
+  try { if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio(); } catch (e) { }
   try { renderRefsPanel(); } catch (e) { console.warn(e); }
   try { renderThumbs?.(); } catch (e) { }
   try { renderSlides?.(); } catch (e) { }
+  try { updateSlideSyncButton?.(); } catch (e) { }
   try { initMdSplitter(); } catch (e) { }
   try { mdUpdatePageIndicators(); } catch (e) { }
   try { setTimeout(() => updateWhitespaceBadges(), 80); } catch (e) { }
   const extPresentBtn = document.getElementById('ext-present-btn');
   if (extPresentBtn && typeof window.openExternalPresentation === 'function') {
-    extPresentBtn.addEventListener('click', function (e) { e.preventDefault(); window.openExternalPresentation(); });
+    extPresentBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var w = window.openExternalPresentation();
+      if (w) window._extPresWindow = w;
+      if (_slideSyncEnabled) setTimeout(function () { sendSlideSyncToExternal(activeSlideIndex); }, 200);
+    });
   }
   if (!window.opener && typeof closeAllChildWindows === 'function') {
     window.addEventListener('beforeunload', function () { closeAllChildWindows(); });
@@ -4598,7 +5047,7 @@ document.addEventListener("cut", function (e) {
 // V4.1 DEFAULT RIGHT TAB
 // =====================================================
 document.addEventListener('DOMContentLoaded', () => {
-  try { switchRightTab('mdeditor'); } catch (e) { }
+  try { switchRightTab('design'); } catch (e) { }
 });
 
 

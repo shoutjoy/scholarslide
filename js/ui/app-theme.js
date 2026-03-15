@@ -34,14 +34,13 @@
     if (!container) return;
     var theme = getAppTheme();
     container.innerHTML =
-      '<span style="display:inline-flex;align-items:center;gap:2px;margin-right:6px" title="전체 앱 다크/라이트">' +
-      '<button type="button" class="btn btn-ghost btn-sm app-theme-btn' + (theme === THEME_LIGHT ? ' active' : '') + '" id="app-theme-light" aria-label="라이트">☀️ 라이트</button>' +
-      '<button type="button" class="btn btn-ghost btn-sm app-theme-btn' + (theme === THEME_DARK ? ' active' : '') + '" id="app-theme-dark" aria-label="다크">🌙 다크</button>' +
-      '</span>';
-    var lightBtn = global.document.getElementById('app-theme-light');
-    var darkBtn = global.document.getElementById('app-theme-dark');
-    if (lightBtn) lightBtn.addEventListener('click', function () { setAppTheme(THEME_LIGHT); });
-    if (darkBtn) darkBtn.addEventListener('click', function () { setAppTheme(THEME_DARK); });
+      '<button type="button" class="app-theme-toggle-btn" id="app-theme-toggle-btn" aria-label="다크/라이트 모드 전환" title="앱 다크/라이트 모드 전환"></button>';
+    var btn = global.document.getElementById('app-theme-toggle-btn');
+    if (btn) {
+      btn.addEventListener('click', function () {
+        setAppTheme(theme === THEME_DARK ? THEME_LIGHT : THEME_DARK);
+      });
+    }
   }
 
   function initAppTheme() {

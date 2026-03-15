@@ -126,7 +126,7 @@
   }
 
   function enableMainBtns() {
-    ['fetch-sources-btn', 'save-session-btn'].forEach(function (id) {
+    ['save-session-btn'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el) el.disabled = false;
     });

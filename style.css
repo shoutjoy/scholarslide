@@ -22,6 +22,64 @@
   --radius: 10px;
   --radius-lg: 16px;
 }
+
+/* ── 앱 전체 다크/라이트 테마 ── */
+body.app-theme-light {
+  --bg: #f1f5f9;
+  --surface: #ffffff;
+  --surface2: #f8fafc;
+  --surface3: #f1f5f9;
+  --border: #e2e8f0;
+  --border2: #cbd5e1;
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #64748b;
+  --accent-glow: rgba(37,99,235,0.12);
+  --accent2-glow: rgba(124,90,247,0.12);
+}
+body.app-theme-light .panel-left,
+body.app-theme-light .panel-right,
+body.app-theme-light .panel-center { background: var(--surface); }
+body.app-theme-light .panel-tab { background: var(--surface2); color: var(--text2); border-color: var(--border); }
+body.app-theme-light .panel-tab.active { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+body.app-theme-light .btn-ghost { background: var(--surface2); border-color: var(--border2); color: var(--text2); }
+body.app-theme-light .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+body.app-theme-light .control,
+body.app-theme-light input,
+body.app-theme-light select,
+body.app-theme-light textarea { background: var(--surface2); border-color: var(--border2); color: var(--text); }
+body.app-theme-light .modal-backdrop { background: rgba(15,23,42,0.6); }
+body.app-theme-light .modal-box { background: var(--surface); border-color: var(--border); }
+body.app-theme-light .slide-wrapper { background: var(--surface2); }
+body.app-theme-light #slides-canvas { background: var(--surface2); }
+body.app-theme-light .empty-state { color: var(--text3); }
+body.app-theme-light .resize-handle { background: var(--border); }
+body.app-theme-light .resize-handle:hover { background: var(--accent); }
+body.app-theme-light .center-toolbar { background: var(--surface); border-color: var(--border); }
+body.app-theme-light #slide-footer { background: var(--surface); border-color: var(--border); }
+body.app-theme-light .header-mode-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+body.app-theme-light .global-progress-panel { background: var(--surface); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+
+/* 테마 토글: 반은 검정 반은 하얀 원형 버튼 */
+.app-theme-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border2);
+  padding: 0;
+  cursor: pointer;
+  background: linear-gradient(90deg, #1a1a1a 50%, #f5f5f5 50%);
+  flex-shrink: 0;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.app-theme-toggle-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(79,142,247,0.25);
+}
+body.app-theme-light .app-theme-toggle-btn {
+  background: linear-gradient(90deg, #1a1a1a 50%, #f5f5f5 50%);
+  border-color: var(--border2);
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; font-family: var(--font-body); background: var(--bg); color: var(--text); font-size: 14px; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -67,6 +125,56 @@ header::after {
 .header-actions { display: flex; gap: 6px; align-items: center; }
 .header-mode-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 .header-mode-btn:hover:not(.active) { border-color: var(--accent); color: var(--text); }
+
+/* 전역 진행 박스: 왼쪽 하단 플로팅 패널 (크게 표시) */
+.global-progress-panel,
+#global-progress-bar.global-progress-panel {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 16px 20px;
+  min-width: 340px;
+  max-width: 420px;
+  max-height: min(400px, 50vh);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.global-progress-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+#global-progress-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+.global-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.global-progress-icon { font-size: 18px !important; flex-shrink: 0; }
+.global-progress-label { font-size: 13px !important; font-weight: 600; color: var(--accent) !important; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.global-progress-fill { height: 8px !important; background: linear-gradient(90deg, var(--accent), var(--accent2)) !important; border-radius: 4px !important; transition: width 0.3s; }
+.global-progress-pct { font-size: 12px !important; font-weight: 700; color: var(--text2) !important; min-width: 36px; text-align: right; }
+.global-progress-abort { margin-top: 4px; color: var(--danger) !important; width: 100%; }
 
 /* ── BUTTONS ── */
 .btn {
@@ -294,6 +402,12 @@ select.control option { background: var(--surface2); }
   font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: 1.5px; color: var(--text3); display: flex; align-items: center; gap: 8px;
 }
+.center-toolbar-actions .btn.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 7px;
+  gap: 4px;
+}
 .slides-count {
   font-family: var(--font-mono); font-size: 10px;
   background: var(--border2); color: var(--text2); padding: 2px 8px; border-radius: 99px;
@@ -320,7 +434,7 @@ select.control option { background: var(--surface2); }
 }
 .slide-wrapper.active .slide-number { background: var(--accent); border-color: var(--accent); color: #fff; }
 .slide-card {
-  width: 100%; aspect-ratio: 16/9; background: #fff;
+  width: 100%; aspect-ratio: var(--slide-aspect-ratio, 16/9); background: #fff;
   border-radius: var(--radius-lg); border: 2px solid transparent;
   box-shadow: 0 4px 32px rgba(0,0,0,0.3); overflow: hidden;
   cursor: pointer; transition: all 0.2s; position: relative; display: flex;
@@ -371,8 +485,9 @@ select.control option { background: var(--surface2); }
 .slide-inner:hover .slide-text-layer-remove,
 .slide-wrapper.active .slide-text-layer-remove { opacity: 1; }
 .slide-text-layer-remove:hover { background: #fff; color: #dc2626; }
+/* 기본값 — 툴바/디바이더로 조절 시 인라인 스타일로 덮어씀 */
 .slide-inner.has-image {
-  flex: 0 0 55%;
+  flex: 1 1 55%;
   min-width: 0; /* 디바이더로 텍스트 영역을 왼쪽까지 줄일 수 있게 */
 }
 .slide-title-wrap {
@@ -451,7 +566,9 @@ select.control option { background: var(--surface2); }
 .slide-image-pane img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: left top;
+  background: #f8fbff;
 }
 .slide-image-remove {
   position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
@@ -739,7 +856,7 @@ footer {
 .pres-left-label.show { display: flex; }
 .pres-slide {
   width: 100%; max-width: min(100vw, calc(100vh * 16 / 9));
-  aspect-ratio: 16/9; background: #fff; position: relative; overflow: hidden;
+  aspect-ratio: var(--slide-aspect-ratio, 16/9); background: #fff; position: relative; overflow: hidden;
   transform-origin: center center;
   transition: transform 0.2s ease;
 }
@@ -752,7 +869,7 @@ footer {
 .pres-bullet { display: flex; gap: 12px; margin-bottom: 2%; align-items: flex-start; }
 .pres-bullet-dot { width: 8px; height: 8px; border-radius: 50%; background: #4f8ef7; flex-shrink: 0; margin-top: 0.6em; }
 .pres-bullet-text { font-size: clamp(12px, 1.8vw, 22px); color: #333; line-height: 1.5; }
-.pres-image { position: absolute; right: 0; top: 0; bottom: 0; width: 40%; object-fit: cover; }
+.pres-image { position: absolute; right: 0; top: 0; bottom: 0; width: 40%; object-fit: contain; object-position: left top; background: #f8fbff; }
 .pres-accent-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0.6%; background: #4f8ef7; }
 .pres-controls {
   position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -788,7 +905,7 @@ footer {
 .gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .gallery-item {
   border-radius: 8px; overflow: hidden; border: 1px solid var(--border2);
-  aspect-ratio: 16/9; position: relative; cursor: pointer; transition: all 0.15s;
+  aspect-ratio: var(--slide-aspect-ratio, 16/9); position: relative; cursor: pointer; transition: all 0.15s;
 }
 .gallery-item:hover { border-color: var(--accent); transform: scale(1.02); }
 .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
@@ -797,6 +914,46 @@ footer {
   background: rgba(0,0,0,0.6); color: #fff; padding: 1px 5px; border-radius: 3px;
   font-family: var(--font-mono);
 }
+
+/* ── IMGBANK (inDB) ── */
+.imgbank-layout { display: flex; height: 100%; min-height: 0; }
+.imgbank-left { flex: 0 0 55%; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--border2); }
+.imgbank-right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.imgbank-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 8px 0; flex-shrink: 0; }
+.imgbank-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; padding: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+.imgbank-grid-item {
+  border-radius: 8px; overflow: hidden; border: 2px solid var(--border2); cursor: pointer; transition: all 0.15s;
+  display: flex; flex-direction: column; aspect-ratio: 1;
+}
+.imgbank-grid-item:hover { border-color: var(--accent); }
+.imgbank-grid-item.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.imgbank-thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imgbank-thumb-empty { width: 100%; aspect-ratio: 1; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.imgbank-thumb-label { font-size: 9px; padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface2); }
+.imgbank-preview-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; flex-shrink: 0; border-bottom: 1px solid var(--border2); }
+.imgbank-preview-wrap {
+  flex: 1; overflow: hidden; position: relative; cursor: grab; min-height: 120px;
+  display: flex; align-items: center; justify-content: center; background: var(--surface2);
+}
+.imgbank-preview-wrap:active { cursor: grabbing; }
+.imgbank-preview-inner { transform-origin: center center; transition: transform 0.1s ease-out; }
+.imgbank-preview-inner img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.imgbank-preview-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-top: 1px solid var(--border2); flex-shrink: 0; }
+
+/* imgBank 모달: 투명 배경 + 헤더 드래그 이동 */
+#imgbank-modal.modal-backdrop {
+  background: rgba(0,0,0,0.28); backdrop-filter: blur(3px);
+  align-items: flex-start; justify-content: flex-start; padding: 0;
+}
+#imgbank-modal-box {
+  position: fixed; margin: 0; max-height: 88vh;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+}
+#imgbank-modal .imgbank-modal-drag {
+  cursor: move; user-select: none;
+}
+#imgbank-modal .imgbank-modal-drag .modal-close { cursor: pointer; }
+.imgbank-preview-wrap { cursor: default; }
 
 /* ── PPTX EXPORT MODAL ── */
 .export-option {
@@ -848,6 +1005,7 @@ footer {
 .slide-action-btn.danger:hover { background: rgba(248,113,113,0.18); }
 .slide-action-btn.add-slide { border-color: rgba(52,211,153,0.45); color: #34d399; position: relative; }
 .slide-action-btn.add-slide:hover { background: rgba(52,211,153,0.18); }
+
 
 /* Add slide dropdown */
 .add-slide-dropdown { position: absolute; top: calc(100% + 4px); left: 0; z-index: 200; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); min-width: 170px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; display: none; }
@@ -1633,7 +1791,9 @@ footer {
 .slide-img-wrap img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: left top;
+  background: #f8fbff;
   display: block;
   max-width: 100%;
   max-height: 100%;
@@ -1641,7 +1801,9 @@ footer {
 .slide-img-slot img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: left top;
+  background: #f8fbff;
   display: block;
   max-width: 100%;
   max-height: 100%;
