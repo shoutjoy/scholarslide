@@ -19,8 +19,68 @@ function showConfirm(title, msg, okFn) {
    ========================================================= */
 function askThenSummary(type) {
   if (!(typeof window.getRawText === 'function' ? window.getRawText() : rawText)) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
-  const label = type === 'full' ? '전체 요약 생성' : (type === 'slides_auto' ? 'AII Slide생성' : '슬라이드 생성');
-  showConfirm(label + ' 실행', `AI를 사용하여 ${label}을 실행하시겠습니까?\n시간이 다소 걸릴 수 있습니다.`, () => generateSummary(type));
+  if (type === 'full') {
+    const label = '전체 요약 생성';
+    showConfirm(label + ' 실행', `AI를 사용하여 ${label}을 실행하시겠습니까?\n시간이 다소 걸릴 수 있습니다.`, () => generateSummary(type));
+    return;
+  }
+  const isAllSlide = type === 'slides_auto';
+  const label = isAllSlide ? 'All Slide생성' : '슬라이드 생성';
+  const slideRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
+  const imageRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_image_aspect_ratio')) || '1:1';
+  let old = document.getElementById('slide-gen-confirm-modal');
+  if (old) old.remove();
+  const m = document.createElement('div');
+  m.id = 'slide-gen-confirm-modal';
+  m.className = 'modal-backdrop open';
+  m.onclick = function (e) { if (e.target === m) m.remove(); };
+  const imageRatioHtml = isAllSlide
+    ? '<div style="margin-top:12px"><label class="label" style="font-size:12px;display:block;margin-bottom:6px">이미지 생성 비율</label>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    + ['1:1','3:4','4:3','9:16','16:9'].map(function(r){ return '<button type="button" class="btn btn-ghost btn-xs img-ratio-modal-btn' + (r===imageRatio?' active':'') + '" data-ratio="'+r+'" style="padding:6px 12px">'+r+'</button>'; }).join('')
+    + '</div></div>'
+    : '';
+  m.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">'
+    + '<div class="modal-header"><div class="modal-title">' + label + ' 실행</div><button class="modal-close" onclick="document.getElementById(\'slide-gen-confirm-modal\').remove()">&#x2715;</button></div>'
+    + '<div class="modal-body" style="display:flex;flex-direction:column;gap:12px">'
+    + '<p style="font-size:13px;color:var(--text2);line-height:1.6">AI를 사용하여 ' + label + '을 실행하시겠습니까? 시간이 다소 걸릴 수 있습니다.</p>'
+    + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 비율</label>'
+    + '<select id="slide-gen-modal-ratio" class="control" style="font-size:12px;width:100%;padding:8px 10px">'
+    + '<option value="16:9"' + (slideRatio==='16:9'?' selected':'') + '>16:9</option>'
+    + '<option value="4:3"' + (slideRatio==='4:3'?' selected':'') + '>4:3</option>'
+    + '<option value="a4_landscape"' + (slideRatio==='a4_landscape'?' selected':'') + '>A4 가로</option>'
+    + '<option value="3:4"' + (slideRatio==='3:4'?' selected':'') + '>3:4</option>'
+    + '<option value="9:16"' + (slideRatio==='9:16'?' selected':'') + '>9:16</option>'
+    + '<option value="a4_portrait"' + (slideRatio==='a4_portrait'?' selected':'') + '>A4 세로</option>'
+    + '<option value="1:1"' + (slideRatio==='1:1'?' selected':'') + '>1:1</option>'
+    + '</select></div>'
+    + imageRatioHtml
+    + '</div>'
+    + '<div class="modal-footer" style="justify-content:flex-end;gap:8px">'
+    + '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'slide-gen-confirm-modal\').remove()">취소</button>'
+    + '<button class="btn btn-primary btn-sm" id="slide-gen-modal-exec">&#x2713; 실행</button>'
+    + '</div></div>';
+  document.body.appendChild(m);
+  if (isAllSlide) {
+    m.querySelectorAll('.img-ratio-modal-btn').forEach(function(btn){
+      btn.onclick = function(){ m.querySelectorAll('.img-ratio-modal-btn').forEach(function(b){b.classList.remove('active');}); btn.classList.add('active'); };
+    });
+  }
+  document.getElementById('slide-gen-modal-exec').onclick = function(){
+    const ratioSel = document.getElementById('slide-gen-modal-ratio');
+    const slideVal = ratioSel ? ratioSel.value : '16:9';
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('ss_slide_aspect_ratio', slideVal);
+      if (isAllSlide) {
+        const imgBtn = m.querySelector('.img-ratio-modal-btn.active');
+        const imgVal = imgBtn ? (imgBtn.getAttribute('data-ratio') || '1:1') : '1:1';
+        localStorage.setItem('ss_image_aspect_ratio', imgVal);
+      }
+    }
+    if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio();
+    m.remove();
+    generateSummary(type);
+  };
 }
 function askThenFetchSources() {
   const query = document.getElementById('source-search-input')?.value?.trim();
@@ -193,11 +253,19 @@ function switchRightTab(tab) {
   rightTab = tab;
   document.querySelectorAll('.panel-right .panel-tab').forEach(el => el.classList.remove('active'));
   const activeBtn = document.getElementById('rtab-' + tab); if (activeBtn) activeBtn.classList.add('active');
-  ['refs-panel', 'design-panel', 'gallery-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  ['mdeditor-panel', 'refs-panel', 'design-panel', 'gallery-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   if (tab === 'sources') { switchRightTab('design'); return; }
-  if (tab === 'refs') { document.getElementById('refs-panel').style.display = 'block'; renderRefsPanel(); }
+  if (tab === 'mdeditor') {
+    const panel = document.getElementById('mdeditor-panel');
+    if (panel) panel.style.display = 'flex';
+    if (typeof mdLoadFromSlide === 'function') mdLoadFromSlide();
+    if (typeof mdUpdatePreview === 'function') mdUpdatePreview();
+    if (typeof mdUpdatePageIndicators === 'function') mdUpdatePageIndicators();
+    try { if (typeof initMdSplitter === 'function') initMdSplitter(); } catch (e) { }
+    try { if (typeof updateWhitespaceBadges === 'function') updateWhitespaceBadges(); } catch (e) { }
+  } else if (tab === 'refs') { document.getElementById('refs-panel').style.display = 'block'; if (typeof renderRefsPanel === 'function') renderRefsPanel(); }
   else if (tab === 'design') { document.getElementById('design-panel').style.display = 'flex'; if (typeof updateDesignPanel === 'function') updateDesignPanel(); }
-  else if (tab === 'gallery') { document.getElementById('gallery-panel').style.display = 'block'; renderGallery(); }
+  else if (tab === 'gallery') { document.getElementById('gallery-panel').style.display = 'block'; if (typeof renderGallery === 'function') renderGallery(); }
 }
 
 /* =========================================================

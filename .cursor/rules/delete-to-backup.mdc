@@ -1,0 +1,32 @@
+---
+description: 삭제 요청 시 jsBackup 폴더로 먼저 이동하는 규칙
+alwaysApply: true
+---
+
+# 삭제 시 백업 규칙
+
+사용자가 코드, 파일, 기능 등을 **지우라**고 요청할 때:
+
+1. **즉시 삭제하지 말 것**
+2. **jsBackup 폴더로 먼저 이동**할 것
+3. 원본 경로를 유지한 하위 구조로 보관 (예: `js/foo/bar.js` → `jsBackup/js/foo/bar.js`)
+4. 중복 파일명이 있으면 타임스탬프나 버전 접미사 추가 (예: `bar_20250315.js`)
+
+## 적용 예시
+
+- "MD 에디터 기능 지워줘" → MD 에디터 관련 코드를 jsBackup으로 이동 후 삭제
+- "이 함수 삭제해줘" → 해당 함수가 있는 파일을 jsBackup에 백업 후 수정
+- "index.js에서 XXX 제거해줘" → 수정 전 index.js를 jsBackup에 복사 후 제거
+
+## jsBackup 폴더 구조
+
+```
+jsBackup/
+  index.js           # index.js 전체 백업
+  index_backup.js    # 기존 백업
+  js/
+    core/
+      helpers.js     # 특정 파일 백업
+```
+
+삭제 작업 전에 사용자에게 "jsBackup에 백업해 두었습니다"라고 안내할 것.

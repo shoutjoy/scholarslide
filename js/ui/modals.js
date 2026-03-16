@@ -33,6 +33,13 @@ function switchRightTab(tab) {
     if (tab === 'gallery' && typeof renderGalleryPanel === 'function') renderGalleryPanel();
     if (tab === 'imgbank' && typeof renderImgBankPanel === 'function') renderImgBankPanel();
     if (tab === 'design' && typeof renderDesignPanel === 'function') renderDesignPanel();
+    if (tab === 'mdeditor') {
+        if (typeof mdLoadFromSlide === 'function') mdLoadFromSlide();
+        if (typeof mdUpdatePreview === 'function') mdUpdatePreview();
+        if (typeof mdUpdatePageIndicators === 'function') mdUpdatePageIndicators();
+        try { if (typeof initMdSplitter === 'function') initMdSplitter(); } catch (e) { }
+        try { if (typeof updateWhitespaceBadges === 'function') updateWhitespaceBadges(); } catch (e) { }
+    }
 }
 
 function switchLoadTab(tab) {

@@ -56,6 +56,7 @@
   }
 
   var _bgJob = { running: false, total: 0, done: 0, label: '' };
+  window._bgJob = _bgJob;
 
   function _bgJobStart(total, label) {
     window._bgJobCancelled = false;

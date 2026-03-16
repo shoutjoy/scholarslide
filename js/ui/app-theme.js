@@ -49,15 +49,28 @@
     renderAppThemeToggle();
   }
 
+  function toggleAppTheme() {
+    var next = getAppTheme() === THEME_DARK ? THEME_LIGHT : THEME_DARK;
+    setAppTheme(next);
+  }
+
   if (global.document && global.document.readyState === 'loading') {
     global.document.addEventListener('DOMContentLoaded', initAppTheme);
   } else {
     initAppTheme();
   }
 
+  global.document.addEventListener('keydown', function (e) {
+    if (e.altKey && e.key === '4') {
+      e.preventDefault();
+      toggleAppTheme();
+    }
+  });
+
   if (typeof global !== 'undefined') {
     global.setAppTheme = setAppTheme;
     global.getAppTheme = getAppTheme;
     global.initAppTheme = initAppTheme;
+    global.toggleAppTheme = toggleAppTheme;
   }
 })(typeof window !== 'undefined' ? window : this);

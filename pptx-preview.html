@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PPTX 미리보기 — ScholarSlide</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Malgun Gothic', sans-serif; padding: 12px; min-height: 100vh; display: flex; flex-direction: column; transition: background .2s, color .2s; }
+    body.theme-light { background: #e2e8f0; color: #1e293b; }
+    body.theme-dark { background: #1e293b; color: #e2e8f0; }
+    .toolbar { flex-shrink: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; padding: 8px 0; border-bottom: 1px solid #334155; }
+    body.theme-light .toolbar { border-bottom-color: #cbd5e1; }
+    .toolbar .btn { padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; border: none; }
+    .btn-pri { background: #4f8ef7; color: #fff; }
+    .btn-pri:hover { background: #3b7de6; }
+    .btn-ghost { background: #334155; color: #e2e8f0; }
+    .btn-ghost:hover { background: #475569; }
+    body.theme-light .btn-ghost { background: #cbd5e1; color: #334155; }
+    body.theme-light .btn-ghost:hover { background: #94a3b8; }
+    .toolbar-sep { width: 1px; height: 20px; background: #475569; margin: 0 4px; }
+    body.theme-light .toolbar-sep { background: #94a3b8; }
+    .toolbar .zoom-val { min-width: 36px; text-align: center; font-size: 12px; color: #94a3b8; }
+    body.theme-light .toolbar .zoom-val { color: #64748b; }
+    .preview-body { display: flex; flex: 1; min-height: 0; }
+    .preview-sidebar { width: 240px; flex-shrink: 0; overflow-y: auto; padding-right: 8px; font-size: 11px; border-right: 1px solid #334155; }
+    body.theme-light .preview-sidebar { border-right-color: #cbd5e1; }
+    .settings-group { padding: 8px 10px; margin-bottom: 10px; background: #0f172a; border-radius: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    body.theme-light .settings-group { background: #f1f5f9; border: 1px solid #e2e8f0; }
+    .settings-group-title { grid-column: 1 / -1; font-weight: 700; color: #94a3b8; margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    body.theme-light .settings-group-title { color: #64748b; }
+    .settings-group label { display: flex; flex-direction: column; gap: 2px; }
+    .settings-group input { width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; }
+    body.theme-light .settings-group input { border-color: #cbd5e1; background: #fff; color: #1e293b; }
+    .preview-main-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: auto; padding: 12px; background: #1e293b; }
+    body.theme-light .preview-main-wrap { background: #e2e8f0; }
+    .preview-main { transform-origin: center center; transition: transform 0.15s ease; min-width: 320px; min-height: 180px; width: 100%; display: flex; align-items: center; justify-content: center; }
+    .preview-slide { background: #0f172a; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.4); width: 100%; max-width: min(90vw, 720px); min-height: 200px; flex-shrink: 0; }
+    body.theme-light .preview-slide { box-shadow: 0 4px 20px rgba(0,0,0,0.12); }
+    .preview-slide-inner { aspect-ratio: 16/9; display: flex; position: relative; width: 100%; }
+    .preview-img-wrap.preview-img-absolute { position: absolute; box-sizing: border-box; z-index: 0; cursor: move; }
+    .preview-text[data-drag] { cursor: move; }
+    .preview-accent { width: 1%; min-width: 4px; background: #4f8ef7; flex-shrink: 0; z-index: 1; }
+    .preview-text { min-width: 0; padding: 3% 4%; overflow: hidden; display: flex; flex-direction: column; gap: 2%; position: absolute; box-sizing: border-box; z-index: 2; }
+    .preview-title { font-weight: 700; line-height: 1.2; word-break: break-word; }
+    .preview-bullets { flex: 1; overflow: auto; font-size: 0.85em; line-height: 1.4; }
+    .preview-bullets div { margin-bottom: 4px; padding-left: 12px; position: relative; }
+    .preview-bullets div::before { content: '•'; position: absolute; left: 0; color: #4f8ef7; }
+    .preview-img-wrap { flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #1e293b; overflow: hidden; }
+    body.theme-light .preview-img-wrap { background: #f8fafc; }
+    .preview-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .preview-num { position: absolute; bottom: 4px; right: 8px; font-size: 10px; color: #64748b; z-index: 3; }
+    .preview-overview { display: flex; gap: 8px; padding: 10px 0; overflow-x: auto; border-top: 1px solid #334155; flex-shrink: 0; align-items: flex-start; background: #1e293b; }
+    body.theme-light .preview-overview { border-top-color: #cbd5e1; background: #e2e8f0; }
+    .preview-thumb { flex: 0 0 auto; width: 100px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 2px solid #334155; transition: border-color 0.15s, box-shadow 0.15s; }
+    .preview-thumb:hover { border-color: #64748b; }
+    .preview-thumb.active { border-color: #4f8ef7; box-shadow: 0 0 0 2px rgba(79,142,247,0.4); }
+    .preview-thumb-inner { aspect-ratio: 16/9; background: #0f172a; position: relative; overflow: hidden; }
+    body.theme-light .preview-thumb-inner { background: #f1f5f9; }
+    .preview-thumb-slide { transform: scale(0.12); transform-origin: 0 0; width: 833px; height: 469px; pointer-events: none; }
+    .theme-btn.active { outline: 2px solid #4f8ef7; outline-offset: 1px; }
+  </style>
+</head>
+<body class="theme-light">
+  <div class="toolbar">
+    <button type="button" class="btn btn-pri" id="pptx-export-btn">⬇ PPTX 내보내기</button>
+    <button type="button" class="btn btn-ghost" id="close-btn">닫기</button>
+    <span class="toolbar-sep"></span>
+    <button type="button" class="btn btn-ghost theme-btn active" id="theme-light-btn" title="라이트">☀️ 라이트</button>
+    <button type="button" class="btn btn-ghost theme-btn" id="theme-dark-btn" title="다크">🌙 다크</button>
+    <span class="toolbar-sep"></span>
+    <button type="button" class="btn btn-ghost" id="prev-btn">◀ 이전</button>
+    <span id="page-counter" class="zoom-val">1 / 1</span>
+    <button type="button" class="btn btn-ghost" id="next-btn">다음 ▶</button>
+    <span class="toolbar-sep"></span>
+    <button type="button" class="btn btn-ghost" id="zoom-out-btn">− 축소</button>
+    <span id="zoom-val" class="zoom-val">100%</span>
+    <button type="button" class="btn btn-ghost" id="zoom-in-btn">+ 확대</button>
+    <span class="toolbar-sep"></span>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none">
+      <input type="checkbox" id="swipe-cb" style="width:14px;height:14px" /> 스와이프 (화살키로 전환)
+    </label>
+  </div>
+  <div class="preview-body">
+    <aside class="preview-sidebar">
+      <div class="settings-group">
+        <div class="settings-group-title">이미지 파트</div>
+        <label>이미지 X (인치)<input type="number" id="opt-imgX" min="0" max="10" step="0.01" value="5.55" /></label>
+        <label>이미지 Y (인치)<input type="number" id="opt-imgY" min="0" max="6" step="0.01" value="1.0" /></label>
+        <label>이미지 너비 (인치)<input type="number" id="opt-imgW" min="0.5" max="5" step="0.01" value="3.95" /></label>
+        <label>이미지 높이 (인치)<input type="number" id="opt-imgH" min="0.5" max="6" step="0.01" value="3.25" /></label>
+      </div>
+      <div class="settings-group">
+        <div class="settings-group-title">텍스트 파트</div>
+        <label>제목 폰트 (pt)<input type="number" id="opt-titleFs" min="12" max="72" value="28" /></label>
+        <label>본문 폰트 (pt)<input type="number" id="opt-bodyFs" min="8" max="24" value="14" /></label>
+        <label>텍스트입력 X (인치)<input type="number" id="opt-textX" min="0" max="10" step="0.01" value="0.4" /></label>
+        <label>텍스트입력 Y (인치)<input type="number" id="opt-textY" min="0" max="6" step="0.01" value="0.3" /></label>
+        <label>텍스트입력 너비 (인치)<input type="number" id="opt-textW" min="1" max="9" step="0.1" value="5.0" /></label>
+        <label>텍스트입력 높이 (인치)<input type="number" id="opt-textH" min="1" max="6" step="0.1" value="4.0" /></label>
+      </div>
+      <div style="font-size:10px;color:#64748b;padding:8px;">슬라이드에서 이미지·텍스트 영역을 드래그하면 위치가 조절됩니다.</div>
+    </aside>
+    <div class="preview-main-wrap">
+      <div class="preview-main" id="preview-main"></div>
+    </div>
+  </div>
+  <div class="preview-overview" id="preview-overview"></div>
+
+  <script>
+(function () {
+  const IDB_NAME = 'ScholarSlide_v3';
+  const IDB_STORE = 'snapshots';
+  const PREVIEW_KEY = 'pptx_preview';
+
+  let SL = [];
+  let IDX = 0;
+  let ZOOM = 100;
+  let OPTS = { textX: 0.4, textY: 0.3, textW: 5.0, textH: 4.0, imgX: 5.55, imgY: 1.0, imgW: 3.95, imgH: 3.25, titleFs: 28, bodyFs: 14 };
+  let THEME = true;
+  let SWIPE = false;
+  let initialZoomDone = false;
+
+  function openIDB() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(IDB_NAME, 3);
+      req.onsuccess = function (e) { resolve(e.target.result); };
+      req.onerror = function (e) { reject(e.target.error); };
+    });
+  }
+
+  function idbGet(store, key) {
+    return openIDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(store, 'readonly');
+        var req = tx.objectStore(store).get(key);
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function (e) { reject(e.target.error); };
+      });
+    });
+  }
+
+  function esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function applyOpts() {
+    var e1 = document.getElementById('opt-textX');
+    var e2 = document.getElementById('opt-textY');
+    var e3 = document.getElementById('opt-textW');
+    var e4 = document.getElementById('opt-textH');
+    var e5 = document.getElementById('opt-imgX');
+    var e6 = document.getElementById('opt-imgY');
+    var e7 = document.getElementById('opt-imgW');
+    var e8 = document.getElementById('opt-imgH');
+    var e9 = document.getElementById('opt-titleFs');
+    var e10 = document.getElementById('opt-bodyFs');
+    if (e1) OPTS.textX = parseFloat(e1.value) || 0.4;
+    if (e2) OPTS.textY = parseFloat(e2.value) || 0.3;
+    if (e3) OPTS.textW = parseFloat(e3.value) || 5.0;
+    if (e4) OPTS.textH = parseFloat(e4.value) || 4.0;
+    if (e5) OPTS.imgX = parseFloat(e5.value) || 5.55;
+    if (e6) OPTS.imgY = parseFloat(e6.value) || 1.0;
+    if (e7) OPTS.imgW = parseFloat(e7.value) || 3.95;
+    if (e8) OPTS.imgH = parseFloat(e8.value) || 3.25;
+    if (e9) OPTS.titleFs = parseInt(e9.value, 10) || 28;
+    if (e10) OPTS.bodyFs = parseInt(e10.value, 10) || 14;
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: 'pptx-preview-overrides',
+        data: {
+          textW: OPTS.textW,
+          textBox: { x: OPTS.textX, y: OPTS.textY, w: OPTS.textW, h: OPTS.textH },
+          imageBox: { x: OPTS.imgX, y: OPTS.imgY, w: OPTS.imgW, h: OPTS.imgH },
+          titleFontSize: OPTS.titleFs,
+          bodyFontSize: OPTS.bodyFs
+        }
+      }, '*');
+    }
+  }
+
+  function slideHtml(s, i) {
+    var baseW = 10, baseH = 5.63;
+    var hasImage = !!(s.imageUrl);
+    var textLeftPct, textTopPct, textWpct, textHpct, textDrag;
+    if (hasImage) {
+      textLeftPct = Math.max(0, Math.min(100, (OPTS.textX / baseW) * 100));
+      textTopPct = Math.max(0, Math.min(100, (OPTS.textY / baseH) * 100));
+      textWpct = Math.max(10, Math.min(100, (OPTS.textW / baseW) * 100));
+      textHpct = Math.max(15, Math.min(100, (OPTS.textH / baseH) * 100));
+      textDrag = ' data-drag="text"';
+    } else {
+      textLeftPct = 0;
+      textTopPct = 0;
+      textWpct = 100;
+      textHpct = 100;
+      textDrag = '';
+    }
+    var textStyle = 'left:' + textLeftPct + '%;top:' + textTopPct + '%;width:' + textWpct + '%;height:' + textHpct + '%';
+    var isDark = s.isCover || false;
+    var bg = isDark ? '#1a1a2e' : '#ffffff';
+    var tc = isDark ? '#e8f4fd' : '#1a1a2e';
+    var bc = isDark ? '#b8d4f0' : '#444455';
+    var imgLeft = Math.max(0, Math.min(100, (OPTS.imgX / baseW) * 100));
+    var imgTop = Math.max(0, Math.min(100, (OPTS.imgY / baseH) * 100));
+    var imgWpct = Math.max(5, Math.min(50, (OPTS.imgW / baseW) * 100));
+    var imgHpct = Math.max(10, Math.min(100, (OPTS.imgH / baseH) * 100));
+    var titleFs = OPTS.titleFs || 28;
+    var bodyFs = OPTS.bodyFs || 14;
+    var titleContent = (s.titleHtml != null && s.titleHtml !== '') ? s.titleHtml : esc(s.title || '');
+    var bullets = (s.bullets || []).map(function (b, j) {
+      var content = (s.bulletsHtml && s.bulletsHtml[j] != null) ? s.bulletsHtml[j] : esc(b);
+      return '<div>' + content + '</div>';
+    }).join('');
+    var imgHtml = s.imageUrl
+      ? '<div class="preview-img-wrap preview-img-absolute" data-drag="img" style="left:' + imgLeft + '%;top:' + imgTop + '%;width:' + imgWpct + '%;height:' + imgHpct + '%"><img src="' + esc(s.imageUrl) + '" alt="" /></div>'
+      : '';
+    return '<div class="preview-slide"><div class="preview-slide-inner" style="background:' + bg + '">' +
+      '<div class="preview-accent"></div>' +
+      '<div class="preview-text"' + textDrag + ' style="' + textStyle + '">' +
+      '<div class="preview-title" style="font-size:' + titleFs + 'px;color:' + tc + '">' + titleContent + '</div>' +
+      '<div class="preview-bullets" style="font-size:' + bodyFs + 'px;color:' + bc + '">' + bullets + '</div></div>' +
+      imgHtml + '<span class="preview-num">' + (i + 1) + '</span></div></div>';
+  }
+
+  function fallbackSlideHtml(s, i) {
+    var t = esc(s && s.title ? String(s.title) : '제목 없음');
+    var blist = (s && s.bullets && Array.isArray(s.bullets) ? s.bullets : []).map(function (x) {
+      return '<div>' + esc(String(x)) + '</div>';
+    }).join('');
+    return '<div class="preview-slide"><div class="preview-slide-inner" style="background:#ffffff">' +
+      '<div class="preview-accent"></div><div class="preview-text" style="width:50%;z-index:2">' +
+      '<div class="preview-title" style="font-size:24px;color:#1a1a2e">' + t + '</div>' +
+      '<div class="preview-bullets" style="font-size:14px;color:#444455">' + blist + '</div></div>' +
+      '<span class="preview-num">' + (i + 1) + '</span></div></div>';
+  }
+
+  function safeSlideHtml(s, i) {
+    try { return slideHtml(s, i); } catch (e) { return fallbackSlideHtml(s, i); }
+  }
+
+  var SLIDE_BASE_W = 10, SLIDE_BASE_H = 5.63;
+
+  function attachDragHandles(container) {
+    var inner = container && container.querySelector && container.querySelector('.preview-slide-inner');
+    if (!inner) return;
+    var imgEl = container.querySelector('[data-drag="img"]');
+    var textEl = container.querySelector('[data-drag="text"]');
+
+    function toInch(deltaPx, isX, rect) {
+      if (isX) return (deltaPx / rect.width) * SLIDE_BASE_W;
+      return (deltaPx / rect.height) * SLIDE_BASE_H;
+    }
+    function toPct(inchVal, isX) {
+      if (isX) return Math.max(0, Math.min(100, (inchVal / SLIDE_BASE_W) * 100));
+      return Math.max(0, Math.min(100, (inchVal / SLIDE_BASE_H) * 100));
+    }
+
+    function onMouseDown(ev, type) {
+      if (ev.button !== 0) return;
+      var rect = inner.getBoundingClientRect();
+      var startMouseX = ev.clientX, startMouseY = ev.clientY;
+      var startX = type === 'img' ? OPTS.imgX : OPTS.textX;
+      var startY = type === 'img' ? OPTS.imgY : OPTS.textY;
+      var el = type === 'img' ? imgEl : textEl;
+      if (!el) return;
+      ev.preventDefault();
+
+      function onMove(e) {
+        var dx = e.clientX - startMouseX, dy = e.clientY - startMouseY;
+        var newX = startX + toInch(dx, true, rect);
+        var newY = startY + toInch(dy, false, rect);
+        newX = Math.max(0, Math.min(SLIDE_BASE_W - 0.1, newX));
+        newY = Math.max(0, Math.min(SLIDE_BASE_H - 0.1, newY));
+        el.style.left = toPct(newX, true) + '%';
+        el.style.top = toPct(newY, false) + '%';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        var leftPct = parseFloat(el.style.left);
+        var topPct = parseFloat(el.style.top);
+        if (isNaN(leftPct) || isNaN(topPct)) return;
+        var dx = (leftPct / 100) * SLIDE_BASE_W;
+        var dy = (topPct / 100) * SLIDE_BASE_H;
+        if (type === 'img') {
+          OPTS.imgX = Math.round(dx * 100) / 100;
+          OPTS.imgY = Math.round(dy * 100) / 100;
+          var ex = document.getElementById('opt-imgX'), ey = document.getElementById('opt-imgY');
+          if (ex) ex.value = OPTS.imgX;
+          if (ey) ey.value = OPTS.imgY;
+        } else {
+          OPTS.textX = Math.round(dx * 100) / 100;
+          OPTS.textY = Math.round(dy * 100) / 100;
+          var tx = document.getElementById('opt-textX'), ty = document.getElementById('opt-textY');
+          if (tx) tx.value = OPTS.textX;
+          if (ty) ty.value = OPTS.textY;
+        }
+        applyOpts();
+        render();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    if (imgEl) {
+      imgEl.addEventListener('mousedown', function (e) { onMouseDown(e, 'img'); });
+    }
+    if (textEl) {
+      textEl.addEventListener('mousedown', function (e) { onMouseDown(e, 'text'); });
+    }
+  }
+
+  function render() {
+    var main = document.getElementById('preview-main');
+    var ov = document.getElementById('preview-overview');
+    var cnt = document.getElementById('page-counter');
+    var zv = document.getElementById('zoom-val');
+    if (!main || !ov) return;
+    main.style.transform = 'scale(' + (ZOOM / 100) + ')';
+    if (zv) zv.textContent = ZOOM + '%';
+    if (SL.length === 0) {
+      main.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">슬라이드 데이터 대기 중...</div>';
+      ov.innerHTML = '';
+      if (cnt) cnt.textContent = '0 / 0';
+      return;
+    }
+    IDX = Math.max(0, Math.min(SL.length - 1, IDX));
+    var s = SL[IDX];
+    try {
+      var html = safeSlideHtml(s, IDX);
+      main.innerHTML = html && html.length ? html : fallbackSlideHtml(s, IDX);
+    } catch (e) {
+      main.innerHTML = fallbackSlideHtml(s, IDX);
+    }
+    if (!main.firstElementChild || main.innerHTML.trim() === '') {
+      main.innerHTML = '<div class="preview-slide"><div class="preview-slide-inner" style="background:#fff;padding:16px">' +
+        '<div class="preview-text"><div class="preview-title" style="font-size:24px;color:#1a1a2e">' + esc(s && s.title ? String(s.title) : '제목 없음') + '</div>' +
+        '<div class="preview-bullets" style="font-size:14px;color:#444">' +
+        (s && s.bullets && Array.isArray(s.bullets) ? s.bullets : []).map(function (x) { return '<div>' + esc(String(x)) + '</div>'; }).join('') +
+        '</div></div><span class="preview-num">' + (IDX + 1) + '</span></div></div>';
+    }
+    try {
+      ov.innerHTML = SL.map(function (sl, i) {
+        return '<div class="preview-thumb ' + (i === IDX ? 'active' : '') + '" data-idx="' + i + '">' +
+          '<div class="preview-thumb-inner"><div class="preview-thumb-slide">' + safeSlideHtml(sl, i) + '</div></div></div>';
+      }).join('');
+    } catch (e) { ov.innerHTML = ''; }
+    ov.querySelectorAll('.preview-thumb').forEach(function (t) {
+      t.onclick = function () { IDX = parseInt(t.getAttribute('data-idx'), 10); render(); };
+    });
+    if (cnt) cnt.textContent = (IDX + 1) + ' / ' + SL.length;
+    attachDragHandles(main);
+    if (!initialZoomDone && SL.length > 0) {
+      initialZoomDone = true;
+      requestAnimationFrame(function () {
+        var wrap = document.getElementById('preview-main-wrap');
+        var slide = main.firstElementChild;
+        if (wrap && slide) {
+          var w = wrap.clientWidth, h = wrap.clientHeight;
+          var sw = slide.offsetWidth, sh = slide.offsetHeight;
+          if (sw > 0 && sh > 0 && w > 0 && h > 0) {
+            var scale = Math.min(w / sw, h / sh);
+            ZOOM = Math.min(200, Math.max(30, Math.round(scale * 100)));
+            main.style.transform = 'scale(' + (ZOOM / 100) + ')';
+            var zv = document.getElementById('zoom-val');
+            if (zv) zv.textContent = ZOOM + '%';
+          }
+        }
+      });
+    }
+  }
+
+  function applyTheme() {
+    document.body.className = THEME ? 'theme-light' : 'theme-dark';
+    var lb = document.getElementById('theme-light-btn');
+    var db = document.getElementById('theme-dark-btn');
+    if (lb) lb.classList.toggle('active', THEME);
+    if (db) db.classList.toggle('active', !THEME);
+  }
+
+  function loadFromIDB() {
+    idbGet(IDB_STORE, PREVIEW_KEY).then(function (data) {
+      if (data && Array.isArray(data.slides) && data.slides.length > 0) {
+        SL = data.slides;
+        IDX = 0;
+        ZOOM = 100;
+        if (data.overrides) {
+          var o = data.overrides;
+          OPTS = {
+            textX: o.textBox && o.textBox.x != null ? o.textBox.x : 0.4,
+            textY: o.textBox && o.textBox.y != null ? o.textBox.y : 0.3,
+            textW: o.textW != null ? o.textW : (o.textBox && o.textBox.w != null ? o.textBox.w : 5.0),
+            textH: o.textBox && o.textBox.h != null ? o.textBox.h : 4.0,
+            imgX: o.imageBox ? o.imageBox.x : 5.55,
+            imgY: o.imageBox ? o.imageBox.y : 1,
+            imgW: o.imageBox ? o.imageBox.w : 3.95,
+            imgH: o.imageBox ? o.imageBox.h : 3.25,
+            titleFs: o.titleFontSize || 28,
+            bodyFs: o.bodyFontSize || 14
+          };
+        }
+        var tx = document.getElementById('opt-textX');
+        if (tx) tx.value = OPTS.textX;
+        var ty = document.getElementById('opt-textY');
+        if (ty) ty.value = OPTS.textY;
+        var tw = document.getElementById('opt-textW');
+        if (tw) tw.value = OPTS.textW;
+        var th = document.getElementById('opt-textH');
+        if (th) th.value = OPTS.textH;
+        var ix = document.getElementById('opt-imgX');
+        if (ix) ix.value = OPTS.imgX;
+        var iy = document.getElementById('opt-imgY');
+        if (iy) iy.value = OPTS.imgY;
+        var iw = document.getElementById('opt-imgW');
+        if (iw) iw.value = OPTS.imgW;
+        var ih = document.getElementById('opt-imgH');
+        if (ih) ih.value = OPTS.imgH;
+        var tf = document.getElementById('opt-titleFs');
+        if (tf) tf.value = OPTS.titleFs;
+        var bf = document.getElementById('opt-bodyFs');
+        if (bf) bf.value = OPTS.bodyFs;
+      }
+      render();
+    }).catch(function () {
+      render();
+    });
+  }
+
+  // UI bindings
+  ['opt-textX', 'opt-textY', 'opt-textW', 'opt-textH', 'opt-imgX', 'opt-imgY', 'opt-imgW', 'opt-imgH', 'opt-titleFs', 'opt-bodyFs'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', function () { applyOpts(); render(); });
+  });
+  var lb = document.getElementById('theme-light-btn');
+  var db = document.getElementById('theme-dark-btn');
+  if (lb) lb.onclick = function () { THEME = true; applyTheme(); };
+  if (db) db.onclick = function () { THEME = false; applyTheme(); };
+  var peb = document.getElementById('pptx-export-btn');
+  if (peb) peb.onclick = function () {
+    if (window.opener && !window.opener.closed && typeof window.opener.exportPPT === 'function') {
+      applyOpts();
+      window.opener.exportPPT();
+    } else {
+      alert('원본 창을 닫으면 내보내기를 할 수 없습니다.');
+    }
+  };
+  var closeBtn = document.getElementById('close-btn');
+  if (closeBtn) closeBtn.onclick = function () { window.close(); };
+  var scb = document.getElementById('swipe-cb');
+  if (scb) scb.onchange = function () { SWIPE = !!scb.checked; };
+  document.addEventListener('keydown', function (e) {
+    var prev = e.key === 'ArrowLeft';
+    var next = e.key === 'ArrowRight';
+    if (prev) { e.preventDefault(); IDX = Math.max(0, IDX - 1); render(); return; }
+    if (next) { e.preventDefault(); IDX = Math.min(SL.length - 1, IDX + 1); render(); return; }
+    if (e.ctrlKey) {
+      if (e.key === '7') { e.preventDefault(); ZOOM = Math.max(30, ZOOM - 10); render(); return; }
+      if (e.key === '8') { e.preventDefault(); ZOOM = Math.min(200, ZOOM + 10); render(); return; }
+      if (e.key === '9') {
+        e.preventDefault();
+        var tEl = document.getElementById('opt-titleFs'), bEl = document.getElementById('opt-bodyFs');
+        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.max(12, v - 1); }
+        if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.max(8, v - 1); }
+        applyOpts(); render();
+        return;
+      }
+      if (e.key === '0') {
+        e.preventDefault();
+        var tEl = document.getElementById('opt-titleFs'), bEl = document.getElementById('opt-bodyFs');
+        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.min(72, v + 1); }
+        if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.min(24, v + 1); }
+        applyOpts(); render();
+        return;
+      }
+    }
+  });
+  var wrap = document.getElementById('preview-main-wrap');
+  if (wrap) {
+    wrap.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (e.deltaY > 0) IDX = Math.min(SL.length - 1, IDX + 1);
+      else if (e.deltaY < 0) IDX = Math.max(0, IDX - 1);
+      render();
+    }, { passive: false });
+  }
+  var prevBtn = document.getElementById('prev-btn');
+  var nextBtn = document.getElementById('next-btn');
+  var zoOut = document.getElementById('zoom-out-btn');
+  var zoIn = document.getElementById('zoom-in-btn');
+  if (prevBtn) prevBtn.onclick = function () { IDX = Math.max(0, IDX - 1); render(); };
+  if (nextBtn) nextBtn.onclick = function () { IDX = Math.min(SL.length - 1, IDX + 1); render(); };
+  if (zoOut) zoOut.onclick = function () { ZOOM = Math.max(30, ZOOM - 10); render(); };
+  if (zoIn) zoIn.onclick = function () { ZOOM = Math.min(200, ZOOM + 10); render(); };
+
+  setInterval(function () {
+    try {
+      if (!window.opener || window.opener.closed) window.close();
+    } catch (e) { window.close(); }
+  }, 400);
+
+  applyTheme();
+  loadFromIDB();
+})();
+  </script>
+</body>
+</html>

@@ -382,32 +382,20 @@
       + '<option value="workshop" ' + (slideGenType === 'workshop' ? 'selected' : '') + '>H. 워크숍형 (Practical Action)</option>'
       + '<option value="auto_visual" ' + (slideGenType === 'auto_visual' ? 'selected' : '') + '>I. AII 자동 시각화형 (Auto Visualizer)</option></select></div>';
 
-    var slideAspectRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
-    var slideRatioRow = '<div style="margin-bottom:8px"><label class="label">슬라이드 비율</label>'
-      + '<select class="control" id="slide-aspect-ratio" style="font-size:11px;width:100%;margin-top:4px" onchange="var v=this.value;if(typeof localStorage!==\'undefined\')localStorage.setItem(\'ss_slide_aspect_ratio\',v);if(typeof window.applySlideAspectRatio===\'function\')window.applySlideAspectRatio();">'
-      + '<option value="16:9" ' + (slideAspectRatio === '16:9' ? 'selected' : '') + '>16:9</option>'
-      + '<option value="4:3" ' + (slideAspectRatio === '4:3' ? 'selected' : '') + '>4:3</option>'
-      + '<option value="a4_landscape" ' + (slideAspectRatio === 'a4_landscape' ? 'selected' : '') + '>A4 가로</option>'
-      + '<option value="3:4" ' + (slideAspectRatio === '3:4' ? 'selected' : '') + '>3:4</option>'
-      + '<option value="9:16" ' + (slideAspectRatio === '9:16' ? 'selected' : '') + '>9:16</option>'
-      + '<option value="a4_portrait" ' + (slideAspectRatio === 'a4_portrait' ? 'selected' : '') + '>A4 세로</option>'
-      + '<option value="1:1" ' + (slideAspectRatio === '1:1' ? 'selected' : '') + '>1:1</option>'
-      + '</select></div>';
-    var slideCountRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><label class="label" style="margin:0;white-space:nowrap">슬라이드 수</label>'
+    var btnGenStyle = 'width:120px;flex-shrink:0;margin-left:auto;justify-content:center;font-size:12px;height:36px;padding:6px 10px';
+    var slideCountRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">'
+      + '<label class="label" style="margin:0;white-space:nowrap">PageN</label>'
       + '<input type="number" class="control" id="slide-count-val" value="' + slideCountVal + '" min="5" max="200" style="width:64px;text-align:center"/>'
-      + '<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap;margin-left:4px"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>';
+      + '<button type="button" class="btn btn-primary btn-sm btn-slide-gen-square" style="' + btnGenStyle + '" onclick="askThenSummary(\'slides\')">🗂 슬라이드생성</button>'
+      + '</div>'
+      + '<div style="margin-bottom:10px"><label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;white-space:nowrap"><input type="checkbox" id="include-cover" ' + (defaultIncludeCover ? 'checked' : '') + ' style="accent-color:var(--accent)"/> 표지 포함</label></div>';
     var slideRangeMin = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_range_default_min')) || '';
     var slideRangeMax = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_range_default_max')) || '';
     var slideRangeDefault = (slideRangeMin && slideRangeMax) ? (slideRangeMin + '-' + slideRangeMax) : '';
-    var slideRangeRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><label class="label" style="margin:0;white-space:nowrap">페이지 범위</label>'
-      + '<input type="text" class="control" id="slide-range-val" placeholder="예: 12-24 (비우면 자동)" value="' + esc(slideRangeDefault) + '" style="width:160px;font-size:11px"/>'
-      + '<span style="font-size:10px;color:var(--text3)">AII 버튼에서 문서량 기반 자동 조정</span></div>';
-
-    var slideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-primary btn-sm btn-slide-gen-square" style="width:100%" onclick="askThenSummary(\'slides\')">🗂 슬라이드생성</button>'
-      + '</div>';
-    var allSlideGenButtonRow = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-sm btn-slide-gen-auto" style="width:100%" onclick="askThenSummary(\'slides_auto\')">🧠 All Slide생성</button>'
+    var slideRangeRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+      + '<label class="label" style="margin:0;white-space:nowrap">Range</label>'
+      + '<input type="text" class="control" id="slide-range-val" placeholder="12-24" value="' + esc(slideRangeDefault) + '" style="width:64px;font-size:11px;flex:0 0 auto"/>'
+      + '<button type="button" class="btn btn-sm btn-slide-gen-auto" style="' + btnGenStyle + '" onclick="askThenSummary(\'slides_auto\')">🧠 All Slide생성</button>'
       + '</div>';
 
     var row2 = '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
@@ -556,11 +544,8 @@
 
     return fileBadge
       + slideGenTypeRow
-      + slideRatioRow
       + slideCountRow
-      + slideGenButtonRow
       + slideRangeRow
-      + allSlideGenButtonRow
       + row2
       + row3
       + row4

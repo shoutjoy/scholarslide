@@ -167,6 +167,7 @@
         var img = await window.generateImage(prompt);
         if (img) {
           slidesArr[idx].imageUrl = img;
+          if (typeof window.applyFullFillImageLayout === 'function') window.applyFullFillImageLayout(slidesArr[idx]);
           generated += 1;
           if (window.addToAiImgHistory) window.addToAiImgHistory(prompt, img, idx);
           if (typeof window.imgBankAdd === 'function') {
@@ -182,6 +183,7 @@
         }
       } catch (e) {
         if (isTaskCancelled() || (e && e.name === 'AbortError')) break;
+        if (e && e.message === 'NO_API_KEY' && window.showToast) window.showToast('⚠️ API 키를 설정해주세요');
         failed += 1;
       }
     }
@@ -697,6 +699,7 @@
                 if (window.pushSlideUndoState) window.pushSlideUndoState();
                 var next = arr.slice();
                 next[idx] = Object.assign({}, next[idx], { imageUrl: img });
+                if (typeof window.applyFullFillImageLayout === 'function') window.applyFullFillImageLayout(next[idx]);
                 setSlides(next);
                 if (window.addToAiImgHistory) window.addToAiImgHistory(newSlide.visPrompt, img, activeSlideIndex());
                 if (typeof window.imgBankAdd === 'function') {
@@ -710,7 +713,7 @@
             }
             if (window.hideJobProgress) window.hideJobProgress('aiImg', 0);
           }).catch(function (e) {
-            if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ AI 이미지 생성 실패: ' + e.message);
+            if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ ' + (e.message === 'NO_API_KEY' ? 'API 키를 설정해주세요' : 'AI 이미지 생성 실패: ' + e.message));
             if (window.hideJobProgress) window.hideJobProgress('aiImg', 0);
           });
         })();

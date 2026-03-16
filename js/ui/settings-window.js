@@ -94,12 +94,13 @@
       '</select>' +
       '<label style="margin-top:16px">이미지 생성 모델</label>' +
       '<select id="sw-image-model-select" style="width:100%;max-width:480px;margin-top:4px">' +
-      '<option value="gemini-2.5-flash-preview-image-generation">gemini-2.5-flash-preview-image-generation</option>' +
-      '<option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>' +
-      '<option value="gemini-3.1-flash-image-preview">gemini-3.1-flash-image-preview</option>' +
-      '<option value="gemini-3-pro-image-preview">gemini-3-pro-image-preview</option>' +
-      '<option value="gemini-2.0-flash-exp">gemini-2.0-flash-exp</option>' +
-      '<option value="imagen-4.0-generate-001">imagen-4.0-generate-001</option>' +
+      '<option value="gemini-2.0-flash-exp-image-generation">Gemini 2.0 Flash (Image Generation)</option>' +
+      '<option value="gemini-2.5-flash-image">Nano Banana (Gemini 2.5 Flash 이미지)</option>' +
+      '<option value="gemini-3.1-flash-image-preview">Nano Banana 2 (Gemini 3.1 Flash)</option>' +
+      '<option value="gemini-3-pro-image-preview">Nano Banana Pro (Gemini 3 Pro)</option>' +
+      '<option value="imagen-4.0-generate-001">Imagen 4</option>' +
+      '<option value="imagen-4.0-ultra-generate-001">Imagen 4 Ultra</option>' +
+      '<option value="imagen-4.0-fast-generate-001">Imagen 4 Fast</option>' +
       '</select>' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer"><input type="checkbox" id="sw-save-key-checkbox" checked> 브라우저에 저장</label>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-api-apply-btn">적용</button></div>' +

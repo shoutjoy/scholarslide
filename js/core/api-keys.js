@@ -29,6 +29,9 @@ function handleModalBackdropClick(e, id) { if (e.target === document.getElementB
 
 // Help 모달: 단축키 목록 렌더 후 열기
 const HELP_HOTKEYS = [
+  { section: '전역', items: [
+    { desc: '앱 다크/라이트 모드 전환', keys: 'Alt + 4' },
+  ]},
   { section: '전역 · 슬라이드', items: [
     { desc: '보기 축소', keys: 'Ctrl + 9' },
     { desc: '보기 확대', keys: 'Ctrl + 0' },
@@ -54,6 +57,12 @@ const HELP_HOTKEYS = [
     { desc: '노트 토글', keys: 'N' },
     { desc: '확대 / 축소', keys: '+ / −' },
     { desc: '화면에 맞추기', keys: 'F' },
+  ]},
+  { section: '새창보기 (요약·원문·번역 등)', items: [
+    { desc: '페이지 축소', keys: 'Ctrl + 7' },
+    { desc: '페이지 확대', keys: 'Ctrl + 8' },
+    { desc: '폰트 축소', keys: 'Ctrl + 9' },
+    { desc: '폰트 확대', keys: 'Ctrl + 0' },
   ]},
 ];
 function renderHelpModal() {
