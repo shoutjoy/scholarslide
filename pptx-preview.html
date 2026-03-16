@@ -42,6 +42,8 @@
     .preview-img-resize-handle { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: rgba(79,142,247,0.5); border-radius: 2px 0 0 0; z-index: 10; }
     .preview-img-resize-handle:hover { background: rgba(79,142,247,0.8); }
     .preview-text[data-drag] { cursor: move; }
+    .preview-text-resize-handle { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: rgba(52,211,153,0.5); border-radius: 2px 0 0 0; z-index: 10; }
+    .preview-text-resize-handle:hover { background: rgba(52,211,153,0.8); }
     .preview-accent { width: 1%; min-width: 4px; background: #4f8ef7; flex-shrink: 0; z-index: 1; }
     .preview-text { min-width: 0; padding: 3% 4%; overflow: hidden; display: flex; flex-direction: column; gap: 2%; position: absolute; box-sizing: border-box; z-index: 2; }
     .preview-title { font-weight: 700; line-height: 1.2; word-break: break-word; }
@@ -115,7 +117,7 @@
         <label>텍스트입력 너비 (인치)<input type="number" id="opt-textW" min="1" max="9" step="0.1" value="5.0" /></label>
         <label>텍스트입력 높이 (인치)<input type="number" id="opt-textH" min="1" max="6" step="0.1" value="4.0" /></label>
       </div>
-      <div style="font-size:10px;color:#64748b;padding:8px;">슬라이드에서 이미지·텍스트를 드래그하면 위치 조절(현재 슬라이드만). 이미지 우측 하단 핸들을 드래그하면 크기 조절(현재 슬라이드만).</div>
+      <div style="font-size:10px;color:#64748b;padding:8px;">슬라이드에서 이미지·텍스트를 드래그하면 위치 조절. 이미지·텍스트창 우측 하단 핸들을 드래그하면 크기 조절. (each/All 모드에 따라 현재 또는 전체 슬라이드 적용)</div>
       <button type="button" class="btn btn-pri" id="save-overrides-btn" style="width:100%;margin-top:8px;padding:8px 12px">💾 편집 저장</button>
     </aside>
     <div class="preview-main-wrap">
@@ -228,7 +230,7 @@
   function getOptsForSlide(i) {
     var o = overridesBySlide[i];
     if (!o) return OPTS;
-    return {
+    var r = {
       textX: o.textX != null ? o.textX : OPTS.textX,
       textY: o.textY != null ? o.textY : OPTS.textY,
       textW: o.textW != null ? o.textW : OPTS.textW,
@@ -241,6 +243,8 @@
       titleFs: o.titleFs != null ? o.titleFs : OPTS.titleFs,
       bodyFs: o.bodyFs != null ? o.bodyFs : OPTS.bodyFs
     };
+    if (o.imageBoxes && Array.isArray(o.imageBoxes)) r.imageBoxes = o.imageBoxes;
+    return r;
   }
 
   function syncInputsFromSlide(i) {
@@ -252,12 +256,35 @@
     updateImgZoomUI();
   }
 
+  /** 에디터 픽셀 기준 slideImage → 인치 박스 (baseW/baseH 기준). 미리보기·PPTX와 동일 레이아웃 유지 */
+  function slideImageToInchBox(slideImage, refPxW, refPxH) {
+    if (!slideImage || (!slideImage.w && !slideImage.h)) return null;
+    refPxW = refPxW || 800;
+    refPxH = refPxH || 450;
+    var baseW = 10, baseH = 5.63;
+    var w = slideImage.w || 200, h = slideImage.h || 150;
+    var leftPx = slideImage.left, topPx = slideImage.top;
+    if (slideImage.right != null) leftPx = refPxW - (slideImage.right || 0) - w;
+    if (slideImage.centerY) topPx = (refPxH - h) / 2;
+    if (leftPx == null) leftPx = 0;
+    if (topPx == null) topPx = 0;
+    return {
+      x: (leftPx / refPxW) * baseW,
+      y: (topPx / refPxH) * baseH,
+      w: (w / refPxW) * baseW,
+      h: (h / refPxH) * baseH
+    };
+  }
+
   function slideHtml(s, i) {
     var o = getOptsForSlide(i);
     var baseW = 10, baseH = 5.63;
-    var hasImage = !!(s.imageUrl);
+    var isImageOnly = !!s.isImageOnly;
+    var imgList = (s.images && Array.isArray(s.images) && s.images.length) ? s.images : (s.imageUrl ? [{ url: s.imageUrl, slideImage: null }] : []);
+    var hasImage = imgList.length > 0;
+    var hasTextArea = !isImageOnly && hasImage;
     var textLeftPct, textTopPct, textWpct, textHpct, textDrag;
-    if (hasImage) {
+    if (hasTextArea) {
       textLeftPct = Math.max(0, Math.min(100, (o.textX / baseW) * 100));
       textTopPct = Math.max(0, Math.min(100, (o.textY / baseH) * 100));
       textWpct = Math.max(10, Math.min(100, (o.textW / baseW) * 100));
@@ -289,14 +316,73 @@
       var content = (s.bulletsHtml && s.bulletsHtml[j] != null) ? s.bulletsHtml[j] : esc(b);
       return '<div>' + content + '</div>';
     }).join('');
-    var imgHtml = s.imageUrl
-      ? '<div class="preview-img-wrap preview-img-absolute" data-drag="img" data-slide-idx="' + i + '" style="left:' + imgLeft + '%;top:' + imgTop + '%;width:' + imgWpct + '%;height:' + imgHpct + '%"><img src="' + esc(s.imageUrl) + '" alt="" /><div class="preview-img-resize-handle" data-resize="img" data-slide-idx="' + i + '" title="드래그하여 크기 조절"></div></div>'
-      : '';
-    return '<div class="preview-slide"><div class="preview-slide-inner" style="background:' + bg + '">' +
-      '<div class="preview-accent"></div>' +
-      '<div class="preview-text"' + textDrag + ' style="' + textStyle + '">' +
+    var imgHtml = '';
+    if (isImageOnly && imgList.length > 0) {
+      for (var ei = 0; ei < imgList.length; ei++) {
+        var inchBox = imgList[ei].slideImage ? slideImageToInchBox(imgList[ei].slideImage) : null;
+        var lp, tp, wp, hp;
+        if (inchBox) {
+          lp = Math.max(0, Math.min(100, (inchBox.x / baseW) * 100));
+          tp = Math.max(0, Math.min(100, (inchBox.y / baseH) * 100));
+          wp = Math.max(5, Math.min(100, (inchBox.w / baseW) * 100));
+          hp = Math.max(10, Math.min(100, (inchBox.h / baseH) * 100));
+        } else {
+          var cols = Math.ceil(Math.sqrt(imgList.length));
+          var rows = Math.ceil(imgList.length / cols);
+          var gw = 9.4 / cols, gh = 5.0 / rows;
+          var col = ei % cols, row = Math.floor(ei / cols);
+          var xIn = 0.3 + col * gw, yIn = 0.3 + row * gh;
+          lp = (xIn / baseW) * 100;
+          tp = (yIn / baseH) * 100;
+          wp = ((gw - 0.1) / baseW) * 100;
+          hp = ((gh - 0.1) / baseH) * 100;
+        }
+        imgHtml += '<div class="preview-img-wrap preview-img-absolute" style="left:' + lp + '%;top:' + tp + '%;width:' + wp + '%;height:' + hp + '%"><img src="' + esc(imgList[ei].url) + '" alt="" /></div>';
+      }
+    } else if (imgList.length === 1) {
+      var inchBox1 = imgList[0].slideImage ? slideImageToInchBox(imgList[0].slideImage) : null;
+      if (inchBox1) {
+        var lp1 = Math.max(0, Math.min(100, (inchBox1.x / baseW) * 100));
+        var tp1 = Math.max(0, Math.min(100, (inchBox1.y / baseH) * 100));
+        var wp1 = Math.max(5, Math.min(100, (inchBox1.w / baseW) * 100));
+        var hp1 = Math.max(10, Math.min(100, (inchBox1.h / baseH) * 100));
+        imgHtml = '<div class="preview-img-wrap preview-img-absolute" data-drag="img" data-slide-idx="' + i + '" style="left:' + lp1 + '%;top:' + tp1 + '%;width:' + wp1 + '%;height:' + hp1 + '%"><img src="' + esc(imgList[0].url) + '" alt="" /><div class="preview-img-resize-handle" data-resize="img" data-slide-idx="' + i + '" title="드래그하여 크기 조절"></div></div>';
+      } else {
+        imgHtml = '<div class="preview-img-wrap preview-img-absolute" data-drag="img" data-slide-idx="' + i + '" style="left:' + imgLeft + '%;top:' + imgTop + '%;width:' + imgWpct + '%;height:' + imgHpct + '%"><img src="' + esc(imgList[0].url) + '" alt="" /><div class="preview-img-resize-handle" data-resize="img" data-slide-idx="' + i + '" title="드래그하여 크기 조절"></div></div>';
+      }
+    } else if (imgList.length >= 2) {
+      var cols = 2;
+      var rows = Math.ceil(imgList.length / cols);
+      var imgH = 4.0 / rows;
+      var colW = (baseW - 5.55 - 0.1) / cols;
+      var defaultBoxes = (function () {
+        var def = [];
+        for (var k = 0; k < imgList.length; k++) {
+          var c = k % cols, r = Math.floor(k / cols);
+          def.push({ x: 5.55 + c * (colW + 0.05), y: 0.95 + r * imgH, w: colW, h: imgH - 0.05 });
+        }
+        return def;
+      })();
+      for (var ei = 0; ei < imgList.length; ei++) {
+        var box = null;
+        if (imgList[ei].slideImage) box = slideImageToInchBox(imgList[ei].slideImage);
+        if (!box) box = (o.imageBoxes && Array.isArray(o.imageBoxes) && o.imageBoxes.length > ei) ? o.imageBoxes[ei] : defaultBoxes[ei];
+        if (!box) box = { x: 5.55, y: 0.95, w: colW, h: imgH - 0.05 };
+        var lp = Math.max(0, Math.min(100, (box.x / baseW) * 100));
+        var tp = Math.max(0, Math.min(100, (box.y / baseH) * 100));
+        var wp = Math.max(5, Math.min(100, (box.w / baseW) * 100));
+        var hp = Math.max(10, Math.min(100, (box.h / baseH) * 100));
+        imgHtml += '<div class="preview-img-wrap preview-img-absolute" data-drag="img" data-img-index="' + ei + '" data-slide-idx="' + i + '" style="left:' + lp + '%;top:' + tp + '%;width:' + wp + '%;height:' + hp + '%"><img src="' + esc(imgList[ei].url) + '" alt="" /><div class="preview-img-resize-handle" data-resize="img" data-img-index="' + ei + '" data-slide-idx="' + i + '" title="드래그하여 크기 조절"></div></div>';
+      }
+    }
+    var textBlock = isImageOnly ? '' : ('<div class="preview-text"' + textDrag + ' style="' + textStyle + '">' +
       '<div class="preview-title" style="font-size:' + titleFs + 'px;color:' + tc + '">' + titleContent + '</div>' +
-      '<div class="preview-bullets" style="font-size:' + bodyFs + 'px;color:' + bc + '">' + bullets + '</div></div>' +
+      '<div class="preview-bullets" style="font-size:' + bodyFs + 'px;color:' + bc + '">' + bullets + '</div>' +
+      (hasTextArea ? '<div class="preview-text-resize-handle" data-resize="text" data-slide-idx="' + i + '" title="드래그하여 텍스트창 크기 조절"></div>' : '') +
+      '</div>');
+    var accent = isImageOnly ? '' : '<div class="preview-accent"></div>';
+    return '<div class="preview-slide"><div class="preview-slide-inner' + (isImageOnly ? ' preview-slide-image-only' : '') + '" style="background:' + bg + '">' +
+      accent + textBlock +
       imgHtml + '<span class="preview-num">' + (i + 1) + '</span></div></div>';
   }
 
@@ -321,10 +407,14 @@
   function attachDragHandles(container) {
     var inner = container && container.querySelector && container.querySelector('.preview-slide-inner');
     if (!inner) return;
-    var imgEl = container.querySelector('[data-drag="img"]');
+    var imgEls = container.querySelectorAll ? container.querySelectorAll('[data-drag="img"]') : [];
     var textEl = container.querySelector('[data-drag="text"]');
-    var resizeHandle = container.querySelector('[data-resize="img"]');
+    var resizeHandles = container.querySelectorAll ? container.querySelectorAll('[data-resize="img"]') : [];
+    var textResizeHandle = container.querySelector('[data-resize="text"]');
     var slideIdx = IDX;
+    var s = SL[slideIdx];
+    var imgList = s && ((s.images && Array.isArray(s.images) && s.images.length) ? s.images : (s.imageUrl ? [{ url: s.imageUrl }] : []));
+    var isMultiImg = imgList && imgList.length >= 2;
 
     function toInch(deltaPx, isX, rect) {
       if (isX) return (deltaPx / rect.width) * SLIDE_BASE_W;
@@ -337,20 +427,34 @@
     function ensureSlideOverrides(idx) {
       if (!overridesBySlide[idx]) {
         var base = getOptsForSlide(idx);
-        overridesBySlide[idx] = { imgX: base.imgX, imgY: base.imgY, imgW: base.imgW, imgH: base.imgH, textX: base.textX, textY: base.textY, imageScale: base.imageScale };
+        overridesBySlide[idx] = { imgX: base.imgX, imgY: base.imgY, imgW: base.imgW, imgH: base.imgH, textX: base.textX, textY: base.textY, textW: base.textW, textH: base.textH, imageScale: base.imageScale };
+      }
+    }
+    function ensureImageBoxes(idx) {
+      if (!isMultiImg || !imgList) return;
+      ensureSlideOverrides(idx);
+      var o = overridesBySlide[idx];
+      if (!o.imageBoxes || !Array.isArray(o.imageBoxes) || o.imageBoxes.length < imgList.length) {
+        var cols = 2, rows = Math.ceil(imgList.length / cols), imgH = 4.0 / rows, colW = (SLIDE_BASE_W - 5.55 - 0.1) / cols;
+        o.imageBoxes = [];
+        for (var k = 0; k < imgList.length; k++) {
+          var c = k % cols, r = Math.floor(k / cols);
+          o.imageBoxes.push({ x: 5.55 + c * (colW + 0.05), y: 0.95 + r * imgH, w: colW, h: imgH - 0.05 });
+        }
       }
     }
 
     function onMouseDown(ev, type) {
       if (ev.button !== 0) return;
-      if (ev.target.closest('[data-resize="img"]')) return;
+      if (ev.target.closest('[data-resize="img"]') || ev.target.closest('[data-resize="text"]')) return;
       var rect = inner.getBoundingClientRect();
       var startMouseX = ev.clientX, startMouseY = ev.clientY;
       ensureSlideOverrides(slideIdx);
+      if (isMultiImg) ensureImageBoxes(slideIdx);
       var o = overridesBySlide[slideIdx];
       var startX = type === 'img' ? o.imgX : o.textX;
       var startY = type === 'img' ? o.imgY : o.textY;
-      var el = type === 'img' ? imgEl : textEl;
+      var el = type === 'img' ? imgEls[0] : textEl;
       if (!el) return;
       ev.preventDefault();
 
@@ -375,10 +479,16 @@
         var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
         indices.forEach(function (idx) {
           ensureSlideOverrides(idx);
+          if (isMultiImg) ensureImageBoxes(idx);
           var o = overridesBySlide[idx];
           if (type === 'img') {
-            o.imgX = Math.round(dx * 100) / 100;
-            o.imgY = Math.round(dy * 100) / 100;
+            if (isMultiImg && o.imageBoxes && o.imageBoxes[0]) {
+              o.imageBoxes[0].x = Math.round(dx * 100) / 100;
+              o.imageBoxes[0].y = Math.round(dy * 100) / 100;
+            } else {
+              o.imgX = Math.round(dx * 100) / 100;
+              o.imgY = Math.round(dy * 100) / 100;
+            }
           } else {
             o.textX = Math.round(dx * 100) / 100;
             o.textY = Math.round(dy * 100) / 100;
@@ -389,6 +499,50 @@
         render();
       }
 
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    function onMouseDownImg(ev, imgIndex) {
+      if (ev.button !== 0) return;
+      if (ev.target.closest('[data-resize="img"]') || ev.target.closest('[data-resize="text"]')) return;
+      var el = imgEls[imgIndex];
+      if (!el) return;
+      ensureImageBoxes(slideIdx);
+      var o = overridesBySlide[slideIdx];
+      var box = o.imageBoxes && o.imageBoxes[imgIndex] ? o.imageBoxes[imgIndex] : { x: 5.55, y: 0.95, w: 2, h: 2 };
+      var rect = inner.getBoundingClientRect();
+      var startMouseX = ev.clientX, startMouseY = ev.clientY;
+      var startX = box.x, startY = box.y;
+      ev.preventDefault();
+
+      function onMove(e) {
+        var dx = e.clientX - startMouseX, dy = e.clientY - startMouseY;
+        var newX = Math.max(0, Math.min(SLIDE_BASE_W - 0.1, startX + toInch(dx, true, rect)));
+        var newY = Math.max(0, Math.min(SLIDE_BASE_H - 0.1, startY + toInch(dy, false, rect)));
+        el.style.left = toPct(newX, true) + '%';
+        el.style.top = toPct(newY, false) + '%';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        var leftPct = parseFloat(el.style.left), topPct = parseFloat(el.style.top);
+        if (isNaN(leftPct) || isNaN(topPct)) return;
+        var dx = (leftPct / 100) * SLIDE_BASE_W, dy = (topPct / 100) * SLIDE_BASE_H;
+        var mode = getEditMode();
+        var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
+        indices.forEach(function (idx) {
+          ensureImageBoxes(idx);
+          var ov = overridesBySlide[idx];
+          if (ov.imageBoxes && ov.imageBoxes[imgIndex]) {
+            ov.imageBoxes[imgIndex].x = Math.round(dx * 100) / 100;
+            ov.imageBoxes[imgIndex].y = Math.round(dy * 100) / 100;
+          }
+        });
+        syncInputsFromSlide(slideIdx);
+        applyOpts();
+        render();
+      }
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     }
@@ -423,7 +577,7 @@
         var effH = rH * scale;
         var wpct = Math.max(5, Math.min(100, (effW / SLIDE_BASE_W) * 100));
         var hpct = Math.max(10, Math.min(100, (effH / SLIDE_BASE_H) * 100));
-        if (imgEl) { imgEl.style.width = wpct + '%'; imgEl.style.height = hpct + '%'; }
+        if (imgEls[0]) { imgEls[0].style.width = wpct + '%'; imgEls[0].style.height = hpct + '%'; }
         syncInputsFromSlide(slideIdx);
       }
       function onUp() {
@@ -437,14 +591,121 @@
       document.addEventListener('mouseup', onUp);
     }
 
-    if (imgEl) {
-      imgEl.addEventListener('mousedown', function (e) { onMouseDown(e, 'img'); });
+    function onResizeDownImg(ev, imgIndex) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      var el = imgEls[imgIndex];
+      if (!el) return;
+      ensureImageBoxes(slideIdx);
+      var o = overridesBySlide[slideIdx];
+      var box = o.imageBoxes && o.imageBoxes[imgIndex] ? o.imageBoxes[imgIndex] : { x: 5.55, y: 0.95, w: 2, h: 2 };
+      var rect = inner.getBoundingClientRect();
+      var startMouseX = ev.clientX, startMouseY = ev.clientY;
+      var startW = box.w, startH = box.h;
+      var mode = getEditMode();
+      var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
+
+      function onMove(e) {
+        var dx = e.clientX - startMouseX, dy = e.clientY - startMouseY;
+        var newW = Math.max(0.3, Math.min(SLIDE_BASE_W - box.x, startW + toInch(dx, true, rect)));
+        var newH = Math.max(0.3, Math.min(SLIDE_BASE_H - box.y, startH + toInch(dy, false, rect)));
+        var rW = Math.round(newW * 100) / 100, rH = Math.round(newH * 100) / 100;
+        indices.forEach(function (idx) {
+          ensureImageBoxes(idx);
+          var ov = overridesBySlide[idx];
+          if (ov.imageBoxes && ov.imageBoxes[imgIndex]) {
+            ov.imageBoxes[imgIndex].w = rW;
+            ov.imageBoxes[imgIndex].h = rH;
+          }
+        });
+        var wpct = Math.max(5, Math.min(100, (rW / SLIDE_BASE_W) * 100));
+        var hpct = Math.max(10, Math.min(100, (rH / SLIDE_BASE_H) * 100));
+        el.style.width = wpct + '%';
+        el.style.height = hpct + '%';
+        syncInputsFromSlide(slideIdx);
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        applyOpts();
+        render();
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    function onTextResizeDown(ev) {
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (!textEl) return;
+      var rect = inner.getBoundingClientRect();
+      var mode = getEditMode();
+      var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
+      indices.forEach(function (idx) { ensureSlideOverrides(idx); });
+      var o = overridesBySlide[slideIdx];
+      var startMouseX = ev.clientX, startMouseY = ev.clientY;
+      var startW = o.textW, startH = o.textH;
+
+      function onMove(e) {
+        var dx = e.clientX - startMouseX, dy = e.clientY - startMouseY;
+        var dW = toInch(dx, true, rect);
+        var dH = toInch(dy, false, rect);
+        var newW = Math.max(1, Math.min(SLIDE_BASE_W - o.textX, startW + dW));
+        var newH = Math.max(1, Math.min(SLIDE_BASE_H - o.textY, startH + dH));
+        var rW = Math.round(newW * 100) / 100;
+        var rH = Math.round(newH * 100) / 100;
+        indices.forEach(function (idx) {
+          var ov = overridesBySlide[idx];
+          ov.textW = rW;
+          ov.textH = rH;
+        });
+        var wpct = Math.max(10, Math.min(100, (rW / SLIDE_BASE_W) * 100));
+        var hpct = Math.max(15, Math.min(100, (rH / SLIDE_BASE_H) * 100));
+        textEl.style.width = wpct + '%';
+        textEl.style.height = hpct + '%';
+        syncInputsFromSlide(slideIdx);
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        applyOpts();
+        render();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+
+    if (isMultiImg && imgEls.length) {
+      imgEls.forEach(function (el) {
+        var idx = el.getAttribute('data-img-index');
+        if (idx != null) {
+          var i = parseInt(idx, 10);
+          el.addEventListener('mousedown', function (e) { onMouseDownImg(e, i); });
+        } else {
+          el.addEventListener('mousedown', function (e) { onMouseDown(e, 'img'); });
+        }
+      });
+      resizeHandles.forEach(function (h) {
+        var idx = h.getAttribute('data-img-index');
+        if (idx != null) {
+          var i = parseInt(idx, 10);
+          h.addEventListener('mousedown', function (e) { onResizeDownImg(e, i); });
+        } else {
+          h.addEventListener('mousedown', onResizeDown);
+        }
+      });
+    } else if (imgEls[0]) {
+      imgEls[0].addEventListener('mousedown', function (e) { onMouseDown(e, 'img'); });
+      if (resizeHandles[0]) resizeHandles[0].addEventListener('mousedown', onResizeDown);
     }
     if (textEl) {
       textEl.addEventListener('mousedown', function (e) { onMouseDown(e, 'text'); });
     }
-    if (resizeHandle) {
-      resizeHandle.addEventListener('mousedown', onResizeDown);
+    if (textResizeHandle) {
+      textResizeHandle.addEventListener('mousedown', onTextResizeDown);
     }
   }
 

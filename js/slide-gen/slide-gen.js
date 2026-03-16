@@ -9,6 +9,11 @@
   function getSlidesArr() { return window.getSlides ? window.getSlides() : []; }
   function setSlides(s) { if (window.setSlides) window.setSlides(s); }
   function rawText() { return window.getRawText ? window.getRawText() : ''; }
+  function summaryText() { return window.getSummaryText ? window.getSummaryText() : ''; }
+  function sourceTextForSlideGen(opts) {
+    if (opts && opts.useSummaryForSlides && summaryText().trim()) return summaryText();
+    return rawText();
+  }
   function setSummaryText(t) { if (window.setSummaryText) window.setSummaryText(t); }
   function setLeftTab(t) { if (window.setLeftTab) window.setLeftTab(t); }
   function setPresentationScript(p) { if (window.setPresentationScript) window.setPresentationScript(p); }
@@ -245,8 +250,18 @@
 
   async function generateSummary(type, options) {
     if (typeof window !== 'undefined') window._aiTaskCancelled = false;
-    if (!rawText()) return;
     var opts = options || {};
+    if (type === 'full') {
+      if (!rawText()) return;
+    } else if (type === 'slides' || type === 'slides_auto') {
+      var src = sourceTextForSlideGen(opts);
+      if (!src || !src.trim()) {
+        if (window.showToast) window.showToast('⚠️ 원문을 로드하거나, 요약자료로 생성 시에는 먼저 요약을 생성하세요.');
+        return;
+      }
+    } else {
+      if (!rawText()) return;
+    }
     var customInstruction = (opts.customInstruction !== undefined && opts.customInstruction !== null)
       ? String(opts.customInstruction) : ((g('custom-instruction-val') && g('custom-instruction-val').value) || '');
     var slideCount = parseInt((g('slide-count-val') && g('slide-count-val').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_default_slide_count')) || '15', 10) || 15;
@@ -384,6 +399,7 @@
     }
 
     if (window.showJobProgress) window.showJobProgress('slideGen', '백그라운드에서 슬라이드 생성 중...', 0, '🗂');
+    var slideSourceText = sourceTextForSlideGen(opts);
     var isAcademic = slideStyle() === 'light';
     var slideRangeRaw = (g('slide-range-val') && g('slide-range-val').value) || '';
     var parsedRange = parseSlideRange(slideRangeRaw);
@@ -395,7 +411,7 @@
     if (isAutoSlideMode) slideGenType = 'auto_visual';
     var targetSlideCount = slideCount;
     if (isAutoSlideMode || slideGenType === 'auto_visual') {
-      var estimated = estimateAutoSlideCount(rawText().length, includeCover);
+      var estimated = estimateAutoSlideCount(slideSourceText.length, includeCover);
       if (parsedRange) {
         targetSlideCount = clamp(estimated, parsedRange.min, parsedRange.max);
       } else {
@@ -440,9 +456,9 @@
       NO_SLIDE_NUM_NOTE: noSlideNumNote,
       PAGE_POLICY_NOTE: pagePolicyNote,
       VISUAL_POLICY: visualPolicy,
-      TEXT: rawText().substring(0, 15000)
+      TEXT: slideSourceText.substring(0, 15000)
     }));
-    var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + targetSlideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n' + pagePolicyNote + '\n' + visualPolicy + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + rawText().substring(0, 15000));
+    var prompt = userPrompt || ('선택하신 ' + typeLabel + '으로 슬라이드 구성을 시작합니다.\n\n이 텍스트를 기반으로 정확히 ' + targetSlideCount + '개의 슬라이드를 생성하세요.\n스타일: ' + styleGuide + '\n' + coverNote + '\n' + structureNote + '\n' + noSlideNumNote + '\n' + pagePolicyNote + '\n' + visualPolicy + '\n\n반드시 아래 JSON 배열 형식으로만 응답하세요 (코드블록 없이, 마크다운 없이):\n[{"title":"슬라이드 제목(번호 없이 섹션명만)","bullets":["포인트1","포인트2","포인트3"],"notes":"발표자 노트","visPrompt":"English diagram description for AI image generation","isCover":false}]\n\n텍스트:\n' + slideSourceText.substring(0, 15000));
     if (slideGenType === 'auto_visual') {
       prompt += '\n\n[강제 규칙 - 교재형 시각화]\n'
         + '- 그림/표/도해를 설명하는 슬라이드는 visPrompt를 반드시 작성.\n'
@@ -475,6 +491,13 @@
           isCover: s.isCover || false
         };
       });
+      // 표지 슬라이드에 설정의 사용자 정보(체크된 항목만) 추가
+      if (newSlides.length && newSlides[0].isCover && typeof window.getUserInfoForSummary === 'function') {
+        var userInfo = window.getUserInfoForSummary();
+        if (userInfo && userInfo.trim()) {
+          newSlides[0].bullets = (newSlides[0].bullets || []).concat('발표자: ' + userInfo.trim());
+        }
+      }
       var prevSlidesSnapshot = getSlidesArr();
       var addToHistoryFn = isAutoSlideMode && window.addToAllSlideHistory ? window.addToAllSlideHistory : window.addToSlideHistory;
       if (prevSlidesSnapshot && prevSlidesSnapshot.length && addToHistoryFn) {

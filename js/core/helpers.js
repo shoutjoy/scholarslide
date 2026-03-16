@@ -28,12 +28,16 @@ function askThenSummary(type) {
   const label = isAllSlide ? 'All Slide생성' : '슬라이드 생성';
   const slideRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
   const imageRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_image_aspect_ratio')) || '1:1';
+  const lastUseSummary = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_use_summary') === '1');
   let old = document.getElementById('slide-gen-confirm-modal');
   if (old) old.remove();
   const m = document.createElement('div');
   m.id = 'slide-gen-confirm-modal';
   m.className = 'modal-backdrop open';
   m.onclick = function (e) { if (e.target === m) m.remove(); };
+  const sourceSummaryActive = lastUseSummary ? ' active' : '';
+  const sourceRawActive = lastUseSummary ? '' : ' active';
+  const sourceHintText = lastUseSummary ? '요약된 내용을 기준으로 슬라이드를 생성합니다. (요약이 없으면 먼저 요약을 생성하세요.)' : '원문 텍스트를 기준으로 슬라이드를 생성합니다.';
   const imageRatioHtml = isAllSlide
     ? '<div style="margin-top:12px"><label class="label" style="font-size:12px;display:block;margin-bottom:6px">이미지 생성 비율</label>'
     + '<style>.img-ratio-modal-btn.active{background:var(--primary,#4f8ef7)!important;color:#fff!important;border-color:var(--primary,#4f8ef7)!important;}</style>'
@@ -46,6 +50,12 @@ function askThenSummary(type) {
     + '<div class="modal-header"><div class="modal-title">' + label + ' 실행</div><button class="modal-close" onclick="document.getElementById(\'slide-gen-confirm-modal\').remove()">&#x2715;</button></div>'
     + '<div class="modal-body" style="display:flex;flex-direction:column;gap:12px">'
     + '<p style="font-size:13px;color:var(--text2);line-height:1.6">AI를 사용하여 ' + label + '을 실행하시겠습니까? 시간이 다소 걸릴 수 있습니다.</p>'
+    + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">생성 소스</label>'
+    + '<style>.slide-gen-source-btn.active{background:var(--primary,#4f8ef7)!important;color:#fff!important;border-color:var(--primary,#4f8ef7)!important;}</style>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button type="button" class="btn btn-ghost btn-sm slide-gen-source-btn' + sourceRawActive + '" data-source="raw" style="padding:6px 12px;font-size:12px">원문으로 생성</button>'
+    + '<button type="button" class="btn btn-ghost btn-sm slide-gen-source-btn' + sourceSummaryActive + '" data-source="summary" style="padding:6px 12px;font-size:12px">요약자료로 생성</button>'
+    + '</div><p id="slide-gen-source-hint" style="font-size:11px;color:var(--text3);margin-top:4px">' + sourceHintText + '</p></div>'
     + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 비율</label>'
     + '<select id="slide-gen-modal-ratio" class="control" style="font-size:12px;width:100%;padding:8px 10px">'
     + '<option value="16:9"' + (slideRatio==='16:9'?' selected':'') + '>16:9</option>'
@@ -63,6 +73,14 @@ function askThenSummary(type) {
     + '<button class="btn btn-primary btn-sm" id="slide-gen-modal-exec">&#x2713; 실행</button>'
     + '</div></div>';
   document.body.appendChild(m);
+  m.querySelectorAll('.slide-gen-source-btn').forEach(function (btn) {
+    btn.onclick = function () {
+      m.querySelectorAll('.slide-gen-source-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var hint = m.querySelector('#slide-gen-source-hint');
+      if (hint) hint.textContent = btn.getAttribute('data-source') === 'summary' ? '요약된 내용을 기준으로 슬라이드를 생성합니다. (요약이 없으면 먼저 요약을 생성하세요.)' : '원문 텍스트를 기준으로 슬라이드를 생성합니다.';
+    };
+  });
   if (isAllSlide) {
     var updateImgRatioLabel = function (ratio) {
       var lbl = m.querySelector('#slide-gen-modal-img-ratio-label');
@@ -81,8 +99,11 @@ function askThenSummary(type) {
   document.getElementById('slide-gen-modal-exec').onclick = function(){
     const ratioSel = document.getElementById('slide-gen-modal-ratio');
     const slideVal = ratioSel ? ratioSel.value : '16:9';
+    const sourceBtn = m.querySelector('.slide-gen-source-btn.active');
+    const useSummary = sourceBtn && sourceBtn.getAttribute('data-source') === 'summary';
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('ss_slide_aspect_ratio', slideVal);
+      localStorage.setItem('ss_slide_gen_use_summary', useSummary ? '1' : '0');
       if (isAllSlide) {
         const imgBtn = m.querySelector('.img-ratio-modal-btn.active');
         const imgVal = imgBtn ? (imgBtn.getAttribute('data-ratio') || '1:1') : '1:1';
@@ -91,7 +112,7 @@ function askThenSummary(type) {
     }
     if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio();
     m.remove();
-    generateSummary(type);
+    generateSummary(type, { useSummaryForSlides: useSummary });
   };
 }
 function askThenFetchSources() {

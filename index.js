@@ -1390,15 +1390,7 @@ function normalizeImageSlideRatios() {
       s.innerSize.widthPct = DEFAULT_IMAGE_SLIDE_TEXT_PCT;
       changed = true;
     }
-    var imgs = getSlideImages(s);
-    var imgChanged = false;
-    imgs.forEach(function (it) {
-      if (it.slideImage && (it.slideImage.w || it.slideImage.h)) {
-        it.slideImage = null;
-        imgChanged = true;
-      }
-    });
-    if (imgChanged) { setSlideImages(s, imgs); changed = true; }
+    /* 사용자가 조절한 이미지 위치/크기(slideImage)는 절대 덮어쓰지 않음. 비율만 없을 때 기본값 적용 */
   });
   if (changed && typeof _markDirty === 'function') _markDirty();
 }
@@ -2001,13 +1993,19 @@ function openPptxPreviewWindow() {
   if (!window.pptxPreviewOverrides) window.pptxPreviewOverrides = null;
   var newSlides = slides.map(function (s) {
     var bullets = s.bullets || [];
+    var imgs = typeof getSlideImages === 'function' ? getSlideImages(s) : [];
+    var imageItems = imgs.filter(function (it) { return it && it.url; }).map(function (it) {
+      return { url: it.url, slideImage: it.slideImage || null };
+    });
     return {
       title: s.title,
       bullets: bullets,
       titleHtml: typeof markdownToHtml === 'function' ? markdownToHtml(s.title) : (typeof escapeHtml === 'function' ? escapeHtml(s.title) : String(s.title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')),
       bulletsHtml: bullets.map(function (b) { return typeof markdownToHtml === 'function' ? markdownToHtml(b) : (typeof escapeHtml === 'function' ? escapeHtml(b) : String(b || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')); }),
-      imageUrl: s.imageUrl || '',
-      isCover: !!s.isCover
+      imageUrl: (imageItems[0] && imageItems[0].url) || '',
+      images: imageItems,
+      isCover: !!s.isCover,
+      isImageOnly: !!s.isImageOnly
     };
   });
   var store = 'snapshots';
@@ -2169,6 +2167,28 @@ async function exportPPT() {
       img.src = dataUrl;
     });
   }
+  /** 에디터 픽셀 기준 slideImage → PPTX 인치 박스. refPx는 슬라이드 캔버스 기준 픽셀(16:9 권장 800x450) */
+  function slideImageToPptxBox(slideImage, refPxW, refPxH) {
+    if (!slideImage || (!slideImage.w && !slideImage.h)) return null;
+    refPxW = refPxW || 800;
+    refPxH = refPxH || 450;
+    const pptxW = 10, pptxH = 5.63;
+    const w = slideImage.w || 200;
+    const h = slideImage.h || 150;
+    let leftPx = slideImage.left;
+    let topPx = slideImage.top;
+    if (slideImage.right != null) leftPx = refPxW - (slideImage.right || 0) - w;
+    if (slideImage.centerY) topPx = (refPxH - h) / 2;
+    if (leftPx == null) leftPx = 0;
+    if (topPx == null) topPx = 0;
+    return {
+      x: (leftPx / refPxW) * pptxW,
+      y: (topPx / refPxH) * pptxH,
+      w: (w / refPxW) * pptxW,
+      h: (h / refPxH) * pptxH
+    };
+  }
+
   async function addImageContain(pptxSlide, dataUrl, box) {
     const { x, y, w, h } = box;
     const s = await getImgSize(dataUrl);
@@ -2222,14 +2242,18 @@ async function exportPPT() {
 
       if (isImageOnly) {
         if (exportImgs.length) {
-          var cols = Math.ceil(Math.sqrt(exportImgs.length));
-          var rows = Math.ceil(exportImgs.length / cols);
-          var gw = 9.4 / cols;
-          var gh = 5.0 / rows;
           for (var ei = 0; ei < exportImgs.length; ei++) {
-            var col = ei % cols;
-            var row = Math.floor(ei / cols);
-            await addImageContain(s, exportImgs[ei].url, { x: 0.3 + col * gw, y: 0.3 + row * gh, w: gw - 0.1, h: gh - 0.1 });
+            var box = null;
+            if (exportImgs[ei].slideImage) box = slideImageToPptxBox(exportImgs[ei].slideImage);
+            if (!box) {
+              var cols = Math.ceil(Math.sqrt(exportImgs.length));
+              var rows = Math.ceil(exportImgs.length / cols);
+              var gw = 9.4 / cols;
+              var gh = 5.0 / rows;
+              var col = ei % cols, row = Math.floor(ei / cols);
+              box = { x: 0.3 + col * gw, y: 0.3 + row * gh, w: gw - 0.1, h: gh - 0.1 };
+            }
+            await addImageContain(s, exportImgs[ei].url, box);
           }
         }
         s.addText(String(idx + 1), { x: 9.2, y: 5.1, w: 0.5, h: 0.3, fontSize: 9, color: 'aaaaaa', align: 'right' });
@@ -2267,15 +2291,17 @@ async function exportPPT() {
         s.addText(bullets, { x: textX, y: textY + 1.1, w: textW, h: Math.max(1.5, textH - 1.1), valign: 'top', fontFace: fontKo, fontSize: bodyFontSize, color: bodyColor });
 
         const box1 = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: ov.imageBox.y, w: ov.imageBox.w, h: ov.imageBox.h } : { x: 5.55, y: 1.0, w: 3.95, h: 3.25 };
-        const box2a = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.63) } : { x: 5.55, y: 0.95, w: 3.95, h: 2.05 };
-        const box2b = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95 + (ov.imageBox.h || 3.25) * 0.63, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.37) } : { x: 5.55, y: 3.10, w: 3.95, h: 2.05 };
         if (exportImgs.length === 1) {
-          await addImageContain(s, exportImgs[0].url, box1);
+          var b1 = (exportImgs[0].slideImage && slideImageToPptxBox(exportImgs[0].slideImage)) || box1;
+          await addImageContain(s, exportImgs[0].url, b1);
         } else if (exportImgs.length >= 2) {
-          var imgH = 4.0 / Math.ceil(exportImgs.length / 2);
           for (var ei2 = 0; ei2 < exportImgs.length; ei2++) {
-            var c = ei2 % 2, r = Math.floor(ei2 / 2);
-            var bx = { x: 5.55 + c * 4.5, y: 0.95 + r * imgH, w: 3.95, h: imgH - 0.05 };
+            var bx = (exportImgs[ei2].slideImage && slideImageToPptxBox(exportImgs[ei2].slideImage));
+            if (!bx) {
+              var imgH = 4.0 / Math.ceil(exportImgs.length / 2);
+              var c = ei2 % 2, r = Math.floor(ei2 / 2);
+              bx = { x: 5.55 + c * 4.5, y: 0.95 + r * imgH, w: 3.95, h: imgH - 0.05 };
+            }
             await addImageContain(s, exportImgs[ei2].url, bx);
           }
         }
@@ -2381,14 +2407,67 @@ let _pdfThumbsRendered = false;
 let _pdfFileName = '';
 let _pdfPan = { x: 0, y: 0, active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 };
 
-// ── Open / Close (팝업: 오른쪽 하단, 헤더 드래그로 이동) ──
+// ── Open / Close (팝업: 오른쪽 하단, 헤더 드래그로 이동, 코너에서 크기 조절) ──
 let _pdfPanelDragInited = false;
 let _pdfPanelDrag = { active: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 };
+let _pdfPanelResize = { active: false, startX: 0, startY: 0, startW: 0, startH: 0, startLeft: 0, startTop: 0 };
+
+function ensurePdfPanelPositionForResize(panel) {
+  var rect = panel.getBoundingClientRect();
+  if (panel.style.right !== 'auto' && panel.style.right !== '') {
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.left = rect.left + 'px';
+    panel.style.top = rect.top + 'px';
+  }
+  if (!panel.style.width) panel.style.width = panel.offsetWidth + 'px';
+  if (!panel.style.height) panel.style.height = panel.offsetHeight + 'px';
+}
+
+function initPdfPanelResize() {
+  const panel = document.getElementById('pdf-preview-panel');
+  const handle = document.getElementById('pdf-preview-resize-handle');
+  if (!panel || !handle) return;
+  var minW = 320, minH = 280;
+  var maxW = Math.floor(window.innerWidth * 0.95);
+  var maxH = Math.floor(window.innerHeight - 48);
+  handle.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    ensurePdfPanelPositionForResize(panel);
+    _pdfPanelResize.active = true;
+    _pdfPanelResize.startX = e.clientX;
+    _pdfPanelResize.startY = e.clientY;
+    _pdfPanelResize.startW = panel.offsetWidth;
+    _pdfPanelResize.startH = panel.offsetHeight;
+    _pdfPanelResize.startLeft = panel.getBoundingClientRect().left;
+    _pdfPanelResize.startTop = panel.getBoundingClientRect().top;
+    panel.classList.add('pdf-resizing');
+  });
+  document.addEventListener('mousemove', function onPdfResizeMove(e) {
+    if (!_pdfPanelResize.active) return;
+    var dw = e.clientX - _pdfPanelResize.startX;
+    var dh = e.clientY - _pdfPanelResize.startY;
+    var newW = Math.max(minW, Math.min(maxW, _pdfPanelResize.startW + dw));
+    var newH = Math.max(minH, Math.min(maxH, _pdfPanelResize.startH + dh));
+    panel.style.width = newW + 'px';
+    panel.style.height = newH + 'px';
+  });
+  document.addEventListener('mouseup', function onPdfResizeUp() {
+    if (_pdfPanelResize.active) {
+      _pdfPanelResize.active = false;
+      panel.classList.remove('pdf-resizing');
+      if (_pdfDoc && panel.classList.contains('open') && typeof pdfFitPage === 'function') pdfFitPage();
+    }
+  });
+}
 
 function initPdfPanelDrag() {
   const panel = document.getElementById('pdf-preview-panel');
   const header = panel && panel.querySelector('.pdf-preview-header');
   if (!panel || !header) return;
+  initPdfPanelResize();
   header.addEventListener('mousedown', function (e) {
     if (e.button !== 0 || e.target.closest('.pdf-nav-btn')) return;
     e.preventDefault();

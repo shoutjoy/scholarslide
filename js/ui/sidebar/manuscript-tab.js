@@ -1,6 +1,6 @@
 /**
  * ScholarSlide — 원고 탭 전용 UI (좌측 사이드바)
- * 원고 탭 선택 시에만 사용되는 레이아웃: 발표원고생성/슬라이드 생성, 커스텀 프롬프트, 슬라이드 원고로 생성/파일선택, 텍스트입력창, 발표원고|슬라이드생성 뷰, 생성내용/생성히스토리/새창보기
+ * 원고 탭 선택 시에만 사용되는 레이아웃: 발표원고생성/슬라이드 생성, 커스텀 프롬프트, 발표원고 생성/파일선택, 텍스트입력창, 발표원고|슬라이드생성 뷰, 생성내용/생성히스토리/새창보기
  * 전역 의존: askThenGenerateScript, askThenSummary, handleFileUpload, saveContent, renderLeftPanel, openSummaryWindow, getPresentationScript, getSlides, getFileName, escapeHtml, showToast
  */
 (function () {
@@ -402,7 +402,7 @@
       + '<textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력..." style="width:100%;margin-bottom:10px;resize:vertical">' + esc(customVal) + '</textarea>';
 
     var row3 = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-ghost btn-sm" onclick="askThenGenerateScript()">📄 슬라이드 원고로 생성</button>'
+      + '<button type="button" class="btn btn-ghost btn-sm" onclick="askThenGenerateScript()">📄 발표원고 생성</button>'
       + '<button type="button" class="btn btn-ghost btn-sm" style="justify-content:center" onclick="document.getElementById(\'file-input-manuscript\').click()">📂 파일선택</button>'
       + '<input type="file" id="file-input-manuscript" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/>'
       + '</div>';

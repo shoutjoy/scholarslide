@@ -138,6 +138,11 @@ function buildWorkspaceSnapshot() {
   };
   if (slots && slots.length) snap.fileSlots = slots;
 
+  // PPTX 미리보기 편집 오버라이드 (이미지/텍스트 위치·크기 조절)
+  if (typeof window !== 'undefined' && window.pptxPreviewOverrides && (window.pptxPreviewOverrides.overridesBySlide || window.pptxPreviewOverrides._global)) {
+    snap.pptxPreviewOverrides = window.pptxPreviewOverrides;
+  }
+
   // 새창 뷰어 AI 데이터 (ScholarAI 히스토리, SSP 이미지 히스토리, 뷰어 페이지 내용)
   try {
     var viewerPageData = {};
@@ -293,6 +298,11 @@ function applyWorkspaceSnapshot(snap) {
       localStorage.setItem('ss_viewer_ssp_img_history', JSON.stringify(snap.viewerSspImgHistory));
     } catch (e) { console.warn('[restore] viewerSspImgHistory', e); }
   }
+  if (snap.pptxPreviewOverrides && typeof snap.pptxPreviewOverrides === 'object') {
+    try {
+      window.pptxPreviewOverrides = snap.pptxPreviewOverrides;
+    } catch (e) { console.warn('[restore] pptxPreviewOverrides', e); }
+  }
 }
 
 function _markDirty() { if (rawText || slides.length) scheduleAutosave(); }
@@ -441,7 +451,8 @@ function saveSession() {
   const session = {
     id: Date.now(), name, savedAt: new Date().toISOString(), fileName: fn, summaryText, slideStyle,
     slides: slides.map(s => ({ ...s, imageUrl: s.imageUrl && s.imageUrl.length < 500000 ? s.imageUrl : null })),
-    activeSlideIndex, presentationScript, references: ReferenceStore.getAll()
+    activeSlideIndex, presentationScript, references: ReferenceStore.getAll(),
+    pptxPreviewOverrides: (typeof window !== 'undefined' && window.pptxPreviewOverrides && (window.pptxPreviewOverrides.overridesBySlide || window.pptxPreviewOverrides._global)) ? window.pptxPreviewOverrides : null
   };
   try {
     const sessions = loadSessions(); const idx = sessions.findIndex(s => s.name === name);
@@ -449,9 +460,10 @@ function saveSession() {
     else { sessions.unshift(session); if (sessions.length > 20) sessions.pop(); }
     localStorage.setItem(LS_SESSIONS, JSON.stringify(sessions));
     showToast(`💾 "${name}" 세션 저장 완료`);
-  } catch (e) {
+    } catch (e) {
     if (e.name === 'QuotaExceededError') {
       session.slides = session.slides.map(s => ({ ...s, imageUrl: null, images: [] }));
+      session.pptxPreviewOverrides = (typeof window !== 'undefined' && window.pptxPreviewOverrides) ? window.pptxPreviewOverrides : null;
       try { const sessions = loadSessions(); sessions.unshift(session); localStorage.setItem(LS_SESSIONS, JSON.stringify(sessions)); showToast(`💾 저장됨 (이미지 제외)`); } catch { showToast('❌ 저장 실패'); }
     } else { showToast('❌ 저장 실패: ' + e.message); }
   }
@@ -484,6 +496,11 @@ function loadSession(i) {
   activeSlideIndex = s.activeSlideIndex || 0; slideStyle = s.slideStyle || 'light';
   presentationScript = s.presentationScript || [];
   if (s.references) { ReferenceStore.clear(); s.references.forEach(r => ReferenceStore.add(r)); }
+  if (s.pptxPreviewOverrides && typeof s.pptxPreviewOverrides === 'object') {
+    try { window.pptxPreviewOverrides = s.pptxPreviewOverrides; } catch (e) {}
+  } else {
+    window.pptxPreviewOverrides = null;
+  }
   if (slides.length && typeof afterSlidesCreated === 'function') afterSlidesCreated();
   if (typeof window.setFileSlots === 'function') window.setFileSlots([]);
   rawText = ''; fileName = '';
