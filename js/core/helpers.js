@@ -36,9 +36,11 @@ function askThenSummary(type) {
   m.onclick = function (e) { if (e.target === m) m.remove(); };
   const imageRatioHtml = isAllSlide
     ? '<div style="margin-top:12px"><label class="label" style="font-size:12px;display:block;margin-bottom:6px">이미지 생성 비율</label>'
+    + '<style>.img-ratio-modal-btn.active{background:var(--primary,#4f8ef7)!important;color:#fff!important;border-color:var(--primary,#4f8ef7)!important;}</style>'
     + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
     + ['1:1','3:4','4:3','9:16','16:9'].map(function(r){ return '<button type="button" class="btn btn-ghost btn-xs img-ratio-modal-btn' + (r===imageRatio?' active':'') + '" data-ratio="'+r+'" style="padding:6px 12px">'+r+'</button>'; }).join('')
-    + '</div></div>'
+    + '</div>'
+    + '<p id="slide-gen-modal-img-ratio-label" style="font-size:12px;color:var(--primary,#4f8ef7);margin-top:8px;font-weight:600">선택됨: ' + imageRatio + '</p></div>'
     : '';
   m.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">'
     + '<div class="modal-header"><div class="modal-title">' + label + ' 실행</div><button class="modal-close" onclick="document.getElementById(\'slide-gen-confirm-modal\').remove()">&#x2715;</button></div>'
@@ -62,8 +64,18 @@ function askThenSummary(type) {
     + '</div></div>';
   document.body.appendChild(m);
   if (isAllSlide) {
+    var updateImgRatioLabel = function (ratio) {
+      var lbl = m.querySelector('#slide-gen-modal-img-ratio-label');
+      if (lbl) lbl.textContent = '선택됨: ' + ratio;
+    };
     m.querySelectorAll('.img-ratio-modal-btn').forEach(function(btn){
-      btn.onclick = function(){ m.querySelectorAll('.img-ratio-modal-btn').forEach(function(b){b.classList.remove('active');}); btn.classList.add('active'); };
+      btn.onclick = function(){
+        var r = btn.getAttribute('data-ratio') || '1:1';
+        m.querySelectorAll('.img-ratio-modal-btn').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        updateImgRatioLabel(r);
+        if (typeof showToast === 'function') showToast('이미지 비율 ' + r + ' 적용됨');
+      };
     });
   }
   document.getElementById('slide-gen-modal-exec').onclick = function(){
