@@ -616,6 +616,8 @@
         </div>
       </div>
       <div class="center-toolbar-actions" style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="slideUndo()" title="실행 취소 (Ctrl+Z)" id="slide-undo-btn">↩ 실행 취소</button>
+        <button class="btn btn-ghost btn-sm" onclick="slideRedo()" title="다시 실행 (Ctrl+Shift+Z)" id="slide-redo-btn">↪ 다시 실행</button>
         <button class="btn btn-ghost btn-sm" id="ext-present-btn" title="외부 창에서 발표보기" style="display:none">🖥 외부 발표</button>
         <button class="btn btn-ghost btn-sm" id="slide-sync-btn" onclick="toggleSlideSync()" disabled title="내부/외부 슬라이드 번호 동기화">🔗 동기화 OFF</button>
         <button class="btn btn-ghost btn-sm" id="save-slide-history-btn" onclick="saveCurrentSlidesToHistory()" disabled title="편집한 슬라이드를 슬라이드 히스토리에 스냅샷으로 저장">📜 히스토리 저장</button>

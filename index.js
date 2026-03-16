@@ -1028,12 +1028,16 @@ function slideRedo() {
     showToast('↪ 다시 실행');
   } catch (e) { showToast('❌ 다시 실행 실패'); }
 }
+window.slideUndo = slideUndo;
+window.slideRedo = slideRedo;
 
-// 슬라이드 창: Ctrl+Z 실행 취소, Ctrl+Shift+Z 다시 실행 (에디터 포커스가 아닐 때)
+// 슬라이드 창: Ctrl+Z 실행 취소, Ctrl+Shift+Z 다시 실행, Ctrl+Y 다시 실행 (전방위 적용)
 document.addEventListener('keydown', function (e) {
   if (e.target.id === 'md-editor-ta') return;
+  var isEditable = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || (e.target.closest && e.target.closest('[contenteditable="true"]'));
+  if (isEditable) return;
   if (e.ctrlKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); slideUndo(); return; }
-  if (e.ctrlKey && e.key === 'z' && e.shiftKey) { e.preventDefault(); slideRedo(); return; }
+  if (e.ctrlKey && (e.key === 'z' && e.shiftKey || e.key === 'y')) { e.preventDefault(); slideRedo(); return; }
 });
 
 // 슬라이드 제목/불릿/노트 편집 후 포커스 나갈 때 실행 취소용 스냅샷
@@ -2392,6 +2396,11 @@ function openImageModal(slideIdx, options) {
   const curRatio = (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
   document.querySelectorAll('.img-ai-ratio-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-ratio') === curRatio); });
 
+  if (opts.prefillPrompt && slides[_targetSlideForImage]) {
+    const promptEl = document.getElementById('img-ai-prompt');
+    if (promptEl) promptEl.value = slides[_targetSlideForImage].visPrompt || '';
+  }
+
   // ✅ 모달이 완전히 열린 뒤 이미지 로드 (DOM 렌더링 보장)
   if (existingImg) {
     setTimeout(() => {
@@ -3333,6 +3342,7 @@ function toggleExtraTextEditor(slideIdx) {
   const isEditing = editorEl.style.display !== 'none';
   if (isEditing) {
     // save & render
+    if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
     slides[slideIdx].extraText = editorEl.value;
     renderedEl.innerHTML = renderExtraText(editorEl.value);
     editorEl.style.display = 'none';
@@ -3538,8 +3548,8 @@ function updateDesignPanel(subtab) {
         </div>
       </div>
       <div style="display:flex;gap:6px;margin-top:8px">
-        <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="generateSingleImage()">🎨 AI 이미지 생성</button>
-        <button class="btn btn-ghost btn-sm" onclick="openAiImageWindow(${activeSlideIndex})" title="새창에서 생성">↗</button>
+        <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="openImageModal(${activeSlideIndex},{prefillPrompt:true})" title="공통 도구를 열고 현재 프롬프트를 채웁니다">🎨 AI 이미지 생성</button>
+        <button class="btn btn-ghost btn-sm" onclick="openImageModal(${activeSlideIndex},{prefillPrompt:true})" title="같은 도구로 열기">↗</button>
         <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="openImageModal(${activeSlideIndex})">📁 이미지 업로드</button>
       </div>
       <div id="ai-img-inline-result" style="display:none;margin-top:10px"></div>
@@ -3556,15 +3566,16 @@ function updateDesignPanel(subtab) {
         <option value="imagen-4.0-fast-generate-001">Imagen 4 Fast</option>
       </select>
     </div>
+    <hr class="sep"/>
+    <div style="margin-bottom:8px">
+      <span class="design-label">✂️ 이미지 Crop / 수정</span>
+      <p style="font-size:10px;color:var(--text3);margin:0 0 4px">이미지가 없어도 이 버튼으로 도구를 열어 프롬프트만으로 생성할 수 있습니다.</p>
+      <button class="btn btn-primary w-full mt-1" style="justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼️ seed이미지이용 AI생성</button>
+    </div>
     ${slide.imageUrl ? `
-      <hr class="sep"/>
       <div style="margin-bottom:8px;border-radius:var(--radius);overflow:hidden;cursor:zoom-in" onclick="openImageFullscreen('${slide.imageUrl}')">
         <img src="${slide.imageUrl}" style="width:100%;max-height:130px;object-fit:cover;display:block"/>
         <div style="font-size:9px;color:var(--text3);padding:2px 6px;background:var(--surface2)">클릭하여 크게 보기 ↗</div>
-      </div>
-      <div style="margin-bottom:8px">
-        <span class="design-label">✂️ 이미지 Crop / 수정</span>
-        <button class="btn btn-primary w-full mt-1" style="justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼️ seed이미지이용 AI생성</button>
       </div>
       <div style="margin-bottom:14px">
         <span class="design-label">🤖 AI 피드백으로 수정</span>
@@ -5202,11 +5213,14 @@ async function aiEditImage() {
   if (genBtn) genBtn.disabled = false;
 }
 
-// ── YouTube ID extractor (defined here for use in parseMdFull) ──
+// ── 슬라이드 AI 이미지 생성: 공통 도구(이미지 업로드 & 편집 모달)로 통합 ──
 function openAiImageWindow(idx) {
   const i = (idx !== undefined) ? idx : activeSlideIndex;
   const slide = slides[i];
   if (!slide) { showToast('\u26a0\ufe0f \uc2ac\ub77c\uc774\ub4dc\ub97c \uc120\ud0dd\ud558\uc138\uc694'); return; }
+  openImageModal(i, { prefillPrompt: true });
+  return;
+  // 아래는 새창 방식(폴백용) — 통합 도구 사용으로 대체됨
   const defaultPrompt = slide.visPrompt || ('Academic visual for: ' + slide.title);
   const w = window.open('', '_blank', 'width=680,height=580,resizable=yes,scrollbars=yes');
   if (!w) { showToast('\u26a0\ufe0f \ud31d\uc5c5 \ucc28\ub2e8\ub428 \u2014 \ud31d\uc5c5\uc744 \ud5c8\uc6a9\ud574\uc8fc\uc138\uc694'); return; }

@@ -39,8 +39,8 @@ const HELP_HOTKEYS = [
     { desc: '다음 슬라이드', keys: 'Ctrl + →' },
   ]},
   { section: '편집', items: [
-    { desc: '슬라이드 실행 취소', keys: 'Ctrl + Z' },
-    { desc: '슬라이드 다시 실행', keys: 'Ctrl + Shift + Z' },
+    { desc: '슬라이드 실행 취소 (삭제·추가·편집 복구)', keys: 'Ctrl + Z' },
+    { desc: '슬라이드 다시 실행', keys: 'Ctrl + Shift + Z / Ctrl + Y' },
     { desc: '불릿 굵게', keys: 'Ctrl + B' },
     { desc: '불릿 기울임', keys: 'Ctrl + I' },
   ]},
