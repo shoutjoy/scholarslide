@@ -3482,11 +3482,11 @@ function buildSlideImageWrapStyle(slideImage) {
   return parts.length ? (' style="' + parts.join(';') + '"') : '';
 }
 
-/** 이미지 전용 슬라이드에서 슬롯 기본 위치 (겹침 허용, 절대 배치). 한 장일 때는 우측 기본 배치 */
+/** 이미지 전용 슬라이드에서 슬롯 기본 위치. 한 장일 때: 우측 정확 배치 + 수직 중앙 + 정사각형 */
 function getDefaultImageSlotPos(slotIndex) {
   var base = 20, step = 40;
   if (slotIndex === 0) {
-    return { right: base, top: base, w: 200, h: 150 };
+    return { right: 0, centerY: true, w: 280, h: 280 };
   }
   return { left: base + slotIndex * step, top: base + slotIndex * step, w: 200, h: 150 };
 }
@@ -3868,12 +3868,21 @@ function renderSlides() {
       const siObj = img.slideImage;
       const resized = siObj && (siObj.w || siObj.h);
       if (isImageOnly || useAbsoluteImageLayout) {
-        var pos = (siObj && (siObj.w || siObj.h || siObj.left != null || siObj.top != null || siObj.right != null)) ? siObj : getDefaultImageSlotPos(si);
-        var posPart = pos.right != null
-          ? ('right:' + pos.right + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;')
-          : ('left:' + (pos.left != null ? pos.left : 0) + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;');
-        var absStyle = 'position:absolute;' + posPart + 'width:' + (pos.w || 200) + 'px;height:' + (pos.h || 150) + 'px;z-index:' + si + ';';
-        return '<div class="slide-img-wrap slide-img-wrap-absolute ' + (resized ? 'slide-resized' : '') + '" id="slide-img-wrap-' + index + '-' + slotNum + '" data-slide-index="' + index + '" data-slot="' + slotNum + '" style="' + absStyle + '"><img src="' + (img.url || '') + '" alt=""/><button class="slide-image-remove" onclick="removeSlideImageAt(' + index + ',' + si + ');event.stopPropagation()" title="제거">✕</button>' + buildResizeMoveHandlesHtml() + '</div>';
+        var pos = (siObj && (siObj.w || siObj.h || siObj.left != null || siObj.top != null || siObj.right != null || siObj.centerY)) ? siObj : getDefaultImageSlotPos(si);
+        var isRightCenter = pos.centerY === true;
+        var posPart;
+        if (isRightCenter) {
+          posPart = 'right:' + (pos.right != null ? pos.right : 0) + 'px;top:50%;transform:translateY(-50%);left:auto;';
+        } else if (pos.right != null) {
+          posPart = 'right:' + pos.right + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;';
+        } else {
+          posPart = 'left:' + (pos.left != null ? pos.left : 0) + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;';
+        }
+        var sizeW = pos.w || 200, sizeH = pos.h || 150;
+        if (isRightCenter) sizeH = sizeW;
+        var squareClass = (isRightCenter && slideImgs.length === 1) ? ' slide-img-right-center-square' : '';
+        var absStyle = 'position:absolute;' + posPart + 'width:' + sizeW + 'px;height:' + sizeH + 'px;z-index:' + si + ';';
+        return '<div class="slide-img-wrap slide-img-wrap-absolute' + squareClass + ' ' + (resized ? 'slide-resized' : '') + '" id="slide-img-wrap-' + index + '-' + slotNum + '" data-slide-index="' + index + '" data-slot="' + slotNum + '" style="' + absStyle + '"><img src="' + (img.url || '') + '" alt=""/><button class="slide-image-remove" onclick="removeSlideImageAt(' + index + ',' + si + ');event.stopPropagation()" title="제거">✕</button>' + buildResizeMoveHandlesHtml() + '</div>';
       }
       return '<div class="slide-img-slot"><div class="slide-img-wrap ' + (resized ? 'slide-resized' : '') + '" id="slide-img-wrap-' + index + '-' + slotNum + '" data-slide-index="' + index + '" data-slot="' + slotNum + '"' + buildSlideImageWrapStyle(siObj) + '><img src="' + (img.url || '') + '" alt=""/><button class="slide-image-remove" onclick="removeSlideImageAt(' + index + ',' + si + ');event.stopPropagation()" title="제거">✕</button>' + buildResizeMoveHandlesHtml() + '</div></div>';
     }).join('');
@@ -4088,10 +4097,12 @@ function applyYoutubeResizedStyles() {
         if (isImg) _resize.wrap.classList.add('slide-resized');
         else if (isSlideImg) {
           _resize.wrap.classList.add('slide-resized');
+          _resize.wrap.classList.remove('slide-img-right-center-square');
           _resize.wrap.style.position = 'absolute';
           _resize.wrap.style.width = _resize.startW + 'px';
           _resize.wrap.style.height = _resize.startH + 'px';
           _resize.wrap.style.removeProperty('right');
+          _resize.wrap.style.removeProperty('transform');
           _resize.wrap.style.left = _resize.startLeft + 'px';
           _resize.wrap.style.top = _resize.startTop + 'px';
         } else {
@@ -4217,10 +4228,12 @@ function applyYoutubeResizedStyles() {
       if (_move.wrap.classList.contains('slide-img-wrap')) {
         if (!_move.wrap.classList.contains('slide-resized')) {
           _move.wrap.classList.add('slide-resized');
+          _move.wrap.classList.remove('slide-img-right-center-square');
           _move.wrap.style.position = 'absolute';
           _move.wrap.style.width = _move.wrap.offsetWidth + 'px';
           _move.wrap.style.height = _move.wrap.offsetHeight + 'px';
           _move.wrap.style.removeProperty('right');
+          _move.wrap.style.removeProperty('transform');
           _move.wrap.style.left = _move.startLeft + 'px';
           _move.wrap.style.top = _move.startTop + 'px';
         }

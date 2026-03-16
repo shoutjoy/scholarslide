@@ -2005,6 +2005,24 @@ body.pdf-panel-resizing { cursor: ns-resize; user-select: none; }
   pointer-events: auto;
 }
 
+/* 한 장일 때: 우측 정확 배치 + 수직 중앙 + 정사각형 꽉 채우기 (left/center, 정사각형) */
+.slide-img-right-center-square {
+  right: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  left: auto !important;
+  width: min(48%, 85vh) !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+  max-height: 90%;
+}
+.slide-img-right-center-square img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .slide-image-only-placeholder {
   display: flex;
   flex-direction: column;
