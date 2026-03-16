@@ -421,8 +421,19 @@
       </div>
       <!-- AI Image Edit section (항상 표시: 빈 상태에서도 바로 생성 가능) -->
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:11px;font-weight:700;color:var(--accent2)">🤖 AI 이미지 재생성 (Gemini)</div>
-        <div style="font-size:10px;color:var(--text3)">빈 상태에서도 프롬프트로 새 이미지를 생성할 수 있습니다. 기존 이미지가 있으면 편집 모드로 동작합니다.</div>
+        <div style="font-size:11px;font-weight:700;color:var(--accent2)">🤖 AI 이미지 재생성</div>
+        <div style="font-size:10px;color:var(--text3)">올려진 이미지를 시드로 사용합니다. 빈 상태에서는 프롬프트만으로 생성합니다. 사람 이미지일 경우 얼굴을 기본으로 참고합니다.</div>
+        <label class="design-label" style="font-size:10px;margin-bottom:2px">이미지 생성 모델</label>
+        <select id="img-ai-model-select" class="control" style="font-size:11px;padding:6px 10px">
+          <option value="gemini-3.1-flash-image-preview">Nano Banana 2 (Gemini 3.1 Flash)</option>
+          <option value="gemini-2.5-flash-image">Nano Banana (Gemini 2.5 Flash)</option>
+          <option value="gemini-3-pro-image-preview">Nano Banana Pro (Gemini 3 Pro)</option>
+          <option value="gemini-2.0-flash-exp-image-generation">Gemini 2.0 Flash (Image)</option>
+          <option value="imagen-4.0-generate-001">Imagen 4</option>
+          <option value="imagen-4.0-ultra-generate-001">Imagen 4 Ultra</option>
+          <option value="imagen-4.0-fast-generate-001">Imagen 4 Fast</option>
+        </select>
+        <label class="design-label" style="font-size:10px;margin-bottom:2px">프롬프트 (비우면 시드 이미지 기반 변형)</label>
         <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
         <button class="btn btn-secondary btn-sm" onclick="aiEditImage()" id="img-ai-gen-btn" style="align-self:flex-start">🎨 AI 재생성</button>
         <div id="img-ai-status" style="font-size:10px;color:var(--text3)"></div>
@@ -449,8 +460,8 @@
 </div>
 
 <!-- imgBank 앱 내 크게보기 (프리뷰 이미지 클릭 시) — 줌/팬 지원 -->
-<div id="imgbank-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:10000;flex-direction:column;overflow:hidden">
-  <div class="imgbank-lb-toolbar" style="position:absolute;top:12px;right:12px;z-index:1001;display:flex;align-items:center;gap:6px;background:rgba(50,50,52,0.96);padding:8px 12px;border-radius:10px;border:1px solid #555">
+<div id="imgbank-lightbox" style="display:none;position:fixed;inset:0;background:#0c0e13;z-index:10000;flex-direction:column;overflow:hidden">
+  <div class="imgbank-lb-toolbar" style="position:absolute;top:12px;right:12px;z-index:1001;display:flex;align-items:center;gap:6px;background:#323234;padding:8px 12px;border-radius:10px;border:1px solid #555">
     <button type="button" onclick="window._imgBankLbZoom(-0.25)" title="축소" style="padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px">−</button>
     <span id="imgbank-lb-zoom-val" style="min-width:40px;text-align:center;font-size:12px">100%</span>
     <button type="button" onclick="window._imgBankLbZoom(0.25)" title="확대" style="padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px">+</button>

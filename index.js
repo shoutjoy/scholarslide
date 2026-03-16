@@ -122,17 +122,31 @@ function _extractImageFromGeminiResponse(data) {
 
 async function generateImage(prompt, options = {}) {
   const aspectRatio = options.aspectRatio || (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
+  const seedImage = options.seedImage || null;
+  const modelOverride = options.modelId || null;
   let key;
   try { key = getImageApiKey(); } catch (e) { if (e && e.message === 'NO_API_KEY') throw e; return null; }
   if (window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
   if (!_abortController) _abortController = new AbortController();
   const signal = _abortController.signal;
-  const modelId = typeof getImageModelId === 'function' ? getImageModelId() : 'gemini-2.5-flash-image';
-  const textPrompt = `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones. Aspect ratio: ${aspectRatio}.`;
-  let lastErr = '';
+  const modelId = modelOverride || (typeof getImageModelId === 'function' ? getImageModelId() : 'gemini-3.1-flash-image-preview');
+  const hasSeed = seedImage && typeof seedImage === 'string' && seedImage.startsWith('data:image');
+  const faceHint = hasSeed ? ' When the image contains a face, preserve and reference facial features in the output.' : '';
+  const textPrompt = hasSeed
+    ? (prompt ? `${prompt}.${faceHint}` : `Use this image as reference. Generate a professional variation while preserving the main subject and composition.${faceHint}`)
+    : `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones. Aspect ratio: ${aspectRatio}.`;
+  const seedMime = seedImage && seedImage.match(/data:image\/(\w+);/)?.[1];
+  const seedBase64 = seedImage && seedImage.split(',')[1];
+  const parts = hasSeed
+    ? [{ text: textPrompt }, { inlineData: { mimeType: seedMime ? 'image/' + seedMime : 'image/png', data: seedBase64 } }]
+    : [{ text: textPrompt }];
+  const partsSnake = hasSeed
+    ? [{ text: textPrompt }, { inline_data: { mime_type: seedMime ? 'image/' + seedMime : 'image/png', data: seedBase64 } }]
+    : null;
 
   const isImagen = /^imagen-4\.0-(generate|ultra-generate|fast-generate)-001$/.test(modelId);
-  if (isImagen) {
+  const effectiveModelId = (hasSeed && isImagen) ? 'gemini-3.1-flash-image-preview' : modelId;
+  if (isImagen && !hasSeed) {
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predict?key=${key}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -144,44 +158,58 @@ async function generateImage(prompt, options = {}) {
       if (!res.ok) { const err = await res.json().catch(() => ({})); lastErr = err?.error?.message || `HTTP ${res.status}`; }
     } catch (e) { lastErr = e.message || String(e); console.warn('[' + modelId + ']', e.message); }
   } else {
-    for (const useSnake of [false, true]) {
+    const genConfigs = [
+      { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: aspectRatio, imageSize: '2K' } },
+      { responseModalities: ['TEXT', 'IMAGE'], aspectRatio: aspectRatio }
+    ];
+    const partsVariants = partsSnake ? [parts, partsSnake] : [parts];
+    for (let vi = 0; vi < partsVariants.length; vi++) {
+      const useParts = partsVariants[vi];
+      for (let ci = 0; ci < genConfigs.length; ci++) {
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${effectiveModelId}:generateContent?key=${key}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ role: 'user', parts: useParts }], generationConfig: genConfigs[ci] }),
+            signal: signal
+          });
+          const data = res.ok ? await res.json() : null;
+          if (res.ok && data) {
+            const img = _extractImageFromGeminiResponse(data);
+            if (img) return img;
+            if (data.candidates?.[0]?.finishReason) lastErr = data.candidates[0].finishReason;
+          }
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            lastErr = err?.error?.message || `HTTP ${res.status}`;
+            console.warn('[generateImage]', effectiveModelId, lastErr, err?.error?.details);
+          }
+        } catch (e) { lastErr = e.message || String(e); console.warn('[' + effectiveModelId + ']', e.message); }
+      }
+    }
+  }
+
+  const geminiFallbacks = ['gemini-2.0-flash-exp-image-generation', 'gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
+  const fallbackConfig = { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: aspectRatio, imageSize: '2K' } };
+  const fallbackPartsList = partsSnake ? [parts, partsSnake] : [parts];
+  for (const fallback of geminiFallbacks) {
+    if (fallback === modelId) continue;
+    for (const fallbackParts of fallbackPartsList) {
       try {
-        const genConfig = { responseModalities: ['TEXT', 'IMAGE'], aspectRatio: aspectRatio };
-        if (useSnake) genConfig.response_modalities = ['TEXT', 'IMAGE'];
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${key}`, {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallback}:generateContent?key=${key}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: textPrompt }] }], generationConfig: genConfig }),
+          body: JSON.stringify({ contents: [{ role: 'user', parts: fallbackParts }], generationConfig: fallbackConfig }),
           signal: signal
         });
         const data = res.ok ? await res.json() : null;
         if (res.ok && data) {
           const img = _extractImageFromGeminiResponse(data);
           if (img) return img;
-          if (data.candidates?.[0]?.finishReason) lastErr = data.candidates[0].finishReason;
         }
         if (!res.ok) { const err = await res.json().catch(() => ({})); lastErr = err?.error?.message || `HTTP ${res.status}`; }
-      } catch (e) { lastErr = e.message || String(e); console.warn('[' + modelId + ']', e.message); }
+      } catch (e) { lastErr = e.message || String(e); console.warn('[' + fallback + ']', e.message); }
     }
   }
-
-  const geminiFallbacks = ['gemini-2.0-flash-exp-image-generation', 'gemini-2.5-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'];
-  for (const fallback of geminiFallbacks) {
-    if (fallback === modelId) continue;
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fallback}:generateContent?key=${key}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: textPrompt }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], aspectRatio: aspectRatio } }),
-        signal: signal
-      });
-      const data = res.ok ? await res.json() : null;
-      if (res.ok && data) {
-        const img = _extractImageFromGeminiResponse(data);
-        if (img) return img;
-      }
-      if (!res.ok) { const err = await res.json().catch(() => ({})); lastErr = err?.error?.message || `HTTP ${res.status}`; }
-    } catch (e) { lastErr = e.message || String(e); console.warn('[' + fallback + ']', e.message); }
-  }
-  const imagenFallbacks = ['imagen-4.0-generate-001', 'imagen-4.0-fast-generate-001', 'imagen-4.0-ultra-generate-001'];
+  const imagenFallbacks = hasSeed ? [] : ['imagen-4.0-generate-001', 'imagen-4.0-fast-generate-001', 'imagen-4.0-ultra-generate-001'];
   for (const fb of imagenFallbacks) {
     if (fb === modelId) continue;
     try {
@@ -194,7 +222,10 @@ async function generateImage(prompt, options = {}) {
       if (!res3.ok) { const err = await res3.json().catch(() => ({})); lastErr = err?.error?.message || `HTTP ${res3.status}`; }
     } catch (e3) { lastErr = e3.message || String(e3); console.warn('[' + fb + ' fallback]', e3.message); }
   }
-  if (lastErr) console.warn('[generateImage] 모든 시도 실패:', lastErr);
+  if (lastErr) {
+    console.warn('[generateImage] 모든 시도 실패:', lastErr);
+    try { window._lastGenerateImageError = lastErr; } catch (e) {}
+  }
   return null;
 }
 
@@ -289,7 +320,7 @@ const LS_IMAGE_MODEL = 'ss_image_model';
 const LS_IMAGE_ASPECT_RATIO = 'ss_image_aspect_ratio';
 const LS_TEXT_MODEL = 'ss_text_model';
 const LS_SCHOLARAI_PRESET = 'ss_scholara_i_preset';
-function getImageModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_IMAGE_MODEL)) || 'gemini-2.5-flash-image'; }
+function getImageModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_IMAGE_MODEL)) || 'gemini-3.1-flash-image-preview'; }
 function setDesignImageModel(modelId) { if (modelId && typeof localStorage !== 'undefined') localStorage.setItem(LS_IMAGE_MODEL, modelId); }
 function getImageAspectRatio() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_IMAGE_ASPECT_RATIO)) || '1:1'; }
 function getTextModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_TEXT_MODEL)) || 'gemini-2.5-pro'; }
@@ -2330,6 +2361,9 @@ function openImageModal(slideIdx, options) {
 
   openModal('img-modal');
 
+  const imgModelSel = document.getElementById('img-ai-model-select');
+  if (imgModelSel && typeof getImageModelId === 'function') imgModelSel.value = getImageModelId() || 'gemini-3.1-flash-image-preview';
+
   // ✅ 모달이 완전히 열린 뒤 이미지 로드 (DOM 렌더링 보장)
   if (existingImg) {
     setTimeout(() => {
@@ -2933,7 +2967,7 @@ function buildImageViewerHtml() {
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#383838;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh;overflow:hidden}
-.fs-toolbar{position:fixed;top:12px;right:12px;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:rgba(50,50,52,0.96);padding:8px 12px;border-radius:10px;border:1px solid #555}
+.fs-toolbar{position:fixed;top:12px;right:12px;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#323234;padding:8px 12px;border-radius:10px;border:1px solid #555}
 .fs-toolbar button{padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px}
 .fs-toolbar button:hover{background:#555;color:#fff;border-color:#4f8ef7}
 .fs-toolbar .fs-zoom-val{min-width:40px;text-align:center;font-size:12px}
@@ -5025,34 +5059,23 @@ function insertYoutubeFromModal() {
 }
 function mdPreviewUpdate() { /* preview removed */ }
 
-// ── AI Image Edit (Gemini Flash Image Gen) ───────────────
+// ── AI Image Edit (시드 이미지 기반 재생성) ───────────────
 async function aiEditImage() {
   const prompt = document.getElementById('img-ai-prompt')?.value?.trim();
-  if (!prompt) { showToast('⚠️ 프롬프트를 입력하세요'); return; }
+  const seedImage = _finalCroppedDataURL || _origImageDataURL;
+  const hasSeed = seedImage && typeof seedImage === 'string' && seedImage.startsWith('data:image');
+  if (!hasSeed && !prompt) { showToast('⚠️ 이미지를 올리거나 프롬프트를 입력하세요'); return; }
   try { getImageApiKey(); } catch { showToast('⚠️ API 키를 먼저 설정하세요'); openApiModal(); return; }
   const statusEl = document.getElementById('img-ai-status');
   const genBtn = document.getElementById('img-ai-gen-btn');
+  const modelSel = document.getElementById('img-ai-model-select');
+  const modelId = modelSel ? modelSel.value : 'gemini-3.1-flash-image-preview';
   if (statusEl) statusEl.innerHTML = '⏳ AI 이미지 생성 중... (시간이 걸릴 수 있습니다)';
   if (genBtn) genBtn.disabled = true;
 
-  // Include existing image as reference if available (image editing mode)
-  const hasBase = _origImageDataURL && _origImageDataURL.startsWith('data:image');
-  const parts = [];
-  parts.push({
-    text: hasBase
-      ? `Edit this image following these instructions: ${prompt}. Maintain professional quality.`
-      : `Generate a professional academic image: ${prompt}`
-  });
-  if (hasBase) {
-    const base64 = _origImageDataURL.split(',')[1];
-    const mtype = _origImageDataURL.split(';')[0].split(':')[1];
-    parts.push({ inlineData: { mimeType: mtype, data: base64 } });
-  }
-
-  // Use same fallback logic as generateImage()
   let dataURL = null;
   try {
-    dataURL = await generateImage(prompt);
+    dataURL = await generateImage(prompt || '', { seedImage: hasSeed ? seedImage : null, modelId: modelId });
   } catch (e) {
     if (e && e.message === 'NO_API_KEY') {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ API 키를 설정해주세요 (설정 또는 상단 🔑)</span>';
@@ -5087,7 +5110,8 @@ async function aiEditImage() {
     };
     img.src = dataURL;
   } else {
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ 이미지 생성 실패 — API 키 확인 또는 다른 프롬프트를 시도해보세요</span>';
+    const errDetail = (typeof window !== 'undefined' && window._lastGenerateImageError) ? String(window._lastGenerateImageError) : '';
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ 이미지 생성 실패' + (errDetail ? ': ' + errDetail : ' — API 키 확인 또는 다른 프롬프트를 시도해보세요') + '</span>';
   }
   if (genBtn) genBtn.disabled = false;
 }
