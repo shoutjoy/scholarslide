@@ -80,6 +80,13 @@
     <button type="button" class="btn btn-ghost" id="zoom-in-btn">+ 확대</button>
     <span class="toolbar-sep"></span>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none">
+      <input type="radio" name="edit-mode" id="mode-each" value="each" checked style="width:14px;height:14px" /> each
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none">
+      <input type="radio" name="edit-mode" id="mode-all" value="all" style="width:14px;height:14px" /> All
+    </label>
+    <span class="toolbar-sep"></span>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none">
       <input type="checkbox" id="swipe-cb" style="width:14px;height:14px" /> 스와이프 (화살키로 전환)
     </label>
   </div>
@@ -130,6 +137,11 @@
   let THEME = true;
   let SWIPE = false;
   let initialZoomDone = false;
+
+  function getEditMode() {
+    var all = document.getElementById('mode-all');
+    return all && all.checked ? 'all' : 'each';
+  }
 
   function openIDB() {
     return new Promise(function (resolve, reject) {
@@ -186,12 +198,16 @@
     var v8 = e8 ? parseFloat(e8.value) : 3.25;
     var v9 = e9 ? parseInt(e9.value, 10) : 28;
     var v10 = e10 ? parseInt(e10.value, 10) : 14;
-    if (!overridesBySlide[IDX]) overridesBySlide[IDX] = {};
-    var o = overridesBySlide[IDX];
-    o.textX = v1; o.textY = v2; o.textW = v3; o.textH = v4;
-    o.imgX = v5; o.imgY = v6; o.imgW = v7; o.imgH = v8;
-    o.titleFs = v9; o.bodyFs = v10;
-    o.imageScale = OPTS.imageScale;
+    var mode = getEditMode();
+    var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [IDX];
+    indices.forEach(function (idx) {
+      if (!overridesBySlide[idx]) overridesBySlide[idx] = {};
+      var o = overridesBySlide[idx];
+      o.textX = v1; o.textY = v2; o.textW = v3; o.textH = v4;
+      o.imgX = v5; o.imgY = v6; o.imgW = v7; o.imgH = v8;
+      o.titleFs = v9; o.bodyFs = v10;
+      o.imageScale = OPTS.imageScale;
+    });
     OPTS.textX = v1; OPTS.textY = v2; OPTS.textW = v3; OPTS.textH = v4;
     OPTS.imgX = v5; OPTS.imgY = v6; OPTS.imgW = v7; OPTS.imgH = v8;
     OPTS.titleFs = v9; OPTS.bodyFs = v10;
@@ -354,15 +370,19 @@
         if (isNaN(leftPct) || isNaN(topPct)) return;
         var dx = (leftPct / 100) * SLIDE_BASE_W;
         var dy = (topPct / 100) * SLIDE_BASE_H;
-        ensureSlideOverrides(slideIdx);
-        var o = overridesBySlide[slideIdx];
-        if (type === 'img') {
-          o.imgX = Math.round(dx * 100) / 100;
-          o.imgY = Math.round(dy * 100) / 100;
-        } else {
-          o.textX = Math.round(dx * 100) / 100;
-          o.textY = Math.round(dy * 100) / 100;
-        }
+        var mode = getEditMode();
+        var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
+        indices.forEach(function (idx) {
+          ensureSlideOverrides(idx);
+          var o = overridesBySlide[idx];
+          if (type === 'img') {
+            o.imgX = Math.round(dx * 100) / 100;
+            o.imgY = Math.round(dy * 100) / 100;
+          } else {
+            o.textX = Math.round(dx * 100) / 100;
+            o.textY = Math.round(dy * 100) / 100;
+          }
+        });
         syncInputsFromSlide(slideIdx);
         applyOpts();
         render();
@@ -377,7 +397,9 @@
       ev.preventDefault();
       ev.stopPropagation();
       var rect = inner.getBoundingClientRect();
-      ensureSlideOverrides(slideIdx);
+      var mode = getEditMode();
+      var indices = mode === 'all' ? SL.map(function (_, i) { return i; }) : [slideIdx];
+      indices.forEach(function (idx) { ensureSlideOverrides(idx); });
       var o = overridesBySlide[slideIdx];
       var startMouseX = ev.clientX, startMouseY = ev.clientY;
       var startW = o.imgW, startH = o.imgH;
@@ -388,11 +410,16 @@
         var dH = toInch(dy, false, rect);
         var newW = Math.max(0.5, Math.min(SLIDE_BASE_W - o.imgX, startW + dW));
         var newH = Math.max(0.5, Math.min(SLIDE_BASE_H - o.imgY, startH + dH));
-        o.imgW = Math.round(newW * 100) / 100;
-        o.imgH = Math.round(newH * 100) / 100;
+        var rW = Math.round(newW * 100) / 100;
+        var rH = Math.round(newH * 100) / 100;
+        indices.forEach(function (idx) {
+          var ov = overridesBySlide[idx];
+          ov.imgW = rW;
+          ov.imgH = rH;
+        });
         var scale = (o.imageScale != null ? o.imageScale : OPTS.imageScale) / 100;
-        var effW = o.imgW * scale;
-        var effH = o.imgH * scale;
+        var effW = rW * scale;
+        var effH = rH * scale;
         var wpct = Math.max(5, Math.min(100, (effW / SLIDE_BASE_W) * 100));
         var hpct = Math.max(10, Math.min(100, (effH / SLIDE_BASE_H) * 100));
         if (imgEl) { imgEl.style.width = wpct + '%'; imgEl.style.height = hpct + '%'; }
@@ -557,12 +584,15 @@
   if (db) db.onclick = function () { THEME = false; applyTheme(); };
   var peb = document.getElementById('pptx-export-btn');
   if (peb) peb.onclick = function () {
-    if (window.opener && !window.opener.closed && typeof window.opener.exportPPT === 'function') {
-      applyOpts();
-      window.opener.exportPPT();
-    } else {
+    if (!window.opener || window.opener.closed) {
       alert('원본 창을 닫으면 내보내기를 할 수 없습니다.');
+      return;
     }
+    applyOpts();
+    window.opener.postMessage({
+      type: 'pptx-preview-request-export',
+      data: { overridesBySlide: overridesBySlide }
+    }, '*');
   };
   var closeBtn = document.getElementById('close-btn');
   if (closeBtn) closeBtn.onclick = function () { window.close(); };

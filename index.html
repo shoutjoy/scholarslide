@@ -433,6 +433,14 @@
           <option value="imagen-4.0-ultra-generate-001">Imagen 4 Ultra</option>
           <option value="imagen-4.0-fast-generate-001">Imagen 4 Fast</option>
         </select>
+        <label class="design-label" style="font-size:10px;margin-bottom:2px">이미지 비율</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap" id="img-ai-ratio-wrap">
+          <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn active" data-ratio="1:1" onclick="setImgAiRatio('1:1',this)">1:1</button>
+          <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn" data-ratio="16:9" onclick="setImgAiRatio('16:9',this)">16:9</button>
+          <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn" data-ratio="9:16" onclick="setImgAiRatio('9:16',this)">9:16</button>
+          <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn" data-ratio="4:3" onclick="setImgAiRatio('4:3',this)">4:3</button>
+          <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn" data-ratio="3:4" onclick="setImgAiRatio('3:4',this)">3:4</button>
+        </div>
         <label class="design-label" style="font-size:10px;margin-bottom:2px">프롬프트 (비우면 시드 이미지 기반 변형)</label>
         <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
         <button class="btn btn-secondary btn-sm" onclick="aiEditImage()" id="img-ai-gen-btn" style="align-self:flex-start">🎨 AI 재생성</button>

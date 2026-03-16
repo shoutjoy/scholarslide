@@ -1708,9 +1708,32 @@ function openPptxPreviewWindow() {
       window.addEventListener('beforeunload', function () {
         try { if (window._pptxPreviewWin && !window._pptxPreviewWin.closed) window._pptxPreviewWin.close(); } catch (e) {}
       });
-      window.addEventListener('message', function onOverrides(e) {
-        if (!e.data || e.data.type !== 'pptx-preview-overrides') return;
-        window.pptxPreviewOverrides = e.data.data || null;
+      window.addEventListener('message', function onPptxPreviewMessage(e) {
+        if (!e.data || !e.data.type) return;
+        if (e.data.type === 'pptx-preview-overrides') {
+          window.pptxPreviewOverrides = e.data.data || null;
+          return;
+        }
+        if (e.data.type === 'pptx-preview-request-export') {
+          var payload = (e.data.data && e.data.data.overridesBySlide)
+            ? { overridesBySlide: e.data.data.overridesBySlide }
+            : null;
+          window.pptxPreviewOverrides = payload;
+          if (typeof idbGet === 'function' && typeof idbPut === 'function') {
+            idbGet(store, key).then(function (saved) {
+              var toSave = saved && typeof saved === 'object' ? Object.assign({}, saved) : {};
+              toSave.overridesBySlide = (payload && payload.overridesBySlide) ? payload.overridesBySlide : (toSave.overridesBySlide || {});
+              return idbPut(store, key, toSave);
+            }).then(function () {
+              if (typeof exportPPT === 'function') exportPPT();
+            }).catch(function () {
+              if (typeof exportPPT === 'function') exportPPT();
+            });
+          } else {
+            if (typeof exportPPT === 'function') exportPPT();
+          }
+          return;
+        }
       });
     } else {
       if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었을 수 있습니다. 팝업 허용 후 다시 시도하세요.');
@@ -2299,7 +2322,8 @@ async function extractCurrentPageText() {
 
 // ── State ────────────────────────────────────────────────
 let _cropRatio = 'free';           // current crop ratio preset
-let _origImageDataURL = null;      // original uploaded image (never mutated)
+let _origImageDataURL = null;      // current base image (upload or AI-generated)
+let _initialUploadDataURL = null;  // first upload only (never overwritten by AI)
 let _imgPasteZoneActive = false;   // true after user clicks paste zone (Ctrl+V 붙여넣기용)
 
 // ── Open image modal ─────────────────────────────────────
@@ -2311,6 +2335,7 @@ function openImageModal(slideIdx, options) {
   _finalCroppedDataURL = null;
   _currentCropImg = null;
   _origImageDataURL = null;
+  _initialUploadDataURL = null;
   _cropEventsAttached = false;
   _imgPasteZoneActive = false;
 
@@ -2364,6 +2389,9 @@ function openImageModal(slideIdx, options) {
   const imgModelSel = document.getElementById('img-ai-model-select');
   if (imgModelSel && typeof getImageModelId === 'function') imgModelSel.value = getImageModelId() || 'gemini-3.1-flash-image-preview';
 
+  const curRatio = (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
+  document.querySelectorAll('.img-ai-ratio-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-ratio') === curRatio); });
+
   // ✅ 모달이 완전히 열린 뒤 이미지 로드 (DOM 렌더링 보장)
   if (existingImg) {
     setTimeout(() => {
@@ -2372,6 +2400,7 @@ function openImageModal(slideIdx, options) {
         _currentCropImg = img;
         _origImageDataURL = existingImg;
         _finalCroppedDataURL = existingImg;
+        _initialUploadDataURL = existingImg;
         _cropSelection = { x: 0, y: 0, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
         _cropEventsAttached = false; // 이벤트 재연결 보장
 
@@ -2419,6 +2448,7 @@ function loadImageForCrop(e) {
       _currentCropImg = img;
       _origImageDataURL = ev.target.result;
       _finalCroppedDataURL = ev.target.result; // default: full image
+      _initialUploadDataURL = ev.target.result;
       _cropSelection = { x: 0, y: 0, w: img.width, h: img.height };
 
       // Show crop area
@@ -2466,6 +2496,8 @@ function openImageModalWithDataURL(dataURL) {
   if (dropZone) dropZone.style.display = 'none';
   if (cropArea) cropArea.style.display = 'block';
   openModal('img-modal');
+  const curRatio = (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
+  document.querySelectorAll('.img-ai-ratio-btn').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-ratio') === curRatio); });
   const img = new Image();
   img.onload = () => {
     _currentCropImg = img;
@@ -2719,24 +2751,52 @@ function setCropRatio(ratio, btn) {
   drawCropOverlay();
 }
 
-// ── Reset to full original ────────────────────────────────
+// ── Reset to full (crop selection만 전체로, 현재 이미지 유지) ────────────────────────────────
 function resetCropFull() {
   if (!_currentCropImg) return;
   const iw = _currentCropImg.naturalWidth || _currentCropImg.width;
   const ih = _currentCropImg.naturalHeight || _currentCropImg.height;
   _cropSelection = { x: 0, y: 0, w: iw, h: ih };
-  _finalCroppedDataURL = _origImageDataURL;
+  // AI 생성 이미지 등 현재 이미지를 유지 (원본으로 되돌리지 않음)
+  const out = document.createElement('canvas');
+  out.width = iw; out.height = ih;
+  out.getContext('2d').drawImage(_currentCropImg, 0, 0, iw, ih, 0, 0, iw, ih);
+  _finalCroppedDataURL = out.toDataURL('image/png');
   document.querySelectorAll('.crop-ratio-btn').forEach(b => b.classList.remove('active'));
   const freeBtn = document.querySelector('.crop-ratio-btn');
   if (freeBtn) freeBtn.classList.add('active');
   _cropRatio = 'free';
   const wrap = document.getElementById('crop-result-wrap');
-  if (wrap) wrap.style.display = 'none';
+  const curPrev = document.getElementById('crop-result-img');
+  if (wrap) wrap.style.display = 'block';
+  if (curPrev) curPrev.src = _finalCroppedDataURL;
   drawCropCanvas();
   showToast('↺ 전체 선택으로 초기화됨');
 }
 
-function resetToOriginal() { resetCropFull(); }
+function resetToOriginal() {
+  if (!_initialUploadDataURL) { resetCropFull(); return; }
+  const img = new Image();
+  img.onload = function () {
+    _currentCropImg = img;
+    _origImageDataURL = _initialUploadDataURL;
+    _finalCroppedDataURL = _initialUploadDataURL;
+    _cropSelection = { x: 0, y: 0, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+    document.querySelectorAll('.crop-ratio-btn').forEach(b => b.classList.remove('active'));
+    const freeBtn = document.querySelector('.crop-ratio-btn');
+    if (freeBtn) freeBtn.classList.add('active');
+    _cropRatio = 'free';
+    const wrap = document.getElementById('crop-result-wrap');
+    const curPrev = document.getElementById('crop-result-img');
+    const origPrev = document.getElementById('orig-preview-img');
+    if (wrap) wrap.style.display = 'block';
+    if (curPrev) curPrev.src = _initialUploadDataURL;
+    if (origPrev) origPrev.src = _initialUploadDataURL;
+    drawCropCanvas();
+    showToast('↺ 원본 이미지로 복원됨');
+  };
+  img.src = _initialUploadDataURL;
+}
 
 // ── Apply crop → update preview & _finalCroppedDataURL ───
 function applyCrop() {
@@ -3504,12 +3564,12 @@ function updateDesignPanel(subtab) {
       </div>
       <div style="margin-bottom:8px">
         <span class="design-label">✂️ 이미지 Crop / 수정</span>
-        <button class="btn btn-primary w-full mt-1" style="justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼️ 이미지 Crop 편집</button>
+        <button class="btn btn-primary w-full mt-1" style="justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼️ seed이미지이용 AI생성</button>
       </div>
       <div style="margin-bottom:14px">
         <span class="design-label">🤖 AI 피드백으로 수정</span>
         <input class="control" id="refine-input" placeholder="예: 파란색으로 변경, 더 심플하게..."/>
-        <button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="refineImage()">🔄 AI이미지 수정 메뉴</button>
+        <button class="btn btn-ghost w-full mt-2" style="justify-content:center;display:none" onclick="refineImage()">🔄 AI이미지 수정 메뉴</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
         <button class="btn btn-ghost btn-xs w-full" style="justify-content:center" onclick="openImageFullscreen('${slide.imageUrl}')">🔍 새창에서 크게 보기</button>
@@ -5059,6 +5119,12 @@ function insertYoutubeFromModal() {
 }
 function mdPreviewUpdate() { /* preview removed */ }
 
+function setImgAiRatio(r, btn) {
+  if (r && typeof localStorage !== 'undefined') localStorage.setItem(LS_IMAGE_ASPECT_RATIO, r);
+  document.querySelectorAll('.img-ai-ratio-btn').forEach(function (x) { x.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
+
 // ── AI Image Edit (시드 이미지 기반 재생성) ───────────────
 async function aiEditImage() {
   const prompt = document.getElementById('img-ai-prompt')?.value?.trim();
@@ -5070,13 +5136,29 @@ async function aiEditImage() {
   const genBtn = document.getElementById('img-ai-gen-btn');
   const modelSel = document.getElementById('img-ai-model-select');
   const modelId = modelSel ? modelSel.value : 'gemini-3.1-flash-image-preview';
-  if (statusEl) statusEl.innerHTML = '⏳ AI 이미지 생성 중... (시간이 걸릴 수 있습니다)';
+  const aspectRatio = (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
+
+  if (statusEl) {
+    statusEl.innerHTML = '<div class="img-ai-progress-wrap" style="display:flex;flex-direction:column;gap:4px"><div style="font-size:10px;color:var(--text3)">AI 이미지 생성 중</div><div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div id="img-ai-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s ease"></div></div><span id="img-ai-progress-pct" style="font-size:10px;color:var(--text2)">0%</span></div>';
+  }
   if (genBtn) genBtn.disabled = true;
+
+  let progress = 0;
+  const progressBar = document.getElementById('img-ai-progress-bar');
+  const progressPct = document.getElementById('img-ai-progress-pct');
+  const tickProgress = function () {
+    if (progress < 85) progress += Math.random() * 8 + 4;
+    if (progress > 85) progress = 85;
+    if (progressBar) progressBar.style.width = progress + '%';
+    if (progressPct) progressPct.textContent = Math.round(progress) + '%';
+  };
+  const iv = setInterval(tickProgress, 400);
 
   let dataURL = null;
   try {
-    dataURL = await generateImage(prompt || '', { seedImage: hasSeed ? seedImage : null, modelId: modelId });
+    dataURL = await generateImage(prompt || '', { seedImage: hasSeed ? seedImage : null, modelId: modelId, aspectRatio: aspectRatio });
   } catch (e) {
+    clearInterval(iv);
     if (e && e.message === 'NO_API_KEY') {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ API 키를 설정해주세요 (설정 또는 상단 🔑)</span>';
       if (typeof showToast === 'function') showToast('⚠️ API 키를 설정해주세요');
@@ -5084,6 +5166,10 @@ async function aiEditImage() {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ 이미지 생성 실패 — ' + (e && e.message || '') + '</span>';
     }
   }
+
+  clearInterval(iv);
+  if (progressBar) progressBar.style.width = '100%';
+  if (progressPct) progressPct.textContent = '100%';
 
   if (dataURL) {
     const img = new Image();

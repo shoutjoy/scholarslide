@@ -127,6 +127,11 @@
       var item = list.find(function (x) { return x.id === id; });
       window._imgBankSelect(item || null);
     };
+    /** 썸네일 클릭 시 선택 후 크게 보기(라이트박스) 열기 — 사이드바 갤러리용 */
+    window._imgBankSelectAndOpenLightbox = function (id) {
+      window._imgBankSelectById(id);
+      if (_imgBankSelected && _imgBankSelected.dataURL) window._imgBankOpenInAppZoom();
+    };
 
     window._imgBankSelect = function (item) {
       _imgBankSelected = item;
@@ -273,7 +278,8 @@
         grid.innerHTML = list.map(function (item) {
           var thumb = item.dataURL ? '<img src="' + esc(item.dataURL) + '" alt="" class="imgbank-thumb-img"/>' : '<div class="imgbank-thumb-empty">🖼</div>';
           var label = isSidebarLayout ? '' : '<span class="imgbank-thumb-label">' + esc(item.name || '#' + item.id) + '</span>';
-          return '<div class="imgbank-grid-item' + (isSidebarLayout ? ' imgbank-sidebar-thumb' : '') + '" data-id="' + esc(item.id) + '" onclick="window._imgBankSelectById(' + item.id + ')">' + thumb + label + '</div>';
+          var onClick = isSidebarLayout ? 'window._imgBankSelectAndOpenLightbox(' + item.id + ')' : 'window._imgBankSelectById(' + item.id + ')';
+          return '<div class="imgbank-grid-item' + (isSidebarLayout ? ' imgbank-sidebar-thumb' : '') + '" data-id="' + esc(item.id) + '" onclick="' + onClick + '" title="클릭하면 크게 보기">' + thumb + label + '</div>';
         }).join('');
         window._imgBankList = list;
       }).catch(function () {

@@ -266,9 +266,9 @@
       var slideCountOpt = opts.slideCount != null ? opts.slideCount : slideCount;
 
       var summaryCharLimit = parseInt(
-        (typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '80000',
+        (typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '480000',
         10
-      ) || 80000;
+      ) || 480000;
       summaryCharLimit = Math.max(10000, Math.min(500000, summaryCharLimit));
       var textToSummarize = rawText().substring(0, summaryCharLimit);
       if (mode === 'translate' && typeof window.getRawTextForSummary === 'function') {
