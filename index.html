@@ -395,7 +395,10 @@
       <button class="modal-close" onclick="closeModal('img-modal')">&#x2715;</button>
     </div>
     <div class="modal-body" style="overflow-y:auto;flex:1">
-      <!-- 가운데: 이미지 업로드 / 주변 공간: 클릭 후 Ctrl+V 붙여넣기 -->
+      <!-- 이미지 업로드 영역 (접기 가능) -->
+      <div style="margin-bottom:8px">
+        <button type="button" class="btn btn-ghost btn-xs" id="img-upload-fold-btn" onclick="toggleImgUploadFold()" title="이미지 업로드 영역 접기/펼치기">접기 ▲</button>
+      </div>
       <div id="img-upload-paste-row" class="img-upload-paste-row">
         <div id="img-drop-zone" class="upload-zone img-upload-box" onclick="document.getElementById('img-file-input').click()">
           <input type="file" id="img-file-input" style="display:none" accept="image/*" onchange="loadImageForCrop(event)"/>
@@ -473,7 +476,7 @@
           <button type="button" class="btn btn-ghost btn-xs img-ai-ratio-btn" data-ratio="3:4" onclick="setImgAiRatio('3:4',this)">3:4</button>
         </div>
         <label class="design-label" style="font-size:10px;margin-bottom:2px">프롬프트 (비우면 시드 이미지 기반 변형)</label>
-        <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
+        <textarea id="img-ai-prompt" class="control" style="resize:vertical;min-height:80px;max-height:400px" rows="4" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
         <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
           <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer">
             <input type="checkbox" id="img-ai-mode-academic" checked onchange="if(this.checked) document.getElementById('img-ai-mode-simple').checked=false">
@@ -489,8 +492,9 @@
       </div>
     </div>
     <div class="modal-footer" style="justify-content:flex-end;flex-shrink:0">
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="closeModal('img-modal')">닫기</button>
+        <button class="btn btn-primary btn-sm" id="img-download-btn" onclick="downloadCroppedImage()" title="생성/크롭된 이미지 다운로드">다운로드 저장</button>
         <button class="btn btn-primary btn-sm" id="img-apply-btn" onclick="applyImageToSlide()">✓ 슬라이드에 삽입</button>
       </div>
     </div>
@@ -608,6 +612,7 @@
     <!-- 자동저장 상태 표시 -->
     <span id="autosave-indicator" title="자동저장 상태" style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px;white-space:nowrap;padding:0 4px"></span>
     <button class="btn btn-ghost btn-sm" onclick="openImgBankModal()" title="이미지 DB (inDB) — 새창">🖼 imgBank</button>
+    <button class="btn btn-ghost btn-sm" id="ssp-ai-btn" onclick="openSSPImageGenerator()" title="SSP 이미지 생성기 (AI 이미지)">sspAI</button>
     <button class="btn btn-ghost btn-sm" id="save-session-btn" onclick="openProjectModal()" disabled>💾 프로젝트</button>
     <button class="btn btn-ghost btn-sm" onclick="openLoadModal()">📂 불러오기</button>
     <button class="btn btn-ghost btn-sm" id="present-btn" onclick="startPresentation()" disabled title="처음부터 발표 (F5)">▶ 발표</button>

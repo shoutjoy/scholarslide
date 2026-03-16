@@ -71,8 +71,8 @@
       '<option value="critical">D. 비판적 검토형</option><option value="evidence">E. 시각적 증거형</option><option value="logic">F. 인과관계 도식형</option>' +
       '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option><option value="auto_visual">I. AII 자동 시각화형</option></select>' +
       '<label style="margin-top:16px">원문 요약 글자 수</label>' +
-      '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="500000" step="1000" value="480000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
-      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 480,000자)</p>' +
+      '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="2000000" step="1000" value="1500000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
+      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
@@ -222,7 +222,7 @@
     if (miscCount) miscCount.value = localStorage.getItem('ss_default_slide_count') || '15';
     if (miscCover) miscCover.checked = localStorage.getItem('ss_default_include_cover') !== 'false';
     if (miscType) miscType.value = localStorage.getItem('ss_slide_gen_type') || 'precision';
-    if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '480000';
+    if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '1500000';
     if (miscRangeMin) miscRangeMin.value = localStorage.getItem('ss_slide_range_default_min') || '1';
     if (miscRangeMax) miscRangeMax.value = localStorage.getItem('ss_slide_range_default_max') || '30';
 
@@ -266,8 +266,8 @@
       if (miscRangeMax) localStorage.setItem('ss_slide_range_default_max', String(miscRangeMax.value || '30').trim() || '30');
       if (miscSummaryLimit) {
         var val = parseInt(miscSummaryLimit.value, 10);
-        if (!isNaN(val)) val = Math.max(10000, Math.min(500000, val));
-        else val = 480000;
+        if (!isNaN(val)) val = Math.max(10000, Math.min(2000000, val));
+        else val = 1500000;
         localStorage.setItem('ss_summary_char_limit', String(val));
       }
       if (typeof win.renderLeftPanel === 'function') win.renderLeftPanel();
@@ -311,7 +311,7 @@
     var imgSel = $('sw-image-model-select');
     if (imgSel) imgSel.value = localStorage.getItem(LS_IMAGE_MODEL) || 'gemini-2.5-flash-image';
     var presetSel = $('sw-scholara-i-preset-select');
-    if (presetSel) presetSel.value = localStorage.getItem(LS_SCHOLARAI_PRESET) || 'none';
+    if (presetSel) presetSel.value = localStorage.getItem(LS_SCHOLARAI_PRESET) || 'apa_search';
 
     function loadPrompts(filterCategory) {
       filterCategory = filterCategory || window._swCurrentPromptFilter || 'all';

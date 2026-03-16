@@ -77,10 +77,11 @@
     var title = opts.title;
     var subtitle = opts.subtitle;
     var contentHtml = opts.contentHtml;
-    var rawTextJson = opts.rawTextJson;
+    var rawTextJson = opts.rawTextJson || '""';
+    var rawEscaped = rawTextJson.replace(/<\/script>/gi, '<\\/script>').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
     var pageTitle = opts.pageTitle || title;
     var contentType = opts.contentType || 'raw';
-    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + pageTitle + '</title><style>'
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + pageTitle + '</title><script type="application/json" id="viewer-raw-data">' + rawEscaped + '</script><style>'
 + '* { box-sizing: border-box; margin: 0; padding: 0; }'
 + 'body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; font-family: \'JetBrains Mono\', \'Noto Sans KR\', monospace; transition: background 0.2s, color 0.2s; }'
 + 'body.theme-dark { background: #0c0e13; color: #b0bac8; }'
@@ -144,12 +145,12 @@
 + '.page-content a { color: #60a5fa; text-decoration: underline; }'
 + '.page-content p { margin: 0.5em 0; }'
 + '.page-content-pre { white-space: pre-wrap; word-break: break-word; }'
-+ '.viewer-edit-wrap { display: none; flex: 1; min-width: 0; min-height: 0; flex-direction: column; padding: 16px; }'
++ '.viewer-edit-wrap { display: none; flex: 1; min-width: 0; min-height: 0; flex-direction: column; padding: 16px; min-height: 420px; }'
 + '.viewer-edit-wrap.visible { display: flex; }'
-+ '.viewer-edit-wrap textarea { flex: 1; min-height: 200px; width: 100%; padding: 16px; font-size: 14px; line-height: 1.7; font-family: \'Noto Sans KR\', \'JetBrains Mono\', monospace; border: 1px solid #1e2332; border-radius: 8px; resize: none; background: #13161d; color: #b0bac8; box-sizing: border-box; }'
++ '.viewer-edit-wrap textarea { flex: 1; min-height: 400px; width: 100%; padding: 16px; font-size: 14px; line-height: 1.7; font-family: \'Noto Sans KR\', \'JetBrains Mono\', monospace; border: 1px solid #1e2332; border-radius: 8px; resize: none; background: #13161d; color: #b0bac8; box-sizing: border-box; }'
 + 'body.theme-light .viewer-edit-wrap textarea { background: #fff; color: #1e293b; border-color: #e2e8f0; }'
 + '.content-viewport.viewer-edit-active .page { display: none !important; }'
-+ '.content-viewport.viewer-edit-active .viewer-edit-wrap { display: flex !important; }'
++ '.content-viewport.viewer-edit-active .viewer-edit-wrap { display: flex !important; transform: scale(var(--zoom, 1)); transform-origin: top center; width: 100%; max-width: 860px; }'
 + '@media print { .toolbar { display: none !important; } .viewer-sidebar { display: none !important; } body { background: #fff; color: #111; } .content-viewport { padding: 0; } .page { box-shadow: none; border: none; } }'
 + '.toolbar { flex-shrink: 0; background: #13161d; border-bottom: 1px solid #1e2332; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }'
 + 'body.theme-light .toolbar { background: #e2e8f0; border-bottom-color: #cbd5e1; }'
@@ -160,12 +161,13 @@
 + 'body.theme-light .scholar-ai-sidebar { background: #e2e8f0; border-left-color: #cbd5e1; }'
 + '.scholar-ai-sidebar.open { min-width: 280px; width: 380px; max-width: 90vw; }'
 + '.scholar-ai-sidebar.fullscreen { position: fixed; inset: 0; z-index: 9999; min-width: 100%; width: 100%; border: none; }'
-+ '.scholar-ai-resize-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 12px; cursor: col-resize; z-index: 10; display: flex; align-items: center; justify-content: center; background: transparent; }'
-+ '.scholar-ai-resize-handle:hover { background: rgba(79,142,247,0.25); }'
-+ '.scholar-ai-resize-handle::before { content: ""; width: 3px; height: 40px; border-radius: 2px; background: #4f8ef7; opacity: 0.5; }'
-+ '.scholar-ai-resize-handle:hover::before { opacity: 0.9; }'
-+ 'body.theme-light .scholar-ai-resize-handle::before { background: #4f8ef7; }'
-+ '.scholar-ai-sidebar > .scholar-ai-inner { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; }'
++ '.scholar-ai-resize-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 10; display: flex; align-items: center; justify-content: center; background: transparent; flex-shrink: 0; }'
++ '.scholar-ai-resize-handle:hover { background: rgba(79,142,247,0.08); }'
++ '.scholar-ai-resize-handle::before { content: ""; width: 2px; height: 32px; border-radius: 1px; background: rgba(79,142,247,0.35); }'
++ '.scholar-ai-resize-handle:hover::before { background: #4f8ef7; opacity: 0.9; }'
++ 'body.theme-light .scholar-ai-resize-handle::before { background: rgba(79,142,247,0.4); }'
++ 'body.theme-light .scholar-ai-resize-handle:hover::before { background: #4f8ef7; }'
++ '.scholar-ai-sidebar > .scholar-ai-inner { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; position: relative; padding-left: 8px; }'
 + '.scholar-ai-header { flex-shrink: 0; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e2332; }'
 + 'body.theme-light .scholar-ai-header { border-color: #cbd5e1; }'
 + '.scholar-ai-header h3 { font-size: 13px; color: #4f8ef7; margin: 0; }'
@@ -251,12 +253,13 @@
 + '<label>입력된 지문 (선택한 텍스트)</label><textarea id="scholar-ai-selected" readonly placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다."></textarea>'
 + '<label>프롬프트 작성 창</label><textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>'
 + '<button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>'
-+ '<label>결과창</label><textarea id="scholar-ai-result" class="scholar-ai-result" readonly placeholder="실행 후 결과가 표시됩니다."></textarea>'
++ '<label>결과창</label><textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 후 결과가 표시됩니다. 편집 가능합니다."></textarea>'
 + '</div>'
 + '<div class="scholar-ai-footer">'
-+ '<div class="scholar-ai-insert-wrap"><button type="button" class="sa-btn ghost" onclick="toggleScholarAIInsertMenu()">문서내 삽입</button><div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu"><button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 한줄 아래에 삽입</button><button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 내용 대체</button></div></div>'
++ '<div class="scholar-ai-insert-wrap"><button type="button" class="sa-btn ghost" onclick="toggleScholarAIInsertMenu()">문서내 삽입</button><div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu"><button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">커서위치삽입</button><button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 한줄 아래에 삽입</button><button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 내용 대체</button></div></div>'
 + '<span class="sa-font">font</span><button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">−</button><button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(1)">+</button>'
 + '<button type="button" class="sa-btn" onclick="scholarAICopyResult()">결과복사</button>'
++ '<button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="결과창 내용 지우기">결과창 지우기</button>'
 + '</div>'
 + '<div class="scholar-ai-history">'
 + '<label>히스토리</label>'
@@ -266,16 +269,16 @@
 + '</div></div></div>'
 + '</div>'
 + '<script>'
-+ 'var __rawText = ' + rawTextJson + ';'
++ 'var __rawText = (function(){ var el = document.getElementById("viewer-raw-data"); try { return el && el.textContent ? JSON.parse(el.textContent) : ""; } catch(e){ return ""; } })();'
 + 'var __contentType = ' + JSON.stringify(contentType) + ';'
 + 'var __mdproDocTitle = ' + JSON.stringify(title) + ';'
 + 'var _pageZoom = 100; var _fontBase = 14;'
-+ 'function setPageZoom(delta) { _pageZoom = Math.max(50, Math.min(200, _pageZoom + delta)); var page = document.getElementById("page"); if(page) page.style.setProperty("--page-zoom", _pageZoom/100); var zv = document.getElementById("zoom-val"); if(zv) zv.textContent = _pageZoom + "%"; }'
-+ 'function setFontZoom(delta) { var el = document.getElementById("page-content"); if(!el) return; var fs = parseFloat(getComputedStyle(el).fontSize) || _fontBase; fs = Math.max(10, Math.min(28, fs + delta*2)); el.style.fontSize = fs + "px"; }'
++ 'function setPageZoom(delta) { _pageZoom = Math.max(30, Math.min(200, _pageZoom + delta)); var vp = document.getElementById("content-viewport"); if (vp) vp.style.setProperty("--zoom", _pageZoom/100); var page = document.getElementById("page"); if(page) page.style.setProperty("--page-zoom", _pageZoom/100); var zv = document.getElementById("zoom-val"); if(zv) zv.textContent = _pageZoom + "%"; }'
++ 'function setFontZoom(delta) { var isEdit = document.getElementById("content-viewport") && document.getElementById("content-viewport").classList.contains("viewer-edit-active"); var el = isEdit ? document.getElementById("viewer-edit-ta") : document.getElementById("page-content"); if(!el) return; var fs = parseFloat(getComputedStyle(el).fontSize) || _fontBase; fs = Math.max(10, Math.min(28, fs + delta*2)); el.style.fontSize = fs + "px"; }'
 + 'document.addEventListener("keydown", function(e){ if(!e.ctrlKey) return; if(e.key==="7"){ e.preventDefault(); setPageZoom(-10); } else if(e.key==="8"){ e.preventDefault(); setPageZoom(10); } else if(e.key==="9"){ e.preventDefault(); setFontZoom(-1); } else if(e.key==="0"){ e.preventDefault(); setFontZoom(1); } });'
 + 'function toggleTheme() { var b = document.body; b.classList.toggle("theme-dark"); b.classList.toggle("theme-light"); document.getElementById("theme-btn").textContent = b.classList.contains("theme-dark") ? "Dark/Light" : "Light/Dark"; }'
 + 'function saveAs(ext) { var a = document.createElement("a"); a.href = "data:text/" + (ext==="md"?"markdown":"plain") + ";charset=utf-8," + encodeURIComponent(__rawText); var t = document.getElementById("viewer-doc-title"); a.download = (t ? t.textContent : document.title || "document").replace(/[^a-zA-Z0-9가-힣._-]/g,"_").slice(0,50) + "." + ext; a.click(); }'
-+ 'function viewerSwitchToEdit() { var ta = document.getElementById("viewer-edit-ta"); ta.value = __rawText; document.getElementById("content-viewport").classList.add("viewer-edit-active"); document.getElementById("viewer-btn-edit").style.display = "none"; document.getElementById("viewer-btn-view").style.display = "inline-block"; viewerBuildNav(); var onTocInput = function(){ viewerBuildNav(); }; ta.removeEventListener("input", onTocInput); ta.addEventListener("input", onTocInput); }'
++ 'function viewerSwitchToEdit() { var ta = document.getElementById("viewer-edit-ta"); var vp = document.getElementById("content-viewport"); ta.value = __rawText; if (vp) { vp.classList.add("viewer-edit-active"); vp.style.setProperty("--zoom", _pageZoom/100); } document.getElementById("viewer-btn-edit").style.display = "none"; document.getElementById("viewer-btn-view").style.display = "inline-block"; viewerBuildNav(); var onTocInput = function(){ viewerBuildNav(); }; ta.removeEventListener("input", onTocInput); ta.addEventListener("input", onTocInput); ta.addEventListener("blur", function(){ __scholarAICursorPos = ta.selectionStart; }); }'
 + 'function viewerSwitchToView() { var ta = document.getElementById("viewer-edit-ta"); __rawText = ta.value; var html = ""; try { if (window.opener && typeof window.opener.getViewerRenderedContent === "function") { html = window.opener.getViewerRenderedContent(__rawText); } } catch(e) {} if (!html && typeof marked !== "undefined") { html = marked.parse(__rawText || ""); } if (!html) { html = __rawText.replace(/\\x3C/g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br>"); } document.getElementById("content-viewport").classList.remove("viewer-edit-active"); document.getElementById("viewer-btn-view").style.display = "none"; document.getElementById("viewer-btn-edit").style.display = "inline-block"; var pc = document.getElementById("page-content"); if (pc) { pc.innerHTML = html; if (typeof viewerBuildNav === "function") requestAnimationFrame(function(){ viewerBuildNav(); }); } }'
 + 'function viewerSaveToOpener() { var ta = document.getElementById("viewer-edit-ta"); var isEdit = document.getElementById("content-viewport").classList.contains("viewer-edit-active"); var text = isEdit && ta ? ta.value : __rawText; if (isEdit && ta) __rawText = ta.value; if (window.opener && typeof window.opener.setViewerContent === "function") { window.opener.setViewerContent(text, __contentType); alert("저장되었습니다."); } else { alert("메인 창을 찾을 수 없습니다."); } }'
 + 'function viewerSavePage() { var ta = document.getElementById("viewer-edit-ta"); var isEdit = document.getElementById("content-viewport").classList.contains("viewer-edit-active"); var text = isEdit && ta ? ta.value : __rawText; if (isEdit && ta) __rawText = ta.value; try { localStorage.setItem("ss_viewer_page_" + __contentType, text); alert("page 저장되었습니다. 닫았다 열어도 유지됩니다."); } catch(e) { alert("저장 실패: " + (e.message || "")); } }'
@@ -295,7 +298,7 @@
 + 'function scholarAIShrink() { var el = document.getElementById("scholar-ai-sidebar"); if (el) { el.classList.remove("open"); el.classList.remove("fullscreen"); document.removeEventListener("selectionchange", scholarAISyncSelection); } }'
 + 'function scholarAIFullscreen() { var el = document.getElementById("scholar-ai-sidebar"); if (el) { el.classList.toggle("fullscreen"); } }'
 + 'function scholarAISyncSelection() { var sel = window.getSelection && window.getSelection(); var ta = document.getElementById("scholar-ai-selected"); var target = document.getElementById("page-content"); var editTa = document.getElementById("viewer-edit-ta"); var isEdit = document.getElementById("content-viewport") && document.getElementById("content-viewport").classList.contains("viewer-edit-active"); if (!ta) return; if (isEdit && editTa && editTa === document.activeElement) { var start = editTa.selectionStart, end = editTa.selectionEnd; ta.value = editTa.value.slice(start, end); __scholarAISelStart = start; __scholarAISelEnd = end; return; } __scholarAISelStart = __scholarAISelEnd = null; if (sel && target && sel.anchorNode && target.contains(sel.anchorNode)) { ta.value = sel.toString().trim(); } }'
-+ 'var __scholarAISelStart = null, __scholarAISelEnd = null; var __scholarAIResultFontSize = 13;'
++ 'var __scholarAISelStart = null, __scholarAISelEnd = null, __scholarAICursorPos = null; var __scholarAIResultFontSize = 13;'
 + 'var __scholarAIHistory = [];'
 + 'function scholarAIHistoryAdd(promptSnippet, resultText) { __scholarAIHistory.unshift({ id: Date.now(), prompt: promptSnippet || "", result: resultText || "", at: new Date().toISOString() }); }'
 + 'function scholarAIHistoryRender() { var list = document.getElementById("scholar-ai-history-list"); var q = (document.getElementById("scholar-ai-history-search") && document.getElementById("scholar-ai-history-search").value) || ""; q = q.trim().toLowerCase(); var items = __scholarAIHistory; if (q) items = items.filter(function(h){ return (h.prompt + " " + h.result).toLowerCase().indexOf(q) >= 0; }); var html = ""; for (var i = 0; i < items.length; i++) { var idx = __scholarAIHistory.indexOf(items[i]); var raw = items[i].prompt || items[i].result || "(빈 항목)"; var lbl = raw.replace(/</g,"&lt;").substring(0, 36) + (raw.length > 36 ? "…" : ""); html += \'<div class="scholar-ai-history-item" data-idx="\' + idx + \'"><span class="sa-h-label" onclick="scholarAIHistoryShowResult(\' + idx + \')" title="결과창에 표시">\' + lbl.replace(/\'/g, "\\\\\'") + \'</span><button type="button" class="sa-h-save" onclick="scholarAIHistorySaveMd(\' + idx + \')" title="MD 저장">저장</button><button type="button" class="sa-h-del" onclick="scholarAIHistoryDelete(\' + idx + \')" title="삭제">×</button></div>\'; } list.innerHTML = html || \'<span style="font-size:11px;color:#94a3b8">실행한 결과가 여기 쌓입니다.</span>\'; }'
@@ -305,12 +308,13 @@
 + 'function scholarAIHistorySaveAll() { if (__scholarAIHistory.length === 0) { alert("저장할 히스토리가 없습니다."); return; } var parts = []; for (var i = 0; i < __scholarAIHistory.length; i++) { var h = __scholarAIHistory[i]; parts.push("## " + (i + 1) + ". " + (h.at || "").slice(0, 19) + "\\n\\n" + (h.prompt ? "**질문/지시:** " + h.prompt + "\\n\\n" : "") + h.result); } var a = document.createElement("a"); a.href = "data:text/markdown;charset=utf-8," + encodeURIComponent(parts.join("\\n\\n---\\n\\n")); a.download = "ScholarAI_히스토리_전체_" + new Date().toISOString().slice(0,10) + ".md"; a.click(); alert("전체 " + __scholarAIHistory.length + "건이 하나의 MD 파일로 저장되었습니다."); }'
 + 'async function scholarAIRun() { var sel = document.getElementById("scholar-ai-selected"); var promptEl = document.getElementById("scholar-ai-prompt"); var resultEl = document.getElementById("scholar-ai-result"); var passage = (sel && sel.value) ? sel.value.trim() : ""; var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : ""; if (!passage) { alert("문서에서 텍스트를 선택한 뒤 실행하세요."); return; } if (!window.opener || typeof window.opener.callGemini !== "function") { alert("메인 창을 찾을 수 없거나 API를 사용할 수 없습니다."); return; } resultEl.value = "처리 중..."; try { var fullPrompt = passage + "\\n\\n사용자 질문 또는 지시: " + (userQ || "위 지문을 요약하거나 핵심을 설명해 주세요."); var sys = (window.opener.getScholarAISystemInstruction && window.opener.getScholarAISystemInstruction()) || "You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage."; var res = await window.opener.callGemini(fullPrompt, sys); var text = res && res.text ? res.text : (res || ""); resultEl.value = typeof text === "string" ? text : JSON.stringify(text); scholarAIHistoryAdd(userQ || passage.substring(0, 80), resultEl.value); scholarAIHistoryRender(); } catch (e) { resultEl.value = "오류: " + (e.message || e); } }'
 + 'function scholarAICopyResult() { var el = document.getElementById("scholar-ai-result"); if (el && el.value) { navigator.clipboard.writeText(el.value).then(function(){ alert("결과가 복사되었습니다."); }).catch(function(){ alert("복사 실패"); }); } else { alert("복사할 결과가 없습니다."); } }'
++ 'function scholarAIClearResult() { var el = document.getElementById("scholar-ai-result"); if (el) el.value = ""; }'
 + 'function scholarAIResultFont(delta) { var el = document.getElementById("scholar-ai-result"); if (!el) return; __scholarAIResultFontSize = Math.max(10, Math.min(24, __scholarAIResultFontSize + delta)); el.style.fontSize = __scholarAIResultFontSize + "px"; }'
-+ 'function toggleScholarAIInsertMenu() { var m = document.getElementById("scholar-ai-insert-menu"); if (m) m.classList.toggle("open"); }'
++ 'function toggleScholarAIInsertMenu() { var ta = document.getElementById("viewer-edit-ta"); if (ta) __scholarAICursorPos = ta.selectionStart; var m = document.getElementById("scholar-ai-insert-menu"); if (m) m.classList.toggle("open"); }'
 + 'function closeScholarAIInsertMenu() { var m = document.getElementById("scholar-ai-insert-menu"); if (m) m.classList.remove("open"); }'
 + 'document.addEventListener("click", function(e) { var m = document.getElementById("scholar-ai-insert-menu"); if (m && m.classList.contains("open") && !m.contains(e.target) && !e.target.onclick) { var wrap = document.querySelector(".scholar-ai-insert-wrap"); if (wrap && !wrap.contains(e.target)) m.classList.remove("open"); } });'
-+ 'function scholarAIInsertDoc(mode) { var resultEl = document.getElementById("scholar-ai-result"); var resultText = resultEl && resultEl.value ? resultEl.value.trim() : ""; if (!resultText) { alert("삽입할 결과가 없습니다."); return; } var ta = document.getElementById("viewer-edit-ta"); var isEdit = document.getElementById("content-viewport") && document.getElementById("content-viewport").classList.contains("viewer-edit-active"); if (!isEdit || !ta) { var vp = document.getElementById("content-viewport"); var wrap = document.getElementById("viewer-edit-wrap"); if (vp) vp.classList.add("viewer-edit-active"); if (wrap) wrap.style.display = "flex"; ta = document.getElementById("viewer-edit-ta"); if (ta) { ta.value = __rawText; ta.style.display = "block"; } document.getElementById("viewer-btn-edit").style.display = "none"; document.getElementById("viewer-btn-view").style.display = "inline-block"; } ta = document.getElementById("viewer-edit-ta"); if (!ta) return; var start, end, raw = ta.value; if (__scholarAISelStart != null && __scholarAISelEnd != null) { start = __scholarAISelStart; end = __scholarAISelEnd; } else { var selTa = document.getElementById("scholar-ai-selected"); var selText = (selTa && selTa.value) ? selTa.value.trim() : ""; var idx = selText ? raw.indexOf(selText) : -1; if (idx >= 0) { start = idx; end = idx + selText.length; } else { start = 0; end = 0; } } var before = raw.slice(0, start); var after = raw.slice(end); var newVal = mode === 1 ? before + raw.slice(start, end) + "\\n\\n" + resultText + after : before + resultText + after; ta.value = newVal; __rawText = newVal; alert("문서에 반영되었습니다. 보기 모드에서 확인하세요."); }'
-+ 'document.addEventListener("DOMContentLoaded", function(){ var saved = ""; try { saved = localStorage.getItem("ss_viewer_page_" + __contentType) || ""; } catch(e) {} if (saved) { __rawText = saved; var html = ""; try { if (window.opener && typeof window.opener.getViewerRenderedContent === "function") { html = window.opener.getViewerRenderedContent(__rawText); } } catch(e) {} if (!html && typeof marked !== "undefined") { html = marked.parse(__rawText || ""); } if (!html) { html = __rawText.replace(/\\x3C/g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br>"); } var pc = document.getElementById("page-content"); if (pc && html) pc.innerHTML = html; } if(__contentType === "refs"){ var sb=document.getElementById("viewer-btn-save"); var eb=document.getElementById("viewer-btn-edit"); if(sb)sb.style.display="none"; if(eb)eb.style.display="none"; } viewerBuildNav(); viewerSidebarInitResize(); var resTa = document.getElementById("scholar-ai-result"); if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + "px"; var histSearch = document.getElementById("scholar-ai-history-search"); if (histSearch) histSearch.addEventListener("input", scholarAIHistoryRender); });'
++ 'function scholarAIInsertDoc(mode) { var resultEl = document.getElementById("scholar-ai-result"); var resultText = resultEl && resultEl.value ? resultEl.value.trim() : ""; if (!resultText) { alert("삽입할 결과가 없습니다."); return; } var ta = document.getElementById("viewer-edit-ta"); var isEdit = document.getElementById("content-viewport") && document.getElementById("content-viewport").classList.contains("viewer-edit-active"); if (!isEdit || !ta) { var vp = document.getElementById("content-viewport"); var wrap = document.getElementById("viewer-edit-wrap"); if (vp) vp.classList.add("viewer-edit-active"); if (wrap) wrap.style.display = "flex"; ta = document.getElementById("viewer-edit-ta"); if (ta) { ta.value = __rawText; ta.style.display = "block"; } document.getElementById("viewer-btn-edit").style.display = "none"; document.getElementById("viewer-btn-view").style.display = "inline-block"; } ta = document.getElementById("viewer-edit-ta"); if (!ta) return; var start, end, raw = ta.value; if (mode === 0) { start = end = (__scholarAICursorPos != null ? __scholarAICursorPos : ta.selectionStart); } else if (__scholarAISelStart != null && __scholarAISelEnd != null) { start = __scholarAISelStart; end = __scholarAISelEnd; } else { var selTa = document.getElementById("scholar-ai-selected"); var selText = (selTa && selTa.value) ? selTa.value.trim() : ""; var idx = selText ? raw.indexOf(selText) : -1; if (idx >= 0) { start = idx; end = idx + selText.length; } else { start = 0; end = 0; } } var before = raw.slice(0, start); var after = raw.slice(end); var newVal = mode === 1 ? before + raw.slice(start, end) + "\\n\\n" + resultText + after : before + resultText + after; ta.value = newVal; __rawText = newVal; var insertEnd = mode === 1 ? start + (end - start) + 2 + resultText.length : start + resultText.length; __scholarAICursorPos = insertEnd; if (typeof scrollToPageInTextarea === "function") scrollToPageInTextarea(insertEnd); else { ta.focus(); ta.setSelectionRange(insertEnd, insertEnd); var lines = (ta.value.substring(0, insertEnd).match(/\\n/g) || []).length; var lineHeight = parseInt(getComputedStyle(ta).lineHeight, 10) || 20; ta.scrollTop = Math.max(0, lines * lineHeight - ta.clientHeight / 2); } alert("문서에 반영되었습니다. 보기 모드에서 확인하세요."); }'
++ 'document.addEventListener("DOMContentLoaded", function(){ var vp = document.getElementById("content-viewport"); if (vp) vp.style.setProperty("--zoom", _pageZoom/100); var saved = ""; try { saved = localStorage.getItem("ss_viewer_page_" + __contentType) || ""; } catch(e) {} if (saved) { __rawText = saved; var html = ""; try { if (window.opener && typeof window.opener.getViewerRenderedContent === "function") { html = window.opener.getViewerRenderedContent(__rawText); } } catch(e) {} if (!html && typeof marked !== "undefined") { html = marked.parse(__rawText || ""); } if (!html) { html = __rawText.replace(/\\x3C/g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br>"); } var pc = document.getElementById("page-content"); if (pc && html) pc.innerHTML = html; } if(__contentType === "refs"){ var sb=document.getElementById("viewer-btn-save"); var eb=document.getElementById("viewer-btn-edit"); if(sb)sb.style.display="none"; if(eb)eb.style.display="none"; } viewerBuildNav(); viewerSidebarInitResize(); var resTa = document.getElementById("scholar-ai-result"); if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + "px"; var histSearch = document.getElementById("scholar-ai-history-search"); if (histSearch) histSearch.addEventListener("input", scholarAIHistoryRender); });'
 + '</script></body></html>';
   }
 
@@ -448,7 +452,8 @@
     var title = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '문서';
     var escapeHtml = typeof window.escapeHtml === 'function' ? window.escapeHtml : function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
     var safeTitle = escapeHtml(title);
-    win.document.write(getTextViewerWindowHtml({ title: safeTitle, subtitle: '🇰🇷 한국어 보기 (' + label + ')', pageTitle: '한국어 보기 — ' + safeTitle, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: target }));
+    var getHtml = typeof window.getTextViewerWindowHtml === 'function' ? window.getTextViewerWindowHtml : getTextViewerWindowHtml;
+    win.document.write(getHtml({ title: safeTitle, subtitle: '🇰🇷 한국어 보기 (' + label + ')', pageTitle: '한국어 보기 — ' + safeTitle, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: target }));
     win.document.close();
   }
 
@@ -484,7 +489,8 @@
     var rawJson = JSON.stringify(rawText);
     var title = escapeHtml(fileName);
     var sizeLabel = (rawText.length / 1000).toFixed(1) + 'k자';
-    win.document.write(getTextViewerWindowHtml({ title: title, subtitle: '📄 원문 전체 (' + sizeLabel + ')', pageTitle: '원문 전체 — ' + title, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: 'raw' }));
+    var getHtml = typeof window.getTextViewerWindowHtml === 'function' ? window.getTextViewerWindowHtml : getTextViewerWindowHtml;
+    win.document.write(getHtml({ title: title, subtitle: '📄 원문 전체 (' + sizeLabel + ')', pageTitle: '원문 전체 — ' + title, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: 'raw' }));
     win.document.close();
   }
 
@@ -520,7 +526,8 @@
     var contentRendered = buildViewerContentWithPages(summaryText);
     var escapedHtml = contentRendered.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$').replace(/<\/script>/gi, '<\\/script>');
     var rawJson = JSON.stringify(summaryText);
-    win.document.write(getTextViewerWindowHtml({ title: title, subtitle: '📋 요약 전체', pageTitle: '요약 전체 — ' + title, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: 'summary' }));
+    var getHtml = typeof window.getTextViewerWindowHtml === 'function' ? window.getTextViewerWindowHtml : getTextViewerWindowHtml;
+    win.document.write(getHtml({ title: title, subtitle: '📋 요약 전체', pageTitle: '요약 전체 — ' + title, contentHtml: escapedHtml, rawTextJson: rawJson, contentType: 'summary' }));
     win.document.close();
   }
 
@@ -529,7 +536,7 @@
   window.setWritingStyle = setWritingStyle;
   window.promoteSectionHeadings = promoteSectionHeadings;
   window.buildViewerContentWithPages = buildViewerContentWithPages;
-  window.getTextViewerWindowHtml = getTextViewerWindowHtml;
+  if (typeof window.getTextViewerWindowHtml !== 'function') window.getTextViewerWindowHtml = getTextViewerWindowHtml;
   window.getTranslationViewerWindowHtml = getTranslationViewerWindowHtml;
   window.openTranslationViewer = openTranslationViewer;
   window.openKoreanViewWindow = openKoreanViewWindow;

@@ -266,10 +266,10 @@
       var slideCountOpt = opts.slideCount != null ? opts.slideCount : slideCount;
 
       var summaryCharLimit = parseInt(
-        (typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '480000',
+        (typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '1500000',
         10
-      ) || 480000;
-      summaryCharLimit = Math.max(10000, Math.min(500000, summaryCharLimit));
+      ) || 1500000;
+      summaryCharLimit = Math.max(10000, Math.min(2000000, summaryCharLimit));
       var textToSummarize = rawText().substring(0, summaryCharLimit);
       if (mode === 'translate' && typeof window.getRawTextForSummary === 'function') {
         if (window.showJobProgress) window.showJobProgress('translation', '🌐 원문 번역 중...', 5, '🌐');
@@ -331,17 +331,20 @@
         var res = await window.callGemini(prompt, systemInstruction + ' ' + langInstruction);
         var text = res && res.text ? res.text : res;
         if (docTitle && text) {
-          var intro = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다.';
+          var intro = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다(from 제작자 박중희 교수).';
           var userInfoLine = '';
           if (typeof window.getUserInfoForSummary === 'function') {
             var ui = window.getUserInfoForSummary();
             if (ui) userInfoLine = '\n' + ui + '\n';
           }
+          var oldIntro = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다.';
           if (text.indexOf(intro) === 0) {
             var rest = text.slice(intro.length).replace(/^\s+/, '');
             text = intro + '\n' + docTitle + userInfoLine + '\n' + rest;
           } else {
-            text = intro + '\n' + docTitle + userInfoLine + '\n' + text.trim();
+            var body = text.trim();
+            if (body.indexOf(oldIntro) === 0) body = body.slice(oldIntro.length).replace(/^\s+/, '');
+            text = intro + '\n' + docTitle + userInfoLine + '\n' + body;
           }
         }
         clearInterval(_progTimer);

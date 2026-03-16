@@ -125,8 +125,8 @@
         + '</div>';
     }
     var totalChars = rawText.length;
-    var summaryLimit = parseInt((typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '480000', 10) || 480000;
-    summaryLimit = Math.max(10000, Math.min(500000, summaryLimit));
+    var summaryLimit = parseInt((typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '1500000', 10) || 1500000;
+    summaryLimit = Math.max(10000, Math.min(2000000, summaryLimit));
     var willTruncate = totalChars > summaryLimit;
     var capacityInfo = '<div class="file-capacity-info" style="margin-bottom:10px;padding:6px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);font-size:10px;color:var(--text2);line-height:1.5">'
       + '<div style="font-weight:600;color:var(--text);margin-bottom:4px">📊 원본 용량</div>'
