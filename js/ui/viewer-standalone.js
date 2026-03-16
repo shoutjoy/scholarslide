@@ -41,20 +41,42 @@
     var btn = document.getElementById('theme-btn');
     if (btn) btn.textContent = b.classList.contains('theme-dark') ? 'Dark/Light' : 'Light/Dark';
   }
+  var _viewerMaximized = false;
+  var _viewerRestoreRect = { x: 100, y: 100, w: 900, h: 700 };
   function toggleViewerFullscreen() {
-    var fs = document.body.classList.toggle('viewer-in-app-fs');
-    if (fs) {
-      document.addEventListener('keydown', _viewerFsEscHandler);
-    } else {
+    if (_viewerMaximized) {
+      try {
+        window.moveTo(_viewerRestoreRect.x, _viewerRestoreRect.y);
+        window.resizeTo(_viewerRestoreRect.w, _viewerRestoreRect.h);
+      } catch (e) {}
+      _viewerMaximized = false;
       document.removeEventListener('keydown', _viewerFsEscHandler);
+    } else {
+      try {
+        _viewerRestoreRect = { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight };
+        window.moveTo(screen.availLeft, screen.availTop);
+        window.resizeTo(screen.availWidth, screen.availHeight);
+      } catch (e) {}
+      _viewerMaximized = true;
+      document.addEventListener('keydown', _viewerFsEscHandler);
     }
   }
   function _viewerFsEscHandler(e) {
-    if (e.key === 'Escape' && document.body.classList.contains('viewer-in-app-fs')) {
-      document.body.classList.remove('viewer-in-app-fs');
-      document.removeEventListener('keydown', _viewerFsEscHandler);
+    if (e.key === 'Escape' && _viewerMaximized) {
+      toggleViewerFullscreen();
     }
   }
+  function closeViewerWindow() {
+    try {
+      window.close();
+      if (!window.closed) {
+        alert('창을 닫을 수 없습니다. 브라우저 탭 또는 창을 직접 닫아 주세요.');
+      }
+    } catch (e) {
+      alert('창을 닫을 수 없습니다. 브라우저 탭을 닫아 주세요.');
+    }
+  }
+  window.closeViewerWindow = closeViewerWindow;
   function saveAs(ext) {
     var a = document.createElement('a');
     a.href = 'data:text/' + (ext === 'md' ? 'markdown' : 'plain') + ';charset=utf-8,' + encodeURIComponent(window.__rawText || '');
@@ -130,7 +152,23 @@
     else if (type === 'italic') ins = '*' + (sel || '기울임') + '*';
     else if (type === 'code') ins = '`' + (sel || '코드') + '`';
     else if (type === 'codeblock') ins = '```\n' + (sel || '코드') + '\n```';
-    else if (type === 'comment') ins = '<!-- ' + (sel || '주석') + ' -->';
+    else if (type === 'comment') {
+      var txt = ta.value;
+      var nums = [];
+      var m;
+      var re = /\[\^(\d+)\]/g;
+      while ((m = re.exec(txt)) !== null) nums.push(parseInt(m[1], 10));
+      var nextNum = nums.length ? Math.max.apply(null, nums) + 1 : 1;
+      var footnoteContent = prompt('각주 설명 (문서 끝에 표시됩니다)', sel || '');
+      if (footnoteContent === null) return;
+      ins = '[^' + nextNum + ']';
+      var def = '\n\n[^' + nextNum + ']: ' + (footnoteContent || '각주 설명');
+      ta.setRangeText(ins, s, e, 'end');
+      ta.value = ta.value + def;
+      ta.selectionEnd = s + ins.length;
+      ta.selectionStart = ta.selectionEnd;
+      return;
+    }
     else if (type === 'table') ins = '| 열1 | 열2 | 열3 |\n|-----|-----|-----|\n| A | B | C |';
     else if (type === 'link') {
       var txt = prompt('링크 텍스트', sel || '링크');
@@ -373,7 +411,15 @@
     var el = document.getElementById('scholar-ai-pre-prompt-text');
     if (!el) return;
     var txt = (window.opener && window.opener.getScholarAISystemInstruction && window.opener.getScholarAISystemInstruction()) || '';
-    el.textContent = txt || '(설정에서 사전프롬프트를 선택하세요)';
+    el.value = txt || '';
+    if (!el._scholarAISaveOnBlur) {
+      el._scholarAISaveOnBlur = true;
+      el.addEventListener('blur', function () {
+        if (window.opener && typeof window.opener.setScholarAISystemInstruction === 'function') {
+          window.opener.setScholarAISystemInstruction(el.value || '');
+        }
+      });
+    }
   }
   function scholarAIInitModelSelect() {
     var sel = document.getElementById('scholar-ai-model-select');
@@ -961,6 +1007,34 @@
   window.viewerSSPImgHistoryRemove = viewerSSPImgHistoryRemove;
   window.viewerSSPAbort = viewerSSPAbort;
 
+  function viewerSidebarInitResize() {
+    var handle = document.getElementById('viewer-sidebar-resize-handle');
+    var sidebar = document.getElementById('viewer-sidebar');
+    if (!handle || !sidebar) return;
+    var minW = 120, maxW = 400;
+    var startX = 0, startW = 0;
+    function onMove(e) {
+      var w = startW + (e.clientX - startX);
+      w = Math.max(minW, Math.min(maxW, w));
+      sidebar.style.width = w + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    handle.onmousedown = function (e) {
+      e.preventDefault();
+      startX = e.clientX;
+      startW = sidebar.offsetWidth;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    };
+  }
+
   window.viewerInit = function () {
     var vp = document.getElementById('content-viewport');
     var pz = window._pageZoom || 100;
@@ -979,6 +1053,7 @@
       }
     } catch (e) {}
     viewerBuildNav();
+    viewerSidebarInitResize();
     scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';

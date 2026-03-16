@@ -352,6 +352,15 @@ function getScholarAISystemInstruction() {
   }
   return defaultShort;
 }
+function setScholarAISystemInstruction(text) {
+  if (typeof text !== 'string') return;
+  const preset = (typeof localStorage !== 'undefined' && localStorage.getItem(LS_SCHOLARAI_PRESET)) || 'apa_search';
+  const key = preset === 'scholar_ai' ? 'scholarai_prompt' : 'apa_search_prompt';
+  const label = key === 'scholarai_prompt' ? 'ScholarAI 사전 프롬프트' : 'APA 조사 프롬프트';
+  if (typeof window.setPromptOverrides === 'function') {
+    window.setPromptOverrides({ [key]: { category: 'other', label: label, value: text } });
+  }
+}
 
 /* =========================================================
    DRAG & DROP
@@ -433,8 +442,13 @@ function getTextViewerWindowHtml(opts) {
 + '.toolbar .tzoom-val { font-size: 11px; color: #94a3b8; min-width: 40px; text-align: center; font-family: monospace; }'
 + 'body.theme-light .toolbar .tzoom-val { color: #64748b; }'
 + '.main-with-sidebar { display: flex; flex: 1; min-height: 0; }'
-+ '.viewer-sidebar { width: 200px; flex-shrink: 0; background: #13161d; border-right: 1px solid #1e2332; display: flex; flex-direction: column; overflow: hidden; }'
++ '.viewer-sidebar { width: 200px; min-width: 120px; max-width: 400px; flex-shrink: 0; background: #13161d; border-right: 1px solid #1e2332; display: flex; flex-direction: column; overflow: hidden; position: relative; }'
 + 'body.theme-light .viewer-sidebar { background: #e2e8f0; border-right-color: #cbd5e1; }'
++ '.viewer-sidebar-resize-handle { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 20; background: transparent; }'
++ '.viewer-sidebar-resize-handle:hover { background: rgba(79,142,247,0.25); }'
++ '.viewer-sidebar-resize-handle::after { content: ""; position: absolute; right: 3px; top: 50%; transform: translateY(-50%); width: 2px; height: 32px; border-radius: 1px; background: #4f8ef7; opacity: 0.5; }'
++ '.viewer-sidebar-resize-handle:hover::after { opacity: 0.9; }'
++ 'body.theme-light .viewer-sidebar-resize-handle::after { background: #4f8ef7; }'
 + '.viewer-sidebar-tabs { display: flex; border-bottom: 1px solid #1e2332; }'
 + 'body.theme-light .viewer-sidebar-tabs { border-color: #cbd5e1; }'
 + '.viewer-sidebar-tab { flex: 1; padding: 8px 10px; font-size: 12px; cursor: pointer; text-align: center; background: #1a1e28; color: #94a3b8; border: none; }'
@@ -520,8 +534,8 @@ function getTextViewerWindowHtml(opts) {
 + 'body.theme-light .scholar-ai-body textarea { background: #fff; color: #1e293b; border-color: #e2e8f0; }'
 + '.scholar-ai-body .sa-btn.ghost.active { border-color: #4f8ef7; color: #4f8ef7; background: rgba(79,142,247,0.15); }'
 + 'body.theme-light .scholar-ai-body .sa-btn.ghost.active { border-color: #4f8ef7; color: #4f8ef7; background: rgba(79,142,247,0.2); }'
-+ '#scholar-ai-pre-prompt-text { color: #fff; }'
-+ 'body.theme-light #scholar-ai-pre-prompt-panel pre, body.theme-light #scholar-ai-model-panel select { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }'
++ '#scholar-ai-pre-prompt-text, .scholar-ai-pre-prompt-ta { color: #fff; }'
++ 'body.theme-light #scholar-ai-pre-prompt-panel .scholar-ai-pre-prompt-ta, body.theme-light #scholar-ai-pre-prompt-panel textarea, body.theme-light #scholar-ai-model-panel select { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }'
 + 'body.theme-light #scholar-ai-pre-prompt-text { color: #1e293b; }'
 + '.scholar-ai-result { min-height: 260px; font-size: 13px; flex: 1; }'
 + '.scholar-ai-footer { flex-shrink: 0; padding: 8px 10px; border-top: 1px solid #1e2332; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }'
@@ -611,7 +625,7 @@ function getTextViewerWindowHtml(opts) {
 + '    <button class="tbtn" onclick="toggleScholarAI()" title="인공지능 추가 기능">ScholarAI</button>'
 + '    <button class="tbtn" onclick="toggleViewerSSP()" title="SSP 이미지 생성기 (새창 전용, 슬라이드와 무관)">sspAI</button>'
 + '    <button class="tbtn ghost" onclick="toggleViewerFullscreen()" title="전체화면 토글">⊞ 전체화면</button>'
-+ '    <button class="tbtn ghost" onclick="window.close()">닫기</button>'
++ '    <button class="tbtn ghost" type="button" onclick="if(typeof closeViewerWindow===\'function\')closeViewerWindow();else window.close();" title="창 닫기">닫기</button>'
 + '  </div>'
 + '  <div class="toolbar-row">'
 + '    <span style="font-size:11px;color:#94a3b8">page</span>'
@@ -626,7 +640,8 @@ function getTextViewerWindowHtml(opts) {
 + '  </div>'
 + '</div>'
 + '<div class="main-with-sidebar">'
-+ '<aside class="viewer-sidebar">'
++ '<aside class="viewer-sidebar" id="viewer-sidebar">'
++ '  <div class="viewer-sidebar-resize-handle" id="viewer-sidebar-resize-handle" title="드래그하여 창(사이드바) 너비 조절"></div>'
 + '  <div class="viewer-sidebar-tabs">'
 + '    <button type="button" class="viewer-sidebar-tab" id="nav-tab-page" onclick="viewerNavSwitch(\'page\')">페이지</button>'
 + '    <button type="button" class="viewer-sidebar-tab active" id="nav-tab-toc" onclick="viewerNavSwitch(\'toc\')">목차</button>'
@@ -649,7 +664,7 @@ function getTextViewerWindowHtml(opts) {
 + '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'code\')" title="인라인 코드">`</button>'
 + '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'codeblock\')" title="코드블록">```</button>'
 + '<span class="ve-sep"></span>'
-+ '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'comment\')" title="주석">주석</button>'
++ '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'comment\')" title="각주 (마크다운 각주 — 문서 끝에 설명 표시)">각주</button>'
 + '<span class="ve-sep"></span>'
 + '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'table\')" title="표 삽입">표</button>'
 + '<button type="button" class="ve-btn" onclick="viewerEditFmt(\'link\')" title="링크">🔗</button>'
@@ -672,7 +687,7 @@ function getTextViewerWindowHtml(opts) {
 + '<button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">사전프롬프트</button>'
 + '<button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">모델선택</button>'
 + '</div>'
-+ '<div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px"><pre id="scholar-ai-pre-prompt-text" style="font-size:10px;white-space:pre-wrap;max-height:180px;overflow-y:auto;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff"></pre></div>'
++ '<div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px"><textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="사전 프롬프트를 입력하거나 편집하세요. 필요시 내용을 추가할 수 있습니다." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea></div>'
 + '<div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px"><label style="font-size:10px;margin-bottom:4px">모델</label><select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">'
 + '<option value="gemini-2.5-pro">Gemini 2.5 Pro</option><option value="gemini-2.5-flash">Gemini 2.5 Flash</option><option value="gemini-3-flash-preview">Gemini 3 Flash</option><option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option><option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>'
 + '</select></div>'
@@ -806,7 +821,7 @@ function getTranslationViewerWindowHtml(opts) {
 + '  <button class="tbtn ghost" id="theme-btn" onclick="toggleTheme()" title="다크/라이트">🌓 Light/Dark</button>'
 + '  <button class="tbtn ghost" onclick="copyTransContent()">📋 복사</button>'
 + '  <button class="tbtn ghost" onclick="toggleViewerFullscreen()" title="전체화면 토글">⊞ 전체화면</button>'
-+ '  <button class="tbtn ghost" onclick="window.close()">닫기</button>'
++ '  <button class="tbtn ghost" type="button" onclick="closeTransViewer()" title="창 닫기">닫기</button>'
 + '</div>'
 + '<button type="button" class="viewer-fs-exit-btn" onclick="toggleViewerFullscreen()" title="전체화면 해제 (Esc)">⊟ 전체화면 해제</button>'
 + '<div class="trans-main-with-sidebar">'
@@ -836,8 +851,10 @@ function getTranslationViewerWindowHtml(opts) {
 + 'function setPageZoom(delta) { _pageZoom = Math.max(30, Math.min(200, _pageZoom + delta)); document.querySelectorAll(".trans-page").forEach(function(p){ p.style.setProperty("--zoom", _pageZoom/100); }); var zv = document.getElementById("zoom-val"); if(zv) zv.textContent = _pageZoom + "%"; }'
 + 'function setFontZoom(delta) { var pages = document.querySelectorAll(".trans-page"); var fs = _fontBase; if (pages.length) fs = parseFloat(getComputedStyle(pages[0]).fontSize) || _fontBase; fs = Math.max(10, Math.min(28, fs + delta*2)); pages.forEach(function(p){ p.style.fontSize = fs + "px"; }); }'
 + 'function toggleTheme() { var b = document.body; b.classList.toggle("theme-dark"); b.classList.toggle("theme-light"); var btn = document.getElementById("theme-btn"); if(btn) btn.textContent = b.classList.contains("theme-dark") ? "🌓 Dark/Light" : "🌓 Light/Dark"; }'
-+ 'function toggleViewerFullscreen() { var fs = document.body.classList.toggle("viewer-in-app-fs"); if (fs) document.addEventListener("keydown", _transFsEsc); else document.removeEventListener("keydown", _transFsEsc); }'
-+ 'function _transFsEsc(e) { if (e.key === "Escape" && document.body.classList.contains("viewer-in-app-fs")) { document.body.classList.remove("viewer-in-app-fs"); document.removeEventListener("keydown", _transFsEsc); } }'
++ 'var _transMaximized = false; var _transRestoreRect = { x: 100, y: 100, w: 900, h: 700 };'
++ 'function toggleViewerFullscreen() { if (_transMaximized) { try { window.moveTo(_transRestoreRect.x, _transRestoreRect.y); window.resizeTo(_transRestoreRect.w, _transRestoreRect.h); } catch(e){} _transMaximized = false; document.removeEventListener("keydown", _transFsEsc); } else { try { _transRestoreRect = { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight }; window.moveTo(screen.availLeft, screen.availTop); window.resizeTo(screen.availWidth, screen.availHeight); } catch(e){} _transMaximized = true; document.addEventListener("keydown", _transFsEsc); } }'
++ 'function _transFsEsc(e) { if (e.key === "Escape" && _transMaximized) { toggleViewerFullscreen(); } }'
++ 'function closeTransViewer() { try { window.close(); if (!window.closed) alert("창을 닫을 수 없습니다. 브라우저 탭을 직접 닫아 주세요."); } catch(e) { alert("창을 닫을 수 없습니다. 브라우저 탭을 닫아 주세요."); } }'
 + 'function copyTransContent() { var text = _transMode === "original" ? __original : _transMode === "translated" ? __translated : __original + "\\n\\n--- 번역 ---\\n\\n" + __translated; navigator.clipboard.writeText(text).then(function(){ alert("복사됨"); }); }'
 + 'if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", loadData); else loadData();'
 + 'setTransViewMode("split");'
@@ -880,7 +897,7 @@ async function openKoreanViewWindow(target) {
     if (typeof showToast === 'function') showToast('⚠️ 번역된 내용이 없습니다. 한국어 번역을 먼저 실행하세요.');
     return;
   }
-  var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
+  var win = window.open('', '_blank', 'width=1000,height=800,scrollbars=yes,resizable=yes,status=no');
   if (!win) {
     if (typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
     return;
@@ -903,7 +920,7 @@ async function openKoreanViewWindow(target) {
 }
 
 function openFullTextWindow() {
-  var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
+  var win = window.open('', '_blank', 'width=1000,height=800,scrollbars=yes,resizable=yes,status=no');
   if (!win) { showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
   if (typeof registerChildWindow === 'function') registerChildWindow(win);
   if (typeof window.getViewerRenderedContent !== 'function') window.getViewerRenderedContent = function (text) { return buildViewerContentWithPages(text); };
@@ -938,7 +955,7 @@ function openSummaryWindow() {
       if (typeof showToast === 'function') showToast('✅ 저장되었습니다');
     };
   }
-  var win = window.open('', '_blank', 'width=900,height=750,scrollbars=yes,resizable=yes');
+  var win = window.open('', '_blank', 'width=1000,height=800,scrollbars=yes,resizable=yes,status=no');
   if (!win) { showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.'); return; }
   if (typeof registerChildWindow === 'function') registerChildWindow(win);
   var title = escapeHtml(fileName);
@@ -2404,6 +2421,14 @@ function initPdfPanelDrag() {
       panel.classList.remove('pdf-dragging');
     }
   });
+  var _pdfResizeTmr = null;
+  var ro = new ResizeObserver(function () {
+    clearTimeout(_pdfResizeTmr);
+    _pdfResizeTmr = setTimeout(function () {
+      if (_pdfDoc && panel.classList.contains('open')) pdfFitPage();
+    }, 150);
+  });
+  ro.observe(panel);
 }
 
 function openPdfPreview() {
@@ -2514,7 +2539,8 @@ async function loadPdfPreview(arrayBuffer, name) {
       window._pdfPanInited = true;
     }
     openPdfPreview();
-    await pdfRenderPage(_pdfCurrentPage);
+    await new Promise(r => setTimeout(r, 80));
+    await pdfFitPage();
     pdfRenderAllThumbs();
   } catch (e) {
     console.error('[PDF Preview]', e);
@@ -2668,6 +2694,19 @@ function pdfFitWidth() {
     const baseVP = page.getViewport({ scale: 1 });
     _pdfScale = availW / baseVP.width;
     pdfRenderPage(_pdfCurrentPage);
+  });
+}
+
+function pdfFitPage() {
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  if (!wrap || !_pdfDoc) return Promise.resolve();
+  const availW = Math.max(1, wrap.clientWidth - 32);
+  const availH = Math.max(1, wrap.clientHeight - 32);
+  return _pdfDoc.getPage(_pdfCurrentPage).then(page => {
+    const baseVP = page.getViewport({ scale: 1 });
+    _pdfScale = Math.min(availW / baseVP.width, availH / baseVP.height, 4);
+    _pdfScale = Math.max(0.4, _pdfScale);
+    return pdfRenderPage(_pdfCurrentPage);
   });
 }
 
@@ -3983,8 +4022,8 @@ function parseMdFull(text) {
 
 function inlineMd(text) {
   return text
-    // **bold** → <b></b> (특수문자 <(,./? 등 및 줄바꿈 포함 허용)
-    .replace(/\*\*([\s\S]*?)\*\*/g, '<b>$1</b>')
+    // **bold** → <b></b> (괄호 (){}[]<>, 따옴표 ' ", . &%$@ 등 모든 특수문자·줄바꿈 포함)
+    .replace(/\*\*([\s\S]*?)\*\*/g, (_, c) => '<b>' + c + '</b>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/~~(.+?)~~/g, '<del>$1</del>')
     .replace(/`(.+?)`/g, '<code style="background:rgba(79,142,247,0.15);padding:1px 5px;border-radius:3px;font-family:monospace;font-size:0.88em">$1</code>')
@@ -5908,35 +5947,105 @@ function applyAiImageFromPopup(slideIdx, dataURL) {
   showToast('\u2705 \uc2ac\ub77c\uc774\ub4dc ' + (slideIdx + 1) + '\uc5d0 \uc774\ubbf8\uc9c0 \uc801\uc6a9\ub428');
 }
 
-// ── PDF new window ────────────────────────────────────────
+// ── PDF new window (현재 모양 그대로: 사이드바, 썸네일, 확대/축소, 페이지 이동) ──
 function openPdfNewWindow() {
   if (!_pdfDoc) { showToast('\u26a0\ufe0f PDF\uac00 \ub85c\ub4dc\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4'); return; }
+  if (!window._pdfArrayBuffer) { showToast('\u26a0\ufe0f PDF \ub370\uc774\ud130\ub97c \uc804\ub2ec\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.'); return; }
+  const blob = new Blob([window._pdfArrayBuffer], { type: 'application/pdf' });
+  const blobUrl = URL.createObjectURL(blob);
+  const curPage = _pdfCurrentPage || 1;
+  const fn = escapeHtml(_pdfFileName || 'PDF');
   const w = window.open('', '_blank', 'width=1200,height=900,resizable=yes,scrollbars=yes');
-  if (!w) { showToast('\u26a0\ufe0f \ud31d\uc5c5 \ucc28\ub2e8\ub428'); return; }
+  if (!w) { URL.revokeObjectURL(blobUrl); showToast('\u26a0\ufe0f \ud31d\uc5c5 \ucc28\ub2e8\ub428'); return; }
   if (typeof registerChildWindow === 'function') registerChildWindow(w);
-  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PDF \ubbf8\ub9ac\ubcf4\uae30</title>'
+  w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>PDF \ubbf8\ub9ac\ubcf4\uae30 - ' + fn + '</title>'
     + '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>'
-    + '<style>body{margin:0;padding:16px;background:#1a1d24;display:flex;flex-direction:column;align-items:center;gap:12px}'
-    + 'canvas{box-shadow:0 4px 24px rgba(0,0,0,.5);border-radius:4px;max-width:100%}'
-    + 'h3{color:#4f8ef7;font-family:sans-serif;font-size:14px;margin:0 0 8px;align-self:flex-start}'
+    + '<style>'
+    + 'body{margin:0;background:#13161d;color:#e8ecf4;font-family:sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}'
+    + '.pdf-nw-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid #2e3447;flex-shrink:0;background:#1a1d24}'
+    + '.pdf-nw-title{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}'
+    + '.pdf-nw-menu{display:flex;align-items:center;gap:6px;flex-wrap:wrap}'
+    + '.pdf-nw-btn{width:26px;height:26px;border-radius:5px;border:1px solid #2e3447;background:#1a1d24;color:#94a3b8;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px}'
+    + '.pdf-nw-btn:hover:not(:disabled){border-color:#4f8ef7;color:#4f8ef7}'
+    + '.pdf-nw-btn:disabled{opacity:0.3;cursor:not-allowed}'
+    + '.pdf-nw-page{font-size:10px;min-width:36px;text-align:center;color:#94a3b8}'
+    + '.pdf-nw-zoom-row{display:flex;align-items:center;gap:3px}'
+    + '.pdf-nw-zoom-btn{width:22px;height:22px;border-radius:4px;border:1px solid #2e3447;background:#1a1d24;color:#94a3b8;cursor:pointer;font-size:11px}'
+    + '.pdf-nw-zoom-btn:hover{border-color:#4f8ef7;color:#4f8ef7}'
+    + '.pdf-nw-zoom-val{font-size:9px;min-width:32px;text-align:center;color:#64748b}'
+    + '.pdf-nw-body{flex:1;display:flex;min-height:0;overflow:hidden}'
+    + '.pdf-nw-sidebar{width:72px;flex-shrink:0;background:#1a1d24;border-right:1px solid #2e3447;display:flex;flex-direction:column;overflow:hidden}'
+    + '.pdf-nw-sidebar-label{font-size:9px;font-weight:700;color:#64748b;padding:6px 8px;border-bottom:1px solid #2e3447}'
+    + '.pdf-nw-thumbs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px;align-items:center}'
+    + '.pdf-nw-thumb{width:52px;height:68px;border:2px solid transparent;border-radius:4px;overflow:hidden;cursor:pointer;background:#2e3447;position:relative;flex-shrink:0}'
+    + '.pdf-nw-thumb:hover{border-color:#475569}'
+    + '.pdf-nw-thumb.active{border-color:#4f8ef7;box-shadow:0 0 0 2px rgba(79,142,247,0.2)}'
+    + '.pdf-nw-thumb canvas{width:100%;height:100%;object-fit:contain;display:block}'
+    + '.pdf-nw-thumb-num{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:rgba(255,255,255,0.8);font-size:8px;text-align:center;padding:2px 0}'
+    + '.pdf-nw-canvas-wrap{flex:1;overflow:auto;background:#1a1d24;display:flex;align-items:flex-start;justify-content:center;padding:16px;cursor:grab}'
+    + '.pdf-nw-canvas-wrap.pdf-nw-panning{cursor:grabbing;user-select:none}'
+    + '.pdf-nw-canvas-wrap canvas{box-shadow:0 4px 24px rgba(0,0,0,.5);border-radius:4px;pointer-events:none}'
     + '</style></head><body>'
-    + '<h3>\ud83d\udcc4 ' + escapeHtml(_pdfFileName || 'PDF') + '</h3>'
-    + '<div id="pages"></div>'
+    + '<div class="pdf-nw-header">'
+    + '<div class="pdf-nw-title">\ud83d\udcc4 <span id="pdf-nw-fn">' + fn + '</span></div>'
+    + '<div class="pdf-nw-menu">'
+    + '<button class="pdf-nw-btn" id="pdf-nw-prev" disabled title="\uc774\uc804 \ud398\uc774\uc9c0">\u2039</button>'
+    + '<div class="pdf-nw-page"><span id="pdf-nw-cur">1</span> / <span id="pdf-nw-total">1</span></div>'
+    + '<button class="pdf-nw-btn" id="pdf-nw-next" title="\ub2e4\uc74c \ud398\uc774\uc9c0">\u203a</button>'
+    + '<div class="pdf-nw-zoom-row">'
+    + '<button class="pdf-nw-zoom-btn" id="pdf-nw-zoom-out" title="\ucd95\uc18c">\u2212</button>'
+    + '<div class="pdf-nw-zoom-val" id="pdf-nw-zoom-val">100%</div>'
+    + '<button class="pdf-nw-zoom-btn" id="pdf-nw-zoom-in" title="\ud655\ub300">+</button>'
+    + '</div>'
+    + '<a class="pdf-nw-btn" id="pdf-nw-dl" href="' + blobUrl + '" download="' + fn.replace(/"/g, '&quot;') + '" style="width:auto;padding:0 8px;font-size:11px;text-decoration:none" title="\ub2e4\uc6b4\ub85c\ub4dc">\u2193 \ub2e4\uc6b4\ub85c\ub4dc</a>'
+    + '<button class="pdf-nw-btn" id="pdf-nw-close" type="button" style="width:auto;padding:0 8px;font-size:12px" title="\ub2eb\uae30">\u2715</button>'
+    + '</div></div>'
+    + '<div class="pdf-nw-body">'
+    + '<div class="pdf-nw-sidebar"><div class="pdf-nw-sidebar-label">\ud398\uc774\uc9c0</div><div class="pdf-nw-thumbs" id="pdf-nw-thumbs"></div></div>'
+    + '<div class="pdf-nw-canvas-wrap" id="pdf-nw-wrap"><canvas id="pdf-nw-canvas"></canvas></div>'
+    + '</div>'
     + '<script>'
     + 'pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";'
-    + 'var buf = ' + JSON.stringify(Array.from(new Uint8Array((window.opener && window.opener._pdfArrayBuffer) || []))) + ';'
-    + 'var data = new Uint8Array(buf);'
-    + 'pdfjsLib.getDocument({data:data}).promise.then(function(doc){'
-    + '  var pg=document.getElementById("pages");'
-    + '  var render=function(n){if(n>doc.numPages)return;'
-    + '    doc.getPage(n).then(function(page){'
-    + '      var vp=page.getViewport({scale:2.5});'
-    + '      var cv=document.createElement("canvas");'
-    + '      cv.width=vp.width;cv.height=vp.height;pg.appendChild(cv);'
-    + '      page.render({canvasContext:cv.getContext("2d"),viewport:vp}).promise.then(function(){render(n+1);});'
-    + '    });'
-    + '  };render(1);'
-    + '}).catch(function(e){document.body.innerHTML+=\'<p style="color:#f87171">\ub80c\ub354\ub9c1 \uc2e4\ud328: \'+e.message+\'</p>\';});'
+    + 'var _curPage=' + curPage + ',_scale=1,_doc=null,_total=1,_dpr=window.devicePixelRatio||1;'
+    + 'var url="' + blobUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";'
+    + 'function up(){var p=document.getElementById("pdf-nw-prev"),n=document.getElementById("pdf-nw-next");'
+    + 'p.disabled=_curPage<=1;n.disabled=_curPage>=_total;'
+    + 'document.getElementById("pdf-nw-cur").textContent=_curPage;'
+    + 'document.getElementById("pdf-nw-zoom-val").textContent=Math.round(_scale*100)+"%";}'
+    + 'function render(){if(!_doc)return;_doc.getPage(_curPage).then(function(pg){'
+    + 'var rs=_scale*_dpr;var vp=pg.getViewport({scale:rs});var c=document.getElementById("pdf-nw-canvas");'
+    + 'c.width=vp.width;c.height=vp.height;c.style.width=(vp.width/_dpr)+"px";c.style.height=(vp.height/_dpr)+"px";'
+    + 'pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise.then(function(){'
+    + 'document.querySelectorAll(".pdf-nw-thumb").forEach(function(t){t.classList.toggle("active",parseInt(t.dataset.page,10)===_curPage);});});});}'
+    + 'function fitPage(){if(!_doc)return;_doc.getPage(_curPage).then(function(pg){'
+    + 'var wrap=document.getElementById("pdf-nw-wrap");var avW=(wrap?wrap.clientWidth:800)-32;var avH=(wrap?wrap.clientHeight:600)-32;'
+    + 'var b=pg.getViewport({scale:1});_scale=Math.min(avW/b.width,avH/b.height,1);_scale=Math.max(0.4,_scale);render();up();});}'
+    + 'function nav(d){var t=_curPage+d;if(t>=1&&t<=_total){_curPage=t;render();up();}}'
+    + 'function zoom(d){_scale=Math.max(0.4,Math.min(4,_scale+d));render();up();}'
+    + 'document.getElementById("pdf-nw-prev").onclick=function(){nav(-1);};'
+    + 'document.getElementById("pdf-nw-next").onclick=function(){nav(1);};'
+    + 'document.getElementById("pdf-nw-zoom-out").onclick=function(){zoom(-0.2);};'
+    + 'document.getElementById("pdf-nw-zoom-in").onclick=function(){zoom(0.2);};'
+    + '(function(){var btn=document.getElementById("pdf-nw-close");if(btn){btn.onclick=function(e){e.preventDefault();e.stopPropagation();window.close();if(!window.closed){alert("\\uc7a5\\uc744 \\ub2eb\\uc744 \\uc218 \\uc5c6\\uc2b5\\ub2c8\\ub2e4. \\ud2b8\\ub799 \\ub610\\ub294 \uc0c1\ub2e8 \uc544\uc774\ucf58\\uc744 \ub2eb\uc544 \uc8fc\uc138\uc694.");}}}})();'
+    + '(function(){var w=document.getElementById("pdf-nw-wrap");var pan=0,sx,sy,ssx,ssy;'
+    + 'w.addEventListener("mousedown",function(e){if(e.button!==0)return;pan=1;sx=e.clientX;sy=e.clientY;ssx=w.scrollLeft;ssy=w.scrollTop;w.classList.add("pdf-nw-panning");});'
+    + 'document.addEventListener("mousemove",function(e){if(!pan)return;w.scrollLeft=ssx+(sx-e.clientX);w.scrollTop=ssy+(sy-e.clientY);});'
+    + 'document.addEventListener("mouseup",function(){if(pan){pan=0;w.classList.remove("pdf-nw-panning");}});})();'
+    + 'document.getElementById("pdf-nw-wrap").addEventListener("wheel",function(e){var w=document.getElementById("pdf-nw-wrap");'
+    + 'var atBottom=w.scrollHeight-w.scrollTop-w.clientHeight<10;var atTop=w.scrollTop<10;'
+    + 'if(e.deltaY>0){if(atBottom){e.preventDefault();nav(1);}}else if(e.deltaY<0){if(atTop){e.preventDefault();nav(-1);}}},{passive:false});'
+    + 'document.addEventListener("keydown",function(e){if(e.ctrlKey&&e.key==="9"){e.preventDefault();zoom(-0.2);}else if(e.ctrlKey&&e.key==="0"){e.preventDefault();zoom(0.2);}});'
+    + 'pdfjsLib.getDocument({url:url}).promise.then(function(doc){'
+    + '_doc=doc;_total=doc.numPages;_curPage=Math.min(_curPage,_total);'
+    + 'document.getElementById("pdf-nw-total").textContent=_total;up();'
+    + 'setTimeout(function(){fitPage();},50);'
+    + 'var strip=document.getElementById("pdf-nw-thumbs");var TH=0.18*_dpr;'
+    + 'for(var i=1;i<=_total;i++){var w=document.createElement("div");w.className="pdf-nw-thumb"+(i===_curPage?" active":"");w.dataset.page=i;'
+    + 'var cv=document.createElement("canvas");var lb=document.createElement("div");lb.className="pdf-nw-thumb-num";lb.textContent=i;'
+    + 'w.appendChild(cv);w.appendChild(lb);w.onclick=function(){_curPage=parseInt(this.dataset.page,10);render();up();};strip.appendChild(w);'
+    + '(function(n,c){doc.getPage(n).then(function(pg){var vp=pg.getViewport({scale:TH});c.width=vp.width;c.height=vp.height;'
+    + 'pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise.catch(function(){});});})(i,cv);}'
+    + '}).catch(function(e){document.body.innerHTML=\'<p style="color:#f87171;padding:16px">\ub80c\ub354\ub9c1 \uc2e4\ud328: \'+e.message+\'</p>\';});'
     + '<\/script></body></html>');
   w.document.close();
 }
@@ -5960,7 +6069,7 @@ function doResize(e) {
     if (el) el.style.width = Math.max(180, Math.min(480, _rsStartW + dx)) + 'px';
   } else {
     const el = document.getElementById('panel-right');
-    if (el) el.style.width = Math.max(200, Math.min(520, _rsStartW - dx)) + 'px';
+    if (el) el.style.width = Math.max(220, Math.min(720, _rsStartW - dx)) + 'px';
   }
 }
 function stopResize() {
