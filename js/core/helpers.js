@@ -265,8 +265,10 @@ function switchRightTab(tab) {
   rightTab = tab;
   document.querySelectorAll('.panel-right .panel-tab').forEach(el => el.classList.remove('active'));
   const activeBtn = document.getElementById('rtab-' + tab); if (activeBtn) activeBtn.classList.add('active');
-  ['mdeditor-panel', 'refs-panel', 'design-panel', 'gallery-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  ['mdeditor-panel', 'refs-panel', 'design-panel', 'gallery-panel', 'layer-order-panel', 'imgbank-panel'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   if (tab === 'sources') { switchRightTab('design'); return; }
+  if (tab === 'imgbank') { const p = document.getElementById('imgbank-panel'); if (p) { p.style.display = 'flex'; } if (typeof renderImgBankPanel === 'function') renderImgBankPanel(); return; }
+  if (tab === 'layerorder') { const p = document.getElementById('layer-order-panel'); if (p) p.style.display = 'flex'; if (typeof updateLayerOrderPanel === 'function') updateLayerOrderPanel(); return; }
   if (tab === 'mdeditor') {
     const panel = document.getElementById('mdeditor-panel');
     if (panel) panel.style.display = 'flex';

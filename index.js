@@ -872,6 +872,7 @@ function selectSlide(index, fromThumb, syncSource) {
   document.querySelectorAll('.slide-wrapper').forEach((el, i) => el.classList.toggle('active', i === index));
   document.querySelectorAll('.thumb').forEach((el, i) => el.classList.toggle('active', i === index));
   updateDesignPanel();
+  if (typeof updateLayerOrderPanel === 'function') updateLayerOrderPanel();
   const el = document.getElementById(`sw-${index}`);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
@@ -969,15 +970,20 @@ function changeTitleFontSize(slideIndex, delta) {
 }
 function updateSlideBullet(i, bi, val) { if (slides[i]) slides[i].bullets[bi] = val; }
 function updateSlideNotes(i, val) { if (slides[i]) slides[i].notes = val; }
-function removeSlideImage(i) {
-  if (!slides[i]) return;
+function removeSlideImage(i) { removeSlideImageAt(i, 0); }
+function removeSlideImage2(i) { removeSlideImageAt(i, 1); }
+
+/** 슬라이드의 N번째 이미지 제거 (0부터 시작) */
+function removeSlideImageAt(slideIdx, slotIndex) {
+  if (!slides[slideIdx]) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[i].imageUrl = null; renderSlides(); renderThumbs(); renderGallery();
-}
-function removeSlideImage2(i) {
-  if (!slides[i]) return;
-  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[i].imageUrl2 = null; renderSlides(); renderThumbs(); updateDesignPanel(); showToast('🗑 두 번째 이미지 제거됨');
+  const slide = slides[slideIdx];
+  const imgs = getSlideImages(slide);
+  if (slotIndex < 0 || slotIndex >= imgs.length) return;
+  imgs.splice(slotIndex, 1);
+  setSlideImages(slide, imgs);
+  renderSlides(); renderThumbs(); renderGallery(); updateDesignPanel();
+  showToast('🗑 이미지 제거됨');
 }
 // ── 슬라이드 실행 취소/다시 실행 (Ctrl+Z, Ctrl+Shift+Z) ─────────────────────
 const MAX_SLIDE_UNDO = 50;
@@ -1051,16 +1057,92 @@ document.addEventListener('focusout', function (e) {
 function openImageModal2(slideIdx) {
   const idx = slideIdx !== undefined ? slideIdx : activeSlideIndex;
   window._applyAsSecondImage = true;
-  // 두 번째 이미지 추가는 항상 빈 상태에서 시작 (기존 첫 번째 이미지 프리로드 금지)
   openImageModal(idx, { asSecondImage: true, preloadExisting: false });
+}
+
+/** N번째 이미지 슬롯에 이미지 추가 (0부터 시작) */
+function openImageModalAt(slideIdx, slotIndex) {
+  const idx = slideIdx !== undefined ? slideIdx : activeSlideIndex;
+  window._applyAsImageSlot = slotIndex;
+  openImageModal(idx, { asSecondImage: slotIndex > 0, preloadExisting: false });
+}
+
+/** 레이어 순서 사이드바 열기 (이미지 z-order 설정, 1=가장 위) */
+function openLayerOrderWindow(slideIdx) {
+  var idx = slideIdx !== undefined ? slideIdx : activeSlideIndex;
+  var slide = slides[idx];
+  if (!slide) return;
+  var imgs = getSlideImages(slide);
+  if (imgs.length < 2) {
+    if (typeof showToast === 'function') showToast('이미지가 2개 이상일 때 레이어 순서를 변경할 수 있습니다.');
+    return;
+  }
+  if (typeof switchRightTab === 'function') switchRightTab('layerorder');
+  updateLayerOrderPanel();
+}
+
+/** 레이어 순서 사이드바 내용 갱신 (1=가장 위, 이미지 추가 시 자동 호출) */
+function updateLayerOrderPanel() {
+  var list = document.getElementById('layer-order-list');
+  var empty = document.getElementById('layer-order-empty');
+  if (!list) return;
+  var idx = typeof activeSlideIndex !== 'undefined' ? activeSlideIndex : 0;
+  var slide = slides && slides[idx] ? slides[idx] : null;
+  var imgs = slide ? getSlideImages(slide) : [];
+  if (imgs.length < 2) {
+    list.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  /* 1=가장 위: 배열 끝(마지막)이 1번, 역순 표시 */
+  var html = '';
+  for (var d = 0; d < imgs.length; d++) {
+    var arrIdx = imgs.length - 1 - d;
+    var displayNum = d + 1;
+    var img = imgs[arrIdx];
+    var url = (img.url || '').replace(/"/g, '&quot;');
+    var upDisabled = d === 0 ? ' disabled' : '';
+    var downDisabled = d === imgs.length - 1 ? ' disabled' : '';
+    html += '<div class="layer-order-item" data-arr-index="' + arrIdx + '">' +
+      '<span class="layer-order-num">' + displayNum + '</span>' +
+      '<img class="layer-order-thumb" src="' + url + '" alt=""/>' +
+      '<div class="layer-order-arrows">' +
+      '<button type="button" class="layer-order-btn" title="위로 (앞에)" onclick="event.stopPropagation();reorderSlideImages(' + idx + ',' + arrIdx + ',\'up\')"' + upDisabled + '>▲</button>' +
+      '<button type="button" class="layer-order-btn" title="아래로 (뒤로)" onclick="event.stopPropagation();reorderSlideImages(' + idx + ',' + arrIdx + ',\'down\')"' + downDisabled + '>▼</button>' +
+      '</div></div>';
+  }
+  list.innerHTML = html;
+}
+
+/** 레이어 순서 변경 (up=앞으로, down=뒤로) */
+function reorderSlideImages(slideIdx, fromIndex, direction) {
+  var slide = slides[slideIdx];
+  if (!slide) return;
+  var imgs = getSlideImages(slide);
+  if (fromIndex < 0 || fromIndex >= imgs.length) return;
+  var swapIndex = direction === 'up' ? fromIndex + 1 : fromIndex - 1;
+  if (swapIndex < 0 || swapIndex >= imgs.length) return;
+  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
+  var tmp = imgs[fromIndex];
+  imgs[fromIndex] = imgs[swapIndex];
+  imgs[swapIndex] = tmp;
+  setSlideImages(slide, imgs);
+  renderSlides();
+  renderThumbs();
+  if (typeof updateDesignPanel === 'function') updateDesignPanel();
+  if (typeof updateLayerOrderPanel === 'function') updateLayerOrderPanel();
 }
 
 function deleteSlide(i) {
   if (slides.length <= 1) { showToast('⚠️ 슬라이드가 하나만 남았습니다'); return; }
+  if (!confirm('슬라이드를 지울까요? 지금은 복구하지 않습니다.')) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
   slides.splice(i, 1);
   if (activeSlideIndex >= slides.length) activeSlideIndex = slides.length - 1;
   renderSlides(); renderThumbs();
+  if (typeof renderGallery === 'function') renderGallery();
+  if (typeof updateDesignPanel === 'function') updateDesignPanel();
   updateSlidesCountLabel();
 }
 
@@ -1072,13 +1154,34 @@ function addNewSlide() { addSlideAfter(activeSlideIndex, 'blank'); }
 /** 이미지 슬라이드 기본 비율: 텍스트 45% / 이미지 55% (강제 적용) */
 const DEFAULT_IMAGE_SLIDE_TEXT_PCT = 45;
 
+/** 슬라이드 이미지 배열 반환 (imageUrl/imageUrl2 호환) */
+function getSlideImages(slide) {
+  if (!slide) return [];
+  if (Array.isArray(slide.images) && slide.images.length) return slide.images;
+  const arr = [];
+  if (slide.imageUrl) arr.push({ url: slide.imageUrl, slideImage: slide.slideImage1 || null });
+  if (slide.imageUrl2) arr.push({ url: slide.imageUrl2, slideImage: slide.slideImage2 || null });
+  return arr;
+}
+
+/** 슬라이드에 이미지 설정 (images 배열 사용, imageUrl/imageUrl2 동기화) */
+function setSlideImages(slide, imgs) {
+  if (!slide) return;
+  slide.images = imgs;
+  slide.imageUrl = imgs[0] ? imgs[0].url : null;
+  slide.imageUrl2 = imgs[1] ? imgs[1].url : null;
+  slide.slideImage1 = imgs[0] ? imgs[0].slideImage || null : null;
+  slide.slideImage2 = imgs[1] ? imgs[1].slideImage || null : null;
+}
+
 /** AI 생성 이미지에 완전 채우기 레이아웃 적용 (innerSize 45% 텍스트 / 55% 이미지) */
 function applyFullFillImageLayout(slide) {
   if (!slide || !slide.imageUrl) return;
   slide.innerSize = slide.innerSize || {};
   slide.innerSize.widthPct = DEFAULT_IMAGE_SLIDE_TEXT_PCT;
-  slide.slideImage1 = null;
-  slide.slideImage2 = null;
+  const imgs = getSlideImages(slide);
+  imgs.forEach(function (it) { it.slideImage = null; });
+  setSlideImages(slide, imgs);
 }
 
 /** 이미지가 있는 슬라이드에 기본 비율 적용 (비율이 없을 때만. 사용자/배치 적용 값은 절대 덮어쓰지 않음) */
@@ -1093,14 +1196,15 @@ function normalizeImageSlideRatios() {
       s.innerSize.widthPct = DEFAULT_IMAGE_SLIDE_TEXT_PCT;
       changed = true;
     }
-    if (s.slideImage1 && (s.slideImage1.w || s.slideImage1.h)) {
-      s.slideImage1 = null;
-      changed = true;
-    }
-    if (s.slideImage2 && (s.slideImage2.w || s.slideImage2.h)) {
-      s.slideImage2 = null;
-      changed = true;
-    }
+    var imgs = getSlideImages(s);
+    var imgChanged = false;
+    imgs.forEach(function (it) {
+      if (it.slideImage && (it.slideImage.w || it.slideImage.h)) {
+        it.slideImage = null;
+        imgChanged = true;
+      }
+    });
+    if (imgChanged) { setSlideImages(s, imgs); changed = true; }
   });
   if (changed && typeof _markDirty === 'function') _markDirty();
 }
@@ -1215,7 +1319,9 @@ async function startVisualizeAll() {
     }
     if (img) {
       if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-      slides[i].imageUrl = img;
+      var imgs = getSlideImages(slides[i]);
+      imgs[0] = { url: img, slideImage: null };
+      setSlideImages(slides[i], imgs);
       applyFullFillImageLayout(slides[i]);
       if (typeof imgBankAdd === 'function') { try { imgBankAdd({ dataURL: img, name: 'batch_' + Date.now() + '_' + i, prompt: prompt }); } catch (e) {} }
       successCount++;
@@ -1243,14 +1349,17 @@ async function generateAllImages() { askThenVisualizeAll(); } // backward compat
 // [V3.1: generateSingleImage replaced]
 
 async function refineImage() {
-  const slide = slides[activeSlideIndex]; if (!slide || !slide.imageUrl) return;
+  const slide = slides[activeSlideIndex]; if (!slide) return;
+  const firstImg = getSlideImages(slide)[0]; if (!firstImg || !firstImg.url) return;
   const instruction = document.getElementById('refine-input')?.value; if (!instruction) return;
   if (showJobProgress) showJobProgress('refineImg', '백그라운드에서 이미지 수정 중...', 0, '🎨');
-  refineImageAPI(slide.imageUrl, instruction).then(function (newImg) {
+  refineImageAPI(firstImg.url, instruction).then(function (newImg) {
     if (hideJobProgress) hideJobProgress('refineImg', 0);
     if (newImg) {
       if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-      slides[activeSlideIndex].imageUrl = newImg;
+      var imgs = getSlideImages(slides[activeSlideIndex]);
+      imgs[0] = { url: newImg, slideImage: null };
+      setSlideImages(slides[activeSlideIndex], imgs);
       applyFullFillImageLayout(slides[activeSlideIndex]);
       renderSlides(); renderThumbs(); renderGallery(); showToast('✅ 이미지 수정 완료');
     } else showToast('❌ 이미지 수정 실패');
@@ -1467,9 +1576,11 @@ function togglePresNotes() {
 function renderPresSlide() {
   const slide = slides[presIndex]; if (!slide) return;
   const container = document.getElementById('pres-slide-container');
+  const isImageOnly = !!slide.isImageOnly;
   const isCover = slide.isCover;
   const isDark = slideStyle === 'dark' || isCover;
-  const hasSideImage = !!slide.imageUrl && !isCover;
+  var presImgs = getSlideImages(slide);
+  const hasSideImage = !!presImgs.length && !isCover && !isImageOnly;
   var rawPct = hasSideImage && slide.innerSize && slide.innerSize.widthPct != null ? slide.innerSize.widthPct : (typeof DEFAULT_IMAGE_SLIDE_TEXT_PCT !== 'undefined' ? DEFAULT_IMAGE_SLIDE_TEXT_PCT : 45);
   const textPct = hasSideImage ? Math.max(10, Math.min(90, rawPct)) : 0;
   const imgPct = 100 - textPct;
@@ -1481,27 +1592,41 @@ function renderPresSlide() {
   const bulletColor = isCover ? 'color:#d8e4f0' : (isDark ? 'color:#b8d4f0' : 'color:#333');
   const dotBg = isCover ? 'display:none' : (isDark ? 'background:#4f8ef7' : 'background:#4f8ef7');
 
-  const fs = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
-  const tMin = Math.round(20 * fs), tMax = Math.round(44 * fs), tVw = (3.5 * fs).toFixed(1);
-  const bMin = Math.round(11 * fs), bMax = Math.round(21 * fs), bVw = (1.7 * fs).toFixed(1);
-  const titleSizePx = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : null;
-  const titleStyle = titleSizePx ? ('font-size:' + titleSizePx + 'px') : ('font-size:clamp(' + tMin + 'px,' + tVw + 'vw,' + tMax + 'px)');
-  const titlePosStyle = (slide.titlePosition && (slide.titlePosition.left != null || slide.titlePosition.top != null))
-    ? ('position:absolute;left:' + (slide.titlePosition.left || 0) + 'px;top:' + (slide.titlePosition.top || 0) + 'px') : '';
+  let innerHTML;
+  if (isImageOnly && presImgs.length) {
+    var cols = Math.ceil(Math.sqrt(presImgs.length));
+    var rows = Math.ceil(presImgs.length / cols);
+    var cellW = 100 / cols;
+    var cellH = 100 / rows;
+    innerHTML = '<div style="position:absolute;inset:0;display:flex;flex-wrap:wrap;background:#1a1a2e;overflow:hidden">' + presImgs.map(function (img, i) {
+      var c = i % cols, r = Math.floor(i / cols);
+      return '<div style="position:absolute;left:' + (c * cellW) + '%;top:' + (r * cellH) + '%;width:' + cellW + '%;height:' + cellH + '%;display:flex;align-items:center;justify-content:center;padding:4px"><img style="max-width:100%;max-height:100%;object-fit:contain;" src="' + (img.url || '') + '" alt=""/></div>';
+    }).join('') + '</div>';
+  } else if (isImageOnly) {
+    innerHTML = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:rgba(255,255,255,0.5);font-size:14px">이미지 없음</div>`;
+  } else {
+    const fs = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
+    const tMin = Math.round(20 * fs), tMax = Math.round(44 * fs), tVw = (3.5 * fs).toFixed(1);
+    const bMin = Math.round(11 * fs), bMax = Math.round(21 * fs), bVw = (1.7 * fs).toFixed(1);
+    const titleSizePx = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : null;
+    const titleStyle = titleSizePx ? ('font-size:' + titleSizePx + 'px') : ('font-size:clamp(' + tMin + 'px,' + tVw + 'vw,' + tMax + 'px)');
+    const titlePosStyle = (slide.titlePosition && (slide.titlePosition.left != null || slide.titlePosition.top != null))
+      ? ('position:absolute;left:' + (slide.titlePosition.left || 0) + 'px;top:' + (slide.titlePosition.top || 0) + 'px') : '';
 
-  const innerHTML = `
+    innerHTML = `
     <div style="position:absolute;inset:0;padding:${rootPadding};display:flex;flex-direction:column;overflow:hidden;${bgCss};${isCover ? 'align-items:center;justify-content:center;text-align:center' : ''}">
       <div style="position:absolute;left:0;top:0;bottom:0;width:0.6%;background:#4f8ef7;${isCover ? 'display:none' : ''}"></div>
-      <div style="${titleStyle};font-weight:700;line-height:1.2;margin-bottom:4%;font-family:var(--font-head);${titleColor};${titlePosStyle}${isCover ? ';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:20px;margin-bottom:16px' : ''};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(slide.title)}</div>
+      <div style="${titleStyle};font-weight:700;line-height:1.2;margin-bottom:4%;font-family:var(--font-head);${titleColor};${titlePosStyle}${isCover ? ';border-bottom:2px solid rgba(79,142,247,0.5);padding-bottom:20px;margin-bottom:16px' : ''};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(slide.title || '')}</div>
       <div style="flex:1;min-width:0;overflow:hidden;">
-        ${slide.bullets.map(b => `<div style="display:flex;gap:12px;margin-bottom:2%;align-items:flex-start;min-width:0;">
+        ${(slide.bullets || []).map(b => `<div style="display:flex;gap:12px;margin-bottom:2%;align-items:flex-start;min-width:0;">
           <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:0.5em;${dotBg}"></div>
           <div style="font-size:clamp(${bMin}px,${bVw}vw,${bMax}px);line-height:1.5;${bulletColor};min-width:0;overflow:hidden;word-break:break-word;">${markdownToHtml(b)}</div>
         </div>`).join('')}
       </div>
     </div>
-    ${slide.imageUrl ? `<img style="position:absolute;right:0;top:0;bottom:0;width:${imgPct}%;object-fit:cover;object-position:center center;background:#f8fbff;" src="${slide.imageUrl}" alt=""/>` : ''}
+    ${presImgs.length ? presImgs.map(function (img, i) { return '<img style="position:absolute;right:0;top:' + (i * (100 / presImgs.length)) + '%;width:' + imgPct + '%;height:' + (100 / presImgs.length) + '%;object-fit:cover;object-position:center center;background:#f8fbff;" src="' + (img.url || '') + '" alt=""/>'; }).join('') : ''}
   `;
+  }
   container.innerHTML = innerHTML;
 
   // Re-append and setup canvas
@@ -1893,59 +2018,76 @@ async function exportPPT() {
       setProgress(20 + Math.round((idx / exportSlides.length) * 70));
 
       const s = pptx.addSlide();
+      const isImageOnly = !!slide.isImageOnly;
       const isDark = slide.isCover || (slideStyle === 'dark');
       s.background = { color: isDark ? '1a1a2e' : 'f8f9ff' };
       const titleColor = isDark ? 'e8f4fd' : '1a1a2e';
       const bodyColor = isDark ? 'b8d4f0' : '444455';
 
-      const fontScale = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
-      let ov = overridesBySlide ? (overridesBySlide[idx] || overridesBySlide._global || null) : null;
-      if (ov && (ov.imgX != null || ov.imgY != null) && !ov.imageBox) {
-        const scale = (ov.imageScale != null ? ov.imageScale : 100) / 100;
-        ov = {
-          textBox: ov.textX != null ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null,
-          textW: ov.textW,
-          imageBox: { x: ov.imgX ?? 5.55, y: ov.imgY ?? 1, w: (ov.imgW || 3.95) * scale, h: (ov.imgH || 3.25) * scale },
-          titleFontSize: ov.titleFs ?? ov.titleFontSize,
-          bodyFontSize: ov.bodyFs ?? ov.bodyFontSize
-        };
+      const exportImgs = getSlideImages(slide).filter(function (it) { return it.url && includeImages; });
+
+      if (isImageOnly) {
+        if (exportImgs.length) {
+          var cols = Math.ceil(Math.sqrt(exportImgs.length));
+          var rows = Math.ceil(exportImgs.length / cols);
+          var gw = 9.4 / cols;
+          var gh = 5.0 / rows;
+          for (var ei = 0; ei < exportImgs.length; ei++) {
+            var col = ei % cols;
+            var row = Math.floor(ei / cols);
+            await addImageContain(s, exportImgs[ei].url, { x: 0.3 + col * gw, y: 0.3 + row * gh, w: gw - 0.1, h: gh - 0.1 });
+          }
+        }
+        s.addText(String(idx + 1), { x: 9.2, y: 5.1, w: 0.5, h: 0.3, fontSize: 9, color: 'aaaaaa', align: 'right' });
+      } else {
+        const fontScale = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
+        let ov = overridesBySlide ? (overridesBySlide[idx] || overridesBySlide._global || null) : null;
+        if (ov && (ov.imgX != null || ov.imgY != null) && !ov.imageBox) {
+          const scale = (ov.imageScale != null ? ov.imageScale : 100) / 100;
+          ov = {
+            textBox: ov.textX != null ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null,
+            textW: ov.textW,
+            imageBox: { x: ov.imgX ?? 5.55, y: ov.imgY ?? 1, w: (ov.imgW || 3.95) * scale, h: (ov.imgH || 3.25) * scale },
+            titleFontSize: ov.titleFs ?? ov.titleFontSize,
+            bodyFontSize: ov.bodyFs ?? ov.bodyFontSize
+          };
+        }
+        const titleFontSize = (ov && (ov.titleFontSize != null || ov.titleFs != null)) ? (ov.titleFontSize ?? ov.titleFs) : ((slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : Math.round(28 * fontScale));
+        const bodyFontSize = (ov && (ov.bodyFontSize != null || ov.bodyFs != null)) ? (ov.bodyFontSize ?? ov.bodyFs) : Math.round(14 * fontScale);
+
+        s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.1, h: 5.63, fill: { color: '4f8ef7' }, line: { type: 'none' } });
+
+        const textBox = (ov && ov.textBox && typeof ov.textBox.x === 'number') ? { x: ov.textBox.x, y: ov.textBox.y, w: Math.max(1, Math.min(9, ov.textBox.w || 5)), h: Math.max(1.5, Math.min(5.5, ov.textBox.h || 4)) } : (ov && ov.textX != null) ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null;
+        const textW = textBox ? textBox.w : ((ov && ov.textW != null) ? Math.max(1, Math.min(9, ov.textW)) : (exportImgs.length ? 5.0 : 9.1));
+        const textX = textBox ? textBox.x : 0.4;
+        const textY = textBox ? textBox.y : 0.3;
+        const textH = textBox ? textBox.h : 4.0;
+
+        const titleText = renderTextForExport(slide.title);
+        s.addText(titleText || '', { x: textX, y: textY, w: textW, h: 1.0, fontSize: titleFontSize, bold: true, color: titleColor, fontFace: fontKo });
+
+        const bullets = (slide.bullets || []).map(b => ({
+          text: renderMultilineForExport(b),
+          options: { bullet: true, fontSize: bodyFontSize, color: bodyColor, paraSpaceAfter: 7, fontFace: fontKo }
+        }));
+        s.addText(bullets, { x: textX, y: textY + 1.1, w: textW, h: Math.max(1.5, textH - 1.1), valign: 'top', fontFace: fontKo, fontSize: bodyFontSize, color: bodyColor });
+
+        const box1 = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: ov.imageBox.y, w: ov.imageBox.w, h: ov.imageBox.h } : { x: 5.55, y: 1.0, w: 3.95, h: 3.25 };
+        const box2a = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.63) } : { x: 5.55, y: 0.95, w: 3.95, h: 2.05 };
+        const box2b = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95 + (ov.imageBox.h || 3.25) * 0.63, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.37) } : { x: 5.55, y: 3.10, w: 3.95, h: 2.05 };
+        if (exportImgs.length === 1) {
+          await addImageContain(s, exportImgs[0].url, box1);
+        } else if (exportImgs.length >= 2) {
+          var imgH = 4.0 / Math.ceil(exportImgs.length / 2);
+          for (var ei2 = 0; ei2 < exportImgs.length; ei2++) {
+            var c = ei2 % 2, r = Math.floor(ei2 / 2);
+            var bx = { x: 5.55 + c * 4.5, y: 0.95 + r * imgH, w: 3.95, h: imgH - 0.05 };
+            await addImageContain(s, exportImgs[ei2].url, bx);
+          }
+        }
+
+        s.addText(String(idx + 1), { x: 9.2, y: 5.1, w: 0.5, h: 0.3, fontSize: 9, color: 'aaaaaa', align: 'right' });
       }
-      const titleFontSize = (ov && (ov.titleFontSize != null || ov.titleFs != null)) ? (ov.titleFontSize ?? ov.titleFs) : ((slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : Math.round(28 * fontScale));
-      const bodyFontSize = (ov && (ov.bodyFontSize != null || ov.bodyFs != null)) ? (ov.bodyFontSize ?? ov.bodyFs) : Math.round(14 * fontScale);
-
-      // left accent bar
-      s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.1, h: 5.63, fill: { color: '4f8ef7' }, line: { type: 'none' } });
-
-      const hasImg1 = !!(slide.imageUrl && includeImages);
-      const hasImg2 = !!(slide.imageUrl2 && includeImages);
-      const textBox = (ov && ov.textBox && typeof ov.textBox.x === 'number') ? { x: ov.textBox.x, y: ov.textBox.y, w: Math.max(1, Math.min(9, ov.textBox.w || 5)), h: Math.max(1.5, Math.min(5.5, ov.textBox.h || 4)) } : (ov && ov.textX != null) ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null;
-      const textW = textBox ? textBox.w : ((ov && ov.textW != null) ? Math.max(1, Math.min(9, ov.textW)) : ((hasImg1 || hasImg2) ? 5.0 : 9.1));
-      const textX = textBox ? textBox.x : 0.4;
-      const textY = textBox ? textBox.y : 0.3;
-      const textH = textBox ? textBox.h : 4.0;
-
-      const titleText = renderTextForExport(slide.title);
-      s.addText(titleText || '', { x: textX, y: textY, w: textW, h: 1.0, fontSize: titleFontSize, bold: true, color: titleColor, fontFace: fontKo });
-
-      const bullets = (slide.bullets || []).map(b => ({
-        text: renderMultilineForExport(b),
-        options: { bullet: true, fontSize: bodyFontSize, color: bodyColor, paraSpaceAfter: 7, fontFace: fontKo }
-      }));
-      s.addText(bullets, { x: textX, y: textY + 1.1, w: textW, h: Math.max(1.5, textH - 1.1), valign: 'top', fontFace: fontKo, fontSize: bodyFontSize, color: bodyColor });
-
-      // ✅ 이미지: 미리보기 overrides 또는 기본 레이아웃
-      const box1 = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: ov.imageBox.y, w: ov.imageBox.w, h: ov.imageBox.h } : { x: 5.55, y: 1.0, w: 3.95, h: 3.25 };
-      const box2a = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.63) } : { x: 5.55, y: 0.95, w: 3.95, h: 2.05 };
-      const box2b = (ov && ov.imageBox) ? { x: ov.imageBox.x, y: 0.95 + (ov.imageBox.h || 3.25) * 0.63, w: ov.imageBox.w, h: Math.max(0.5, (ov.imageBox.h || 3.25) * 0.37) } : { x: 5.55, y: 3.10, w: 3.95, h: 2.05 };
-      if (hasImg1 && !hasImg2) {
-        await addImageContain(s, slide.imageUrl, box1);
-      }
-      if (hasImg1 && hasImg2) {
-        await addImageContain(s, slide.imageUrl, box2a);
-        await addImageContain(s, slide.imageUrl2, box2b);
-      }
-
-      s.addText(String(idx + 1), { x: 9.2, y: 5.1, w: 0.5, h: 0.3, fontSize: 9, color: 'aaaaaa', align: 'right' });
 
       if (includeNotes) {
         const noteRaw = presentationScript[idx] || slide.notes || '';
@@ -2330,12 +2472,30 @@ let _origImageDataURL = null;      // current base image (upload or AI-generated
 let _initialUploadDataURL = null;  // first upload only (never overwritten by AI)
 let _imgPasteZoneActive = false;   // true after user clicks paste zone (Ctrl+V 붙여넣기용)
 
+// ── 이미지 모달 사이드바 모드 (우측 고정, 배경 보이기) ───
+function toggleImgModalSidebar() {
+  const modal = document.getElementById('img-modal');
+  if (!modal) return;
+  const isSidebar = modal.classList.toggle('img-modal-sidebar');
+  updateImgModalSidebarButton();
+  if (typeof setupCropEvents === 'function') setTimeout(setupCropEvents, 50);
+}
+function updateImgModalSidebarButton() {
+  const btn = document.getElementById('img-modal-sidebar-btn');
+  const modal = document.getElementById('img-modal');
+  if (!btn || !modal) return;
+  const isSidebar = modal.classList.contains('img-modal-sidebar');
+  btn.textContent = isSidebar ? '← 모달로' : '→ 우측 사이드바로';
+  btn.title = isSidebar ? '중앙 모달로 돌아가기' : '우측에 고정하여 배경을 보면서 편집';
+}
+
 // ── Open image modal ─────────────────────────────────────
 function openImageModal(slideIdx, options) {
   const opts = options || {};
   _targetSlideForImage = slideIdx !== undefined ? slideIdx : activeSlideIndex;
-  const isSecondImageMode = !!(opts.asSecondImage || window._applyAsSecondImage);
-  if (!isSecondImageMode) window._applyAsSecondImage = false;
+  const slot = (typeof window._applyAsImageSlot === 'number') ? window._applyAsImageSlot : (opts.asSecondImage || window._applyAsSecondImage ? 1 : 0);
+  const isAddMode = slot > 0;
+  if (!isAddMode) { window._applyAsSecondImage = false; window._applyAsImageSlot = undefined; }
   _finalCroppedDataURL = null;
   _currentCropImg = null;
   _origImageDataURL = null;
@@ -2347,11 +2507,9 @@ function openImageModal(slideIdx, options) {
   const dropZone = document.getElementById('img-drop-zone');
   const cropArea = document.getElementById('crop-area');
 
-  // 두 번째 이미지 모드에서는 기본적으로 빈 상태로 시작
   const shouldPreload = opts.preloadExisting !== false;
-  const existingImg = shouldPreload
-    ? (isSecondImageMode ? slides[_targetSlideForImage]?.imageUrl2 : slides[_targetSlideForImage]?.imageUrl)
-    : null;
+  const imgs = getSlideImages(slides[_targetSlideForImage] || {});
+  const existingImg = shouldPreload && imgs[slot] ? imgs[slot].url : null;
 
   if (existingImg) {
     if (row) row.style.display = 'none';
@@ -2388,7 +2546,9 @@ function openImageModal(slideIdx, options) {
     pasteZone.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _imgPasteZoneActive = true; } };
   }
 
+  document.getElementById('img-modal')?.classList.remove('img-modal-sidebar');
   openModal('img-modal');
+  updateImgModalSidebarButton();
 
   const imgModelSel = document.getElementById('img-ai-model-select');
   if (imgModelSel && typeof getImageModelId === 'function') imgModelSel.value = getImageModelId() || 'gemini-3.1-flash-image-preview';
@@ -2783,6 +2943,33 @@ function resetCropFull() {
   showToast('↺ 전체 선택으로 초기화됨');
 }
 
+/** 생성·업로드된 이미지를 지우고 업로드/붙여넣기 화면으로 되돌림 — 다시 생성할 때 사용 */
+function clearGeneratedImageInModal() {
+  _currentCropImg = null;
+  _origImageDataURL = null;
+  _finalCroppedDataURL = null;
+  _initialUploadDataURL = null;
+  _cropEventsAttached = false;
+
+  const row = document.getElementById('img-upload-paste-row');
+  const dropZone = document.getElementById('img-drop-zone');
+  const cropArea = document.getElementById('crop-area');
+  const wrap = document.getElementById('crop-result-wrap');
+  const curPrev = document.getElementById('crop-result-img');
+  const origPrev = document.getElementById('orig-preview-img');
+  const aiStatus = document.getElementById('img-ai-status');
+
+  if (row) row.style.display = 'flex';
+  if (dropZone) dropZone.style.display = 'flex';
+  if (cropArea) cropArea.style.display = 'none';
+  if (wrap) wrap.style.display = 'none';
+  if (curPrev) curPrev.removeAttribute('src');
+  if (origPrev) origPrev.removeAttribute('src');
+  if (aiStatus) aiStatus.textContent = '';
+
+  if (typeof showToast === 'function') showToast('🗑 지워졌습니다. 새 이미지를 업로드하거나 AI로 생성하세요.');
+}
+
 function resetToOriginal() {
   if (!_initialUploadDataURL) { resetCropFull(); return; }
   const img = new Image();
@@ -2847,19 +3034,20 @@ function applyImageToSlide() {
   if (_targetSlideForImage === null || !slides[_targetSlideForImage]) { showToast('⚠️ 슬라이드를 선택하세요'); return; }
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
   const slide = slides[_targetSlideForImage];
-  if (window._applyAsSecondImage) {
-    slide.imageUrl2 = dataURL;
-    slide.slideImage2 = null;
-    window._applyAsSecondImage = false;
-    showToast('✅ 두 번째 이미지 삽입 완료');
-  } else {
-    slide.imageUrl = dataURL;
-    slide.slideImage1 = null;
+  const slot = (typeof window._applyAsImageSlot === 'number') ? window._applyAsImageSlot : (window._applyAsSecondImage ? 1 : 0);
+  window._applyAsSecondImage = false;
+  window._applyAsImageSlot = undefined;
+
+  const imgs = getSlideImages(slide);
+  while (imgs.length <= slot) imgs.push({ url: null, slideImage: null });
+  imgs[slot] = { url: dataURL, slideImage: null };
+  setSlideImages(slide, imgs);
+
+  if (slot === 0) {
     applyFullFillImageLayout(slide);
-    // 이미지 레이어는 뒤에, 텍스트 레이어는 앞에 (텍스트가 이미지 위에 보이도록)
     slide.layerOrder = ['image', 'text'];
-    showToast('✅ 이미지 삽입 완료');
   }
+  showToast(slot === 0 ? '✅ 이미지 삽입 완료' : '✅ 이미지 ' + (slot + 1) + ' 삽입 완료');
   renderSlides();
   renderThumbs();
   renderGallery();
@@ -2948,7 +3136,9 @@ function insertHistoryImage(idx) {
   if (!item || !item.dataURL) { showToast('⚠️ 이미지 데이터 없음'); return; }
   if (!slides[activeSlideIndex]) { showToast('⚠️ 슬라이드를 선택하세요'); return; }
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[activeSlideIndex].imageUrl = item.dataURL;
+  var imgs = getSlideImages(slides[activeSlideIndex]);
+  imgs[0] = { url: item.dataURL, slideImage: null };
+  setSlideImages(slides[activeSlideIndex], imgs);
   applyFullFillImageLayout(slides[activeSlideIndex]);
   renderSlides(); renderThumbs(); updateDesignPanel();
   showToast(`✅ 슬라이드 ${activeSlideIndex + 1}에 삽입됨`);
@@ -3006,8 +3196,9 @@ function insertImgBankImageToSlide(dataURL, targetIdx) {
   if (!slides[idx]) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
   const slide = slides[idx];
-  slide.imageUrl = dataURL;
-  slide.slideImage1 = null;
+  var imgs = getSlideImages(slide);
+  imgs[0] = { url: dataURL, slideImage: null };
+  setSlideImages(slide, imgs);
   slide.layerOrder = ['image', 'text'];
   applyFullFillImageLayout(slide);
   renderSlides();
@@ -3150,7 +3341,9 @@ async function generateSingleImage(idx) {
 function applyHistoryImageNow(dataURL, slideIdx) {
   if (!slides[slideIdx]) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[slideIdx].imageUrl = dataURL;
+  var imgs = getSlideImages(slides[slideIdx]);
+  imgs[0] = { url: dataURL, slideImage: null };
+  setSlideImages(slides[slideIdx], imgs);
   applyFullFillImageLayout(slides[slideIdx]);
   renderSlides(); renderThumbs(); renderGallery();
   updateDesignPanel();
@@ -3287,6 +3480,15 @@ function buildSlideImageWrapStyle(slideImage) {
     parts.push('top:' + (slideImage.top != null ? slideImage.top : 0) + 'px');
   }
   return parts.length ? (' style="' + parts.join(';') + '"') : '';
+}
+
+/** 이미지 전용 슬라이드에서 슬롯 기본 위치 (겹침 허용, 절대 배치). 한 장일 때는 우측 기본 배치 */
+function getDefaultImageSlotPos(slotIndex) {
+  var base = 20, step = 40;
+  if (slotIndex === 0) {
+    return { right: base, top: base, w: 200, h: 150 };
+  }
+  return { left: base + slotIndex * step, top: base + slotIndex * step, w: 200, h: 150 };
 }
 
 function markdownToHtml(text) {
@@ -3572,9 +3774,9 @@ function updateDesignPanel(subtab) {
       <p style="font-size:10px;color:var(--text3);margin:0 0 4px">이미지가 없어도 이 버튼으로 도구를 열어 프롬프트만으로 생성할 수 있습니다.</p>
       <button class="btn btn-primary w-full mt-1" style="justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼️ seed이미지이용 AI생성</button>
     </div>
-    ${slide.imageUrl ? `
-      <div style="margin-bottom:8px;border-radius:var(--radius);overflow:hidden;cursor:zoom-in" onclick="openImageFullscreen('${slide.imageUrl}')">
-        <img src="${slide.imageUrl}" style="width:100%;max-height:130px;object-fit:cover;display:block"/>
+    ${(function(){var imgs=getSlideImages(slide);var first=imgs[0];return imgs.length?`
+      <div style="margin-bottom:8px;border-radius:var(--radius);overflow:hidden;cursor:zoom-in" onclick="openImageFullscreen('${(first&&first.url)||''}')">
+        <img src="${(first&&first.url)||''}" style="width:100%;max-height:130px;object-fit:cover;display:block"/>
         <div style="font-size:9px;color:var(--text3);padding:2px 6px;background:var(--surface2)">클릭하여 크게 보기 ↗</div>
       </div>
       <div style="margin-bottom:14px">
@@ -3583,11 +3785,11 @@ function updateDesignPanel(subtab) {
         <button class="btn btn-ghost w-full mt-2" style="justify-content:center;display:none" onclick="refineImage()">🔄 AI이미지 수정 메뉴</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-        <button class="btn btn-ghost btn-xs w-full" style="justify-content:center" onclick="openImageFullscreen('${slide.imageUrl}')">🔍 새창에서 크게 보기</button>
+        <button class="btn btn-ghost btn-xs w-full" style="justify-content:center" onclick="openImageFullscreen('${(first&&first.url)||''}')">🔍 새창에서 크게 보기</button>
         <button class="btn btn-ghost btn-xs w-full" style="justify-content:center" onclick="downloadGalleryImage(${activeSlideIndex})">⬇ 이미지 다운로드</button>
-        ${!slide.imageUrl2 ? `<button class="btn btn-ghost btn-xs w-full" style="justify-content:center;color:var(--accent2)" onclick="openImageModal2(${activeSlideIndex})">➕ 두 번째 이미지 추가</button>` : `<button class="btn btn-ghost btn-xs w-full" style="justify-content:center;color:var(--warning)" onclick="removeSlideImage2(${activeSlideIndex})">🗑 두 번째 이미지 제거</button>`}
-        <button class="btn btn-ghost btn-xs w-full" style="justify-content:center;color:var(--danger)" onclick="removeSlideImage(${activeSlideIndex})">🗑 이미지 제거</button>
-      </div>` : ''}
+        <button class="btn btn-ghost btn-xs w-full" style="justify-content:center;color:var(--accent2)" onclick="openImageModalAt(${activeSlideIndex},${imgs.length})">➕ 이미지 추가</button>
+        <button class="btn btn-ghost btn-xs w-full" style="justify-content:center;color:var(--danger)" onclick="removeSlideImage(${activeSlideIndex})">🗑 첫 번째 이미지 제거</button>
+      </div>`:''})()}
     </section>
 
     </div>
@@ -3625,12 +3827,13 @@ function renderSlides() {
     const layerStyleImage = 'position:relative;z-index:' + (imageZ >= 0 ? imageZ : 1);
     const TEXT_IMAGE_MIN = 10, TEXT_IMAGE_MAX = 90;
     const defImgPct = typeof DEFAULT_IMAGE_SLIDE_TEXT_PCT !== 'undefined' ? DEFAULT_IMAGE_SLIDE_TEXT_PCT : 45;
-    var rawPct = slide.imageUrl && slide.innerSize && slide.innerSize.widthPct != null ? slide.innerSize.widthPct : defImgPct;
-    const textPct = slide.imageUrl ? Math.max(TEXT_IMAGE_MIN, Math.min(TEXT_IMAGE_MAX, rawPct)) : 0;
-    const innerSizeStyle = slide.imageUrl
+    const hasAnyImage = slide.imageUrl || (slide.images && slide.images[0] && slide.images[0].url);
+    var rawPct = hasAnyImage && slide.innerSize && slide.innerSize.widthPct != null ? slide.innerSize.widthPct : defImgPct;
+    const textPct = hasAnyImage ? Math.max(TEXT_IMAGE_MIN, Math.min(TEXT_IMAGE_MAX, rawPct)) : 0;
+    const innerSizeStyle = hasAnyImage
       ? ('flex: 0 1 ' + textPct + '%; min-width: 0;' + (slide.innerSize && slide.innerSize.heightPct != null ? ' height:' + Math.min(100, Math.max(20, slide.innerSize.heightPct)) + '%; min-height:0;' : ''))
       : '';
-    const imagePaneFlexStyle = slide.imageUrl ? ('flex: 0 1 ' + (100 - textPct) + '%; min-width: 0;') : '';
+    const imagePaneFlexStyle = hasAnyImage ? ('flex: 0 1 ' + (100 - textPct) + '%; min-width: 0;') : '';
     const layerStyleTextWithInner = layerStyleText + (innerSizeStyle ? ' ' + innerSizeStyle : '');
     const layerStyleImageWithFlex = layerStyleImage + (imagePaneFlexStyle ? ' ' + imagePaneFlexStyle : '');
     const extraAreaStyle = [];
@@ -3655,27 +3858,53 @@ function renderSlides() {
     }
     const titleWrapStyleStr = titleWrapStyle.length ? (' style="' + titleWrapStyle.join(';') + '"') : '';
     const titleFontSize = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : 24;
+    const isImageOnly = !!slide.isImageOnly;
+    const imageOnlyClass = isImageOnly ? ' slide-image-only' : '';
+    const slideImgs = getSlideImages(slide);
+    /** 텍스트+이미지 슬라이드: 이미지 외 레이어 투명, 이미지 자유 이동(절대 배치) */
+    const useAbsoluteImageLayout = hasAnyImage && !isImageOnly;
+    const imageSlotsHtml = slideImgs.map(function (img, si) {
+      const slotNum = si + 1;
+      const siObj = img.slideImage;
+      const resized = siObj && (siObj.w || siObj.h);
+      if (isImageOnly || useAbsoluteImageLayout) {
+        var pos = (siObj && (siObj.w || siObj.h || siObj.left != null || siObj.top != null || siObj.right != null)) ? siObj : getDefaultImageSlotPos(si);
+        var posPart = pos.right != null
+          ? ('right:' + pos.right + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;')
+          : ('left:' + (pos.left != null ? pos.left : 0) + 'px;top:' + (pos.top != null ? pos.top : 0) + 'px;');
+        var absStyle = 'position:absolute;' + posPart + 'width:' + (pos.w || 200) + 'px;height:' + (pos.h || 150) + 'px;z-index:' + si + ';';
+        return '<div class="slide-img-wrap slide-img-wrap-absolute ' + (resized ? 'slide-resized' : '') + '" id="slide-img-wrap-' + index + '-' + slotNum + '" data-slide-index="' + index + '" data-slot="' + slotNum + '" style="' + absStyle + '"><img src="' + (img.url || '') + '" alt=""/><button class="slide-image-remove" onclick="removeSlideImageAt(' + index + ',' + si + ');event.stopPropagation()" title="제거">✕</button>' + buildResizeMoveHandlesHtml() + '</div>';
+      }
+      return '<div class="slide-img-slot"><div class="slide-img-wrap ' + (resized ? 'slide-resized' : '') + '" id="slide-img-wrap-' + index + '-' + slotNum + '" data-slide-index="' + index + '" data-slot="' + slotNum + '"' + buildSlideImageWrapStyle(siObj) + '><img src="' + (img.url || '') + '" alt=""/><button class="slide-image-remove" onclick="removeSlideImageAt(' + index + ',' + si + ');event.stopPropagation()" title="제거">✕</button>' + buildResizeMoveHandlesHtml() + '</div></div>';
+    }).join('');
+    const imageOnlyCardContent = isImageOnly ? `
+        <div class="slide-image-pane slide-image-only-pane slide-multi-image slide-image-transparent" data-slide-index="${index}" data-layer="image" style="flex:1 1 100%;min-width:0;position:relative;overflow:visible;background:transparent;min-height:200px">
+          ${slideImgs.length ? imageSlotsHtml : ''}
+          ${!slideImgs.length ? `<div class="slide-image-only-placeholder" onclick="event.stopPropagation();openImageModal(${index})" title="클릭하여 이미지 추가" style="flex:1;min-width:120px;min-height:120px"><span class="slide-image-only-icon">🖼</span><span class="slide-image-only-text">이미지 추가</span><span class="slide-image-only-hint">클릭 또는 드래그하여 업로드</span></div>` : ''}
+        </div>` : '';
     return `
     <div class="slide-wrapper ${index === activeSlideIndex ? 'active' : ''}" id="sw-${index}" onclick="selectSlide(${index})">
       <div class="slide-number">${index + 1}</div>
       <div class="slide-actions-bar">
-        <button class="slide-action-btn" onclick="event.stopPropagation();askThenRewrite(${index})">🤖 AI재작성</button>
-        <button class="slide-action-btn" onclick="event.stopPropagation();openImageModal(${index})">📁 이미지업로드</button>
-        <button class="slide-action-btn" onclick="event.stopPropagation();addSlideExtraText(${index})" title="슬라이드에 텍스트/미디어 영역 추가">📝 텍스트창 추가</button>
+        ${!isImageOnly ? `<button class="slide-action-btn" onclick="event.stopPropagation();askThenRewrite(${index})">🤖 AI재작성</button>` : ''}
+        ${'' /* 텍스트창 추가 버튼 숨김 (필요시 복원) */}
         ${slide.extraText ? `<button class="slide-action-btn" onclick="event.stopPropagation();removeSlideExtraText(${index})" title="텍스트창(extra 영역) 제거">🗑 텍스트창 삭제</button>` : ''}
-        <button class="slide-action-btn" onclick="event.stopPropagation();openAiImageWindow(${index})">🎨 AI이미지생성</button>
-        <button class="slide-action-btn danger" onclick="event.stopPropagation();deleteSlide(${index})">🗑 지우기</button>
+        <button class="slide-action-btn" onclick="event.stopPropagation();openAiImageWindow(${index})">🎨 AI 이미지 생성 및 업로드</button>
+        ${(isImageOnly || slideImgs.length) ? `<button class="slide-action-btn" onclick="event.stopPropagation();openImageModalAt(${index},${slideImgs.length})" title="이미지 추가">➕ 이미지 추가</button>` : ''}
+        ${slideImgs.length >= 2 ? `<button class="slide-action-btn" onclick="event.stopPropagation();openLayerOrderWindow(${index})" title="이미지 레이어 순서 설정">📑 레이어 순서</button>` : ''}
+        <button class="slide-action-btn danger" onclick="event.stopPropagation();deleteSlide(${index})">🗑 슬라이드 지우기</button>
         <div style="position:relative;display:inline-block">
           <button class="slide-action-btn add-slide" onclick="toggleAddDropdown(${index},this.parentElement,event)">＋슬라이드 추가 ▾</button>
           <div class="add-slide-dropdown" onclick="event.stopPropagation()">
             <div class="add-slide-option" onclick="addSlideAfter(${index},'blank')">📄 빈 페이지 추가</div>
             <div class="add-slide-option" onclick="addSlideAfter(${index},'ai')">🤖 인공지능 작성 추가</div>
+            <div class="add-slide-option" onclick="addSlideAfter(${index},'image-only')">🖼 이미지페이지추가</div>
           </div>
         </div>
         <button class="slide-action-btn" onclick="event.stopPropagation();saveCurrentSlidesOnly()" title="편집한 슬라이드만 저장 (히스토리 미생성)">💾 편집 슬라이드 저장</button>
       </div>
-      <div class="slide-card ${coverStyle}">
-        <div class="slide-inner${slide.imageUrl ? ' has-image' : ''}" data-slide-index="${index}" data-layer="text" style="${layerStyleTextWithInner || layerStyleText}">
+      <div class="slide-card ${coverStyle}${imageOnlyClass}">
+        ${isImageOnly ? imageOnlyCardContent : `<div class="slide-inner${slideImgs.length ? ' has-image' : ''}${useAbsoluteImageLayout ? ' slide-text-layer-transparent' : ''}" data-slide-index="${index}" data-layer="text" style="${layerStyleTextWithInner || layerStyleText}">
           <div class="slide-title-wrap" id="slide-title-wrap-${index}" data-slide-index="${index}"${titleWrapStyleStr}>
             <div class="title-position-handle" title="드래그하여 제목 위치 조절">T</div>
             <span class="title-size-handle title-size-down" title="제목 크기 줄이기" onclick="event.stopPropagation();changeTitleFontSize(${index},-2)">A−</span>
@@ -3707,10 +3936,14 @@ function renderSlides() {
           </div>
         </div>
         </div>
-        ${slide.imageUrl ? `<div class="slide-layer-divider" id="slide-layer-divider-${index}" data-slide-index="${index}" title="드래그하여 텍스트/이미지 비율 조절"></div><div class="slide-image-pane${slide.imageUrl2 ? ' dual-image' : ''}" data-slide-index="${index}" data-layer="image" style="${layerStyleImageWithFlex}">
-          <div class="slide-img-slot"><div class="slide-img-wrap ${(slide.slideImage1 && (slide.slideImage1.w || slide.slideImage1.h)) ? 'slide-resized' : ''}" id="slide-img-wrap-${index}-1" data-slide-index="${index}" data-slot="1"${buildSlideImageWrapStyle(slide.slideImage1)}><img src="${slide.imageUrl}" alt=""/><button class="slide-image-remove" onclick="removeSlideImage(${index});event.stopPropagation()" title="제거">✕</button>${buildResizeMoveHandlesHtml()}</div></div>
-          ${slide.imageUrl2 ? `<div class="slide-img-slot"><div class="slide-img-wrap ${(slide.slideImage2 && (slide.slideImage2.w || slide.slideImage2.h)) ? 'slide-resized' : ''}" id="slide-img-wrap-${index}-2" data-slide-index="${index}" data-slot="2"${buildSlideImageWrapStyle(slide.slideImage2)}><img src="${slide.imageUrl2}" alt=""/><button class="slide-image-remove" onclick="removeSlideImage2(${index});event.stopPropagation()" title="제거">✕</button>${buildResizeMoveHandlesHtml()}</div></div>` : ''}
-        </div>` : ''}
+        ${slideImgs.length ? (useAbsoluteImageLayout
+          ? `<div class="slide-image-pane slide-image-overlay-pane slide-multi-image slide-image-transparent" data-slide-index="${index}" data-layer="image" style="position:absolute;inset:0;min-width:0;overflow:visible;background:transparent;z-index:1">
+          ${imageSlotsHtml}
+        </div>`
+          : `<div class="slide-layer-divider" id="slide-layer-divider-${index}" data-slide-index="${index}" title="드래그하여 텍스트/이미지 비율 조절"></div><div class="slide-image-pane${slideImgs.length > 1 ? ' dual-image slide-multi-image' : ''}" data-slide-index="${index}" data-layer="image" style="${layerStyleImageWithFlex}">
+          ${imageSlotsHtml}
+        </div>`)
+        : ''}`}
 
         <div class="slide-whitespace-badge" id="wsb-${index}" title="남는 여백(대략)">여백 -</div>
       </div>
@@ -3727,6 +3960,7 @@ function renderSlides() {
   setTimeout(() => document.querySelectorAll('.slide-title-input,.speaker-notes-text').forEach(autoResize), 60);
   updateSlidesCountLabel();
   updateDesignPanel();
+  if (typeof updateLayerOrderPanel === 'function') updateLayerOrderPanel();
 
   // 슬라이드 폰트(보기) 확대율 유지
   applySlideZoom();
@@ -3820,38 +4054,28 @@ function applyYoutubeResizedStyles() {
         }
       }
     }
-    if (slide.slideImage1 && (slide.slideImage1.w > 0 || slide.slideImage1.h > 0 || slide.slideImage1.left != null || slide.slideImage1.top != null)) {
-      var wrap1 = document.getElementById('slide-img-wrap-' + index + '-1');
-      if (wrap1) {
-        wrap1.classList.add('slide-resized');
-        if (slide.slideImage1.w > 0) wrap1.style.width = slide.slideImage1.w + 'px';
-        if (slide.slideImage1.h > 0) wrap1.style.height = slide.slideImage1.h + 'px';
-        if (slide.slideImage1.left != null || slide.slideImage1.top != null) {
-          wrap1.style.position = 'absolute';
-          wrap1.style.left = (slide.slideImage1.left != null ? slide.slideImage1.left : 0) + 'px';
-          wrap1.style.top = (slide.slideImage1.top != null ? slide.slideImage1.top : 0) + 'px';
+    var imgs = getSlideImages(slide);
+    imgs.forEach(function (img, si) {
+      var siObj = img.slideImage;
+      if (!siObj || (!siObj.w && !siObj.h && siObj.left == null && siObj.top == null)) return;
+      var wrap = document.getElementById('slide-img-wrap-' + index + '-' + (si + 1));
+      if (wrap) {
+        wrap.classList.add('slide-resized');
+        if (siObj.w > 0) wrap.style.width = siObj.w + 'px';
+        if (siObj.h > 0) wrap.style.height = siObj.h + 'px';
+        if (siObj.left != null || siObj.top != null) {
+          wrap.style.position = 'absolute';
+          wrap.style.left = (siObj.left != null ? siObj.left : 0) + 'px';
+          wrap.style.top = (siObj.top != null ? siObj.top : 0) + 'px';
         }
       }
-    }
-    if (slide.slideImage2 && (slide.slideImage2.w > 0 || slide.slideImage2.h > 0 || slide.slideImage2.left != null || slide.slideImage2.top != null)) {
-      var wrap2 = document.getElementById('slide-img-wrap-' + index + '-2');
-      if (wrap2) {
-        wrap2.classList.add('slide-resized');
-        if (slide.slideImage2.w > 0) wrap2.style.width = slide.slideImage2.w + 'px';
-        if (slide.slideImage2.h > 0) wrap2.style.height = slide.slideImage2.h + 'px';
-        if (slide.slideImage2.left != null || slide.slideImage2.top != null) {
-          wrap2.style.position = 'absolute';
-          wrap2.style.left = (slide.slideImage2.left != null ? slide.slideImage2.left : 0) + 'px';
-          wrap2.style.top = (slide.slideImage2.top != null ? slide.slideImage2.top : 0) + 'px';
-        }
-      }
-    }
+    });
   });
 }
 
 // ── YouTube 영상 마우스 드래그 크기 조절 (모서리+상하좌우 8방향, 드래그 중에만 적용) ─────────────────────
 (function () {
-  var MIN_W = 200, MIN_H = 120;
+  var MIN_W = 4, MIN_H = 4;  /* 1% 수준 축소 허용, 확대는 제한 없음 */
   var _resize = { active: false, wrap: null, edge: '', startX: 0, startY: 0, startLeft: 0, startTop: 0, startW: 0, startH: 0, isImg: false, isSlideImg: false, slot: '1', hasMoved: false };
 
   function onMouseMove(e) {
@@ -3867,6 +4091,7 @@ function applyYoutubeResizedStyles() {
           _resize.wrap.style.position = 'absolute';
           _resize.wrap.style.width = _resize.startW + 'px';
           _resize.wrap.style.height = _resize.startH + 'px';
+          _resize.wrap.style.removeProperty('right');
           _resize.wrap.style.left = _resize.startLeft + 'px';
           _resize.wrap.style.top = _resize.startTop + 'px';
         } else {
@@ -3909,13 +4134,17 @@ function applyYoutubeResizedStyles() {
         var idx = id && id.indexOf('sw-') === 0 ? parseInt(id.slice(3), 10) : -1;
         if (idx >= 0 && slides[idx]) {
           if (_resize.isSlideImg) {
-            var key = 'slideImage' + (_resize.slot || '1');
-            slides[idx][key] = {
-              w: _resize.wrap.offsetWidth,
-              h: _resize.wrap.offsetHeight,
-              left: parseInt(_resize.wrap.style.left, 10) || 0,
-              top: parseInt(_resize.wrap.style.top, 10) || 0
-            };
+            var slotNum = parseInt(_resize.slot || '1', 10);
+            var imgs = getSlideImages(slides[idx]);
+            if (imgs[slotNum - 1]) {
+              imgs[slotNum - 1].slideImage = {
+                w: _resize.wrap.offsetWidth,
+                h: _resize.wrap.offsetHeight,
+                left: parseInt(_resize.wrap.style.left, 10) || 0,
+                top: parseInt(_resize.wrap.style.top, 10) || 0
+              };
+              setSlideImages(slides[idx], imgs);
+            }
           } else if (_resize.isImg) {
             slides[idx].extraImageSize = { w: _resize.wrap.offsetWidth, h: _resize.wrap.offsetHeight };
           } else {
@@ -3991,6 +4220,7 @@ function applyYoutubeResizedStyles() {
           _move.wrap.style.position = 'absolute';
           _move.wrap.style.width = _move.wrap.offsetWidth + 'px';
           _move.wrap.style.height = _move.wrap.offsetHeight + 'px';
+          _move.wrap.style.removeProperty('right');
           _move.wrap.style.left = _move.startLeft + 'px';
           _move.wrap.style.top = _move.startTop + 'px';
         }
@@ -4021,13 +4251,17 @@ function applyYoutubeResizedStyles() {
         var idx = parseInt(sw.id && sw.id.indexOf('sw-') === 0 ? sw.id.slice(3) : '-1', 10);
         if (idx >= 0 && slides[idx]) {
           if (_move.isSlideImg) {
-            var key = 'slideImage' + (_move.slot || '1');
-            slides[idx][key] = {
-              w: _move.wrap.offsetWidth,
-              h: _move.wrap.offsetHeight,
-              left: parseInt(_move.wrap.style.left, 10) || 0,
-              top: parseInt(_move.wrap.style.top, 10) || 0
-            };
+            var slotNum = parseInt(_move.slot || '1', 10);
+            var imgs = getSlideImages(slides[idx]);
+            if (imgs[slotNum - 1]) {
+              imgs[slotNum - 1].slideImage = {
+                w: _move.wrap.offsetWidth,
+                h: _move.wrap.offsetHeight,
+                left: parseInt(_move.wrap.style.left, 10) || 0,
+                top: parseInt(_move.wrap.style.top, 10) || 0
+              };
+              setSlideImages(slides[idx], imgs);
+            }
           } else {
             slides[idx].youtubeSize = {
               w: _move.wrap.offsetWidth,
@@ -4582,7 +4816,7 @@ function applyLayoutFromReferencePage(refIndex, textPct, applyAll) {
 
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
 
-  var layoutKeys = ['innerSize', 'bulletSize', 'bulletPosition', 'slideImage1', 'slideImage2', 'extraAreaHeight', 'extraAreaPosition', 'extraImageSize', 'titlePosition', 'titleFontSize', 'layerOrder'];
+  var layoutKeys = ['innerSize', 'bulletSize', 'bulletPosition', 'extraAreaHeight', 'extraAreaPosition', 'extraImageSize', 'titlePosition', 'titleFontSize', 'layerOrder'];
   var template = {};
   if (!applyAll && src) {
     layoutKeys.forEach(function (k) {
@@ -4605,11 +4839,12 @@ function applyLayoutFromReferencePage(refIndex, textPct, applyAll) {
       });
       applied++;
     }
-    if (s.imageUrl) {
+    if (getSlideImages(s).length) {
       s.innerSize = s.innerSize || {};
       s.innerSize.widthPct = useTextPct;
-      s.slideImage1 = null;
-      s.slideImage2 = null;
+      var imgs = getSlideImages(s);
+      imgs.forEach(function (it) { it.slideImage = null; });
+      setSlideImages(s, imgs);
       if (applyAll) applied++;
     }
   });
@@ -5341,7 +5576,9 @@ function viewFull(){if(!_url)return;var w=window.open('','_blank');if(w&&window.
 function applyAiImageFromPopup(slideIdx, dataURL) {
   if (!slides[slideIdx]) return;
   if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
-  slides[slideIdx].imageUrl = dataURL;
+  var imgs = getSlideImages(slides[slideIdx]);
+  imgs[0] = { url: dataURL, slideImage: null };
+  setSlideImages(slides[slideIdx], imgs);
   applyFullFillImageLayout(slides[slideIdx]);
   renderSlides(); renderThumbs(); renderGallery();
   if (rightTab === 'design') updateDesignPanel();

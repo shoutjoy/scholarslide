@@ -642,6 +642,16 @@
       if (contentTa) contentTa.value = '';
       if (promptTa) promptTa.value = '';
       if (window.openModal) window.openModal('ai-slide-add-modal');
+    } else if (mode === 'image-only') {
+      var newSlide = { id: Date.now(), title: '', bullets: [], notes: '', visPrompt: '', imageUrl: null, isImageOnly: true };
+      if (window.pushSlideUndoState) window.pushSlideUndoState();
+      var next = getSlidesArr().slice();
+      next.splice(afterIndex + 1, 0, newSlide);
+      setSlides(next);
+      setActiveSlideIndex(afterIndex + 1);
+      if (window.afterSlidesCreated) window.afterSlidesCreated();
+      if (window.selectSlide) window.selectSlide(afterIndex + 1);
+      if (window.showToast) window.showToast('✅ 이미지 전용 페이지 추가됨');
     } else {
       var newSlide = { id: Date.now(), title: '새 슬라이드', bullets: ['포인트를 입력하세요', '두 번째 포인트'], notes: '', visPrompt: '', imageUrl: null };
       if (window.pushSlideUndoState) window.pushSlideUndoState();

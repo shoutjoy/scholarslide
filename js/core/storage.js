@@ -406,7 +406,7 @@ function saveSession() {
     showToast(`💾 "${name}" 세션 저장 완료`);
   } catch (e) {
     if (e.name === 'QuotaExceededError') {
-      session.slides = session.slides.map(s => ({ ...s, imageUrl: null }));
+      session.slides = session.slides.map(s => ({ ...s, imageUrl: null, images: [] }));
       try { const sessions = loadSessions(); sessions.unshift(session); localStorage.setItem(LS_SESSIONS, JSON.stringify(sessions)); showToast(`💾 저장됨 (이미지 제외)`); } catch { showToast('❌ 저장 실패'); }
     } else { showToast('❌ 저장 실패: ' + e.message); }
   }

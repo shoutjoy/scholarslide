@@ -24,7 +24,7 @@ function initApiKey() {
 }
 function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; f.type = 'password'; const btn = document.getElementById('key-toggle'); if (btn) btn.innerHTML = '&#128065;'; updateApiKeyStrength(f.value); renderSavedKeysList(); }
 function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'img-modal') setTimeout(setupCropEvents, 100); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) { const el = document.getElementById(id); if (el) { el.classList.remove('open'); if (id === 'img-modal') el.classList.remove('img-modal-sidebar'); } }
 function handleModalBackdropClick(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
 
 // Help 모달: 단축키 목록 렌더 후 열기

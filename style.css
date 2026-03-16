@@ -49,6 +49,7 @@ body.app-theme-light input,
 body.app-theme-light select,
 body.app-theme-light textarea { background: var(--surface2); border-color: var(--border2); color: var(--text); }
 body.app-theme-light .modal-backdrop { background: rgba(15,23,42,0.6); }
+body.app-theme-light #img-modal.modal-backdrop { background: rgba(0,0,0,0.12); backdrop-filter: blur(2px); }
 body.app-theme-light .modal-box { background: var(--surface); border-color: var(--border); }
 body.app-theme-light .slide-wrapper { background: var(--surface2); }
 body.app-theme-light #slides-canvas { background: var(--surface2); }
@@ -551,7 +552,7 @@ select.control option { background: var(--surface2); }
   width: 100%;
   height: 100%;
   min-width: 0;
-  background: #f0f4ff; overflow: hidden; position: relative;
+  background: transparent; overflow: hidden; position: relative;
   display: flex;
   flex-direction: column;
   /* z-index는 인라인으로 레이어 순서에 따라 적용됨 */
@@ -569,7 +570,7 @@ select.control option { background: var(--surface2); }
   height: 100%;
   object-fit: contain;
   object-position: left top;
-  background: #f8fbff;
+  background: transparent;
 }
 /* 이미지 1개일 때: 위가 아닌 가운데 정렬 (두 개일 때는 dual-image로 상단 배치 유지) */
 .slide-image-pane:not(.dual-image) .slide-img-slot {
@@ -774,6 +775,14 @@ footer {
   display: none; align-items: center; justify-content: center; padding: 24px;
 }
 .modal-backdrop.open { display: flex; animation: fadeIn 0.15s ease; }
+/* 이미지 업로드·편집 모달: 바탕이 보이도록 반투명 배경 */
+#img-modal.modal-backdrop { background: rgba(0,0,0,0.15); backdrop-filter: blur(2px); }
+#img-modal.modal-backdrop.open { background: rgba(0,0,0,0.15); backdrop-filter: blur(2px); }
+/* 사이드바 모드: 우측 고정, 배경 터치로 닫지 않음 */
+#img-modal.img-modal-sidebar.modal-backdrop { align-items: stretch; justify-content: flex-end; padding: 0; background: transparent; backdrop-filter: none; pointer-events: none; }
+#img-modal.img-modal-sidebar.modal-backdrop .img-modal-box { pointer-events: auto; max-width: 420px; width: 420px; max-height: 100vh; height: 100%; margin: 0; border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -8px 0 24px rgba(0,0,0,0.3); animation: none; }
+#img-modal.img-modal-sidebar.modal-backdrop.open { pointer-events: auto; }
+#img-modal.img-modal-sidebar.modal-backdrop.open .img-modal-box { pointer-events: auto; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-box {
   background: var(--surface); border: 1px solid var(--border2);
@@ -1937,6 +1946,149 @@ body.pdf-panel-resizing { cursor: ns-resize; user-select: none; }
   flex-direction: column;
   gap: 2px;
 }
+
+/* 이미지 전용 페이지 (텍스트 레이어 없음) */
+.slide-card.slide-image-only {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  overflow: visible;
+}
+.slide-image-only-pane {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+}
+/* 이미지 레이어 투명 — 이미지만 보이고 나머지 레이어 투명 */
+.slide-image-transparent,
+.slide-image-transparent .slide-img-wrap,
+.slide-image-transparent .slide-img-wrap-absolute,
+.slide-image-transparent .slide-img-wrap img,
+.slide-image-transparent .slide-img-slot {
+  background: transparent !important;
+}
+.slide-image-transparent .slide-img-wrap img {
+  background: transparent !important;
+}
+/* 이미지 전용: 절대 배치로 겹침 허용, 슬라이드 밖 확대 허용 */
+.slide-image-transparent .slide-img-wrap-absolute {
+  overflow: visible;
+  box-shadow: none;
+  border: none;
+}
+.slide-image-add-slot-fixed {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+.slide-image-transparent {
+  overflow: visible !important;
+}
+
+/* 텍스트+이미지 슬라이드: 이미지 외 레이어 투명(배경만 투명, 텍스트는 유지) */
+.slide-text-layer-transparent {
+  background: transparent !important;
+}
+.slide-text-layer-transparent .slide-title-wrap,
+.slide-text-layer-transparent .slide-bullets-wrap,
+.slide-text-layer-transparent .slide-extra-text-area {
+  background: transparent !important;
+}
+
+/* 텍스트+이미지 슬라이드: 이미지 전체 오버레이, 빈 영역 클릭은 텍스트로 통과 */
+.slide-image-overlay-pane {
+  pointer-events: none;
+}
+.slide-image-overlay-pane .slide-img-wrap-absolute {
+  pointer-events: auto;
+}
+
+.slide-image-only-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: rgba(79, 142, 247, 0.08);
+  border: 2px dashed rgba(79, 142, 247, 0.4);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slide-image-only-placeholder:hover {
+  background: rgba(79, 142, 247, 0.12);
+  border-color: rgba(79, 142, 247, 0.6);
+}
+.slide-image-only-icon {
+  font-size: 36px;
+  opacity: 0.7;
+}
+.slide-image-only-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.slide-image-only-hint {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* 슬라이드 내 이미지 추가 버튼 숨김 (상단 툴바 사용) */
+.slide-card:not(.slide-image-only) .slide-image-add-slot { display: none !important; }
+/* 다중 이미지 추가 버튼 */
+.slide-image-add-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 80px;
+  min-height: 80px;
+  background: rgba(79, 142, 247, 0.06);
+  border: 2px dashed rgba(79, 142, 247, 0.35);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slide-image-add-slot:hover {
+  background: rgba(79, 142, 247, 0.12);
+  border-color: rgba(79, 142, 247, 0.55);
+}
+.slide-image-add-icon { font-size: 20px; opacity: 0.8; }
+.slide-image-add-text { font-size: 11px; color: var(--accent); font-weight: 600; }
+
+/* 레이어 순서 사이드바 (1=가장 위) */
+#layer-order-panel .layer-order-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: var(--surface2); border-radius: var(--radius);
+  border: 1px solid var(--border2);
+}
+#layer-order-panel .layer-order-num {
+  width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff; border-radius: 50%; font-weight: 700; font-size: 11px; flex-shrink: 0;
+}
+#layer-order-panel .layer-order-thumb {
+  width: 48px; height: 36px; object-fit: cover; border-radius: 4px; flex-shrink: 0;
+}
+#layer-order-panel .layer-order-arrows {
+  display: flex; flex-direction: column; gap: 2px; margin-left: auto;
+}
+#layer-order-panel .layer-order-btn {
+  padding: 3px 10px; border: none; border-radius: 4px;
+  background: var(--accent); color: #fff; cursor: pointer; font-size: 11px;
+}
+#layer-order-panel .layer-order-btn:hover:not(:disabled) { filter: brightness(1.1); }
+#layer-order-panel .layer-order-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.slide-image-pane.slide-multi-image .slide-img-slot { flex: 1 1 120px; min-width: 80px; min-height: 80px; }
+.slide-image-pane .slide-img-slot,
+.slide-image-pane .slide-img-wrap {
+  background: transparent;
+}
 .slide-img-slot {
   position: relative;
   flex: 1;
@@ -1958,7 +2110,7 @@ body.pdf-panel-resizing { cursor: ns-resize; user-select: none; }
   height: 100%;
   object-fit: cover;
   object-position: center center;
-  background: #f8fbff;
+  background: transparent;
   display: block;
   max-width: 100%;
   max-height: 100%;
@@ -1968,7 +2120,7 @@ body.pdf-panel-resizing { cursor: ns-resize; user-select: none; }
   height: 100%;
   object-fit: cover;
   object-position: center center;
-  background: #f8fbff;
+  background: transparent;
   display: block;
   max-width: 100%;
   max-height: 100%;
