@@ -448,9 +448,19 @@
   </div>
 </div>
 
-<!-- imgBank 앱 내 크게보기 (프리뷰 이미지 클릭 시) -->
-<div id="imgbank-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:10000;align-items:center;justify-content:center;cursor:pointer;flex-direction:column" onclick="window._imgBankCloseLightbox && window._imgBankCloseLightbox()">
-  <img id="imgbank-lightbox-img" src="" alt="" style="max-width:95vw;max-height:95vh;object-fit:contain;pointer-events:none" />
+<!-- imgBank 앱 내 크게보기 (프리뷰 이미지 클릭 시) — 줌/팬 지원 -->
+<div id="imgbank-lightbox" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:10000;flex-direction:column;overflow:hidden">
+  <div class="imgbank-lb-toolbar" style="position:absolute;top:12px;right:12px;z-index:1001;display:flex;align-items:center;gap:6px;background:rgba(50,50,52,0.96);padding:8px 12px;border-radius:10px;border:1px solid #555">
+    <button type="button" onclick="window._imgBankLbZoom(-0.25)" title="축소" style="padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px">−</button>
+    <span id="imgbank-lb-zoom-val" style="min-width:40px;text-align:center;font-size:12px">100%</span>
+    <button type="button" onclick="window._imgBankLbZoom(0.25)" title="확대" style="padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px">+</button>
+    <button type="button" onclick="window._imgBankCloseLightbox && window._imgBankCloseLightbox()" title="닫기" style="padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px">✕ 닫기</button>
+  </div>
+  <div id="imgbank-lb-area" style="flex:1;display:flex;align-items:center;justify-content:center;cursor:grab;overflow:hidden;min-height:0" onmousedown="window._imgBankLbDragStart && window._imgBankLbDragStart(event)">
+    <div id="imgbank-lb-wrap" style="transform-origin:center center;line-height:0;display:flex;align-items:center;justify-content:center">
+      <img id="imgbank-lightbox-img" src="" alt="" style="max-width:95vw;max-height:95vh;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.4)" />
+    </div>
+  </div>
 </div>
 <!-- imgBank 슬라이드 삽입 설정 모달 -->
 <div id="imgbank-insert-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'imgbank-insert-modal')">

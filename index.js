@@ -1645,22 +1645,28 @@ function openPptxPreviewWindow() {
     return;
   }
   if (!window.pptxPreviewOverrides) window.pptxPreviewOverrides = null;
-  var payload = {
-    slides: slides.map(function (s) {
-      var bullets = s.bullets || [];
-      return {
-        title: s.title,
-        bullets: bullets,
-        titleHtml: typeof markdownToHtml === 'function' ? markdownToHtml(s.title) : (typeof escapeHtml === 'function' ? escapeHtml(s.title) : String(s.title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')),
-        bulletsHtml: bullets.map(function (b) { return typeof markdownToHtml === 'function' ? markdownToHtml(b) : (typeof escapeHtml === 'function' ? escapeHtml(b) : String(b || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')); }),
-        imageUrl: s.imageUrl || '',
-        isCover: !!s.isCover
-      };
-    }),
-    overrides: window.pptxPreviewOverrides || undefined
-  };
+  var newSlides = slides.map(function (s) {
+    var bullets = s.bullets || [];
+    return {
+      title: s.title,
+      bullets: bullets,
+      titleHtml: typeof markdownToHtml === 'function' ? markdownToHtml(s.title) : (typeof escapeHtml === 'function' ? escapeHtml(s.title) : String(s.title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')),
+      bulletsHtml: bullets.map(function (b) { return typeof markdownToHtml === 'function' ? markdownToHtml(b) : (typeof escapeHtml === 'function' ? escapeHtml(b) : String(b || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')); }),
+      imageUrl: s.imageUrl || '',
+      isCover: !!s.isCover
+    };
+  });
   var store = 'snapshots';
   var key = 'pptx_preview';
+  function buildPayload(saved) {
+    var overridesBySlide = (saved && saved.overridesBySlide && typeof saved.overridesBySlide === 'object') ? saved.overridesBySlide : {};
+    if (window.pptxPreviewOverrides && window.pptxPreviewOverrides.overridesBySlide) {
+      overridesBySlide = window.pptxPreviewOverrides.overridesBySlide;
+    } else if (window.pptxPreviewOverrides && !Object.keys(overridesBySlide).length) {
+      overridesBySlide = { _global: window.pptxPreviewOverrides };
+    }
+    return { slides: newSlides, overridesBySlide: overridesBySlide };
+  }
   function openPreview() {
     var path = (window.location.pathname || '').replace(/[^/]+$/, '') || '/';
     var previewUrl = (window.location.origin || '') + path + (path.charAt(path.length - 1) === '/' ? '' : '') + 'pptx-preview.html';
@@ -1680,10 +1686,15 @@ function openPptxPreviewWindow() {
     }
   }
   if (typeof idbPut === 'function') {
-    idbPut(store, key, payload).then(openPreview).catch(function (err) {
-      console.warn('PPTX preview idbPut failed', err);
-      openPreview();
-    });
+    var doPut = function (saved) { return idbPut(store, key, buildPayload(saved)); };
+    if (typeof idbGet === 'function') {
+      idbGet(store, key).then(doPut).then(openPreview).catch(function (err) {
+        console.warn('PPTX preview idbPut failed', err);
+        doPut(null).then(openPreview).catch(function () { openPreview(); });
+      });
+    } else {
+      doPut(null).then(openPreview).catch(function () { openPreview(); });
+    }
   } else {
     openPreview();
   }
@@ -1754,6 +1765,24 @@ async function exportPPT() {
   const fontKo = document.getElementById('export-font-ko')?.value || '맑은 고딕';
   const fontEn = document.getElementById('export-font-en')?.value || 'Times New Roman';
 
+  // IndexedDB에 저장된 PPTX 미리보기 편집이 있으면 사용, 없으면 window.pptxPreviewOverrides 사용
+  let overridesBySlide = null;
+  if (typeof idbGet === 'function') {
+    try {
+      const saved = await idbGet('snapshots', 'pptx_preview');
+      if (saved && saved.overridesBySlide && typeof saved.overridesBySlide === 'object') {
+        overridesBySlide = saved.overridesBySlide;
+      } else if (saved && saved.overrides) {
+        overridesBySlide = { _global: saved.overrides };
+      }
+    } catch (e) { /* ignore */ }
+  }
+  if (!overridesBySlide && window.pptxPreviewOverrides && window.pptxPreviewOverrides.overridesBySlide) {
+    overridesBySlide = window.pptxPreviewOverrides.overridesBySlide;
+  } else if (!overridesBySlide && window.pptxPreviewOverrides) {
+    overridesBySlide = { _global: window.pptxPreviewOverrides };
+  }
+
   // 이미지 비율 유지(contain)로 넣기 위한 헬퍼
   async function getImgSize(dataUrl) {
     return await new Promise((resolve) => {
@@ -1812,16 +1841,26 @@ async function exportPPT() {
       const bodyColor = isDark ? 'b8d4f0' : '444455';
 
       const fontScale = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
-      const ov = window.pptxPreviewOverrides;
-      const titleFontSize = (ov && ov.titleFontSize != null) ? ov.titleFontSize : ((slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : Math.round(28 * fontScale));
-      const bodyFontSize = (ov && ov.bodyFontSize != null) ? ov.bodyFontSize : Math.round(14 * fontScale);
+      let ov = overridesBySlide ? (overridesBySlide[idx] || overridesBySlide._global || null) : null;
+      if (ov && (ov.imgX != null || ov.imgY != null) && !ov.imageBox) {
+        const scale = (ov.imageScale != null ? ov.imageScale : 100) / 100;
+        ov = {
+          textBox: ov.textX != null ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null,
+          textW: ov.textW,
+          imageBox: { x: ov.imgX ?? 5.55, y: ov.imgY ?? 1, w: (ov.imgW || 3.95) * scale, h: (ov.imgH || 3.25) * scale },
+          titleFontSize: ov.titleFs ?? ov.titleFontSize,
+          bodyFontSize: ov.bodyFs ?? ov.bodyFontSize
+        };
+      }
+      const titleFontSize = (ov && (ov.titleFontSize != null || ov.titleFs != null)) ? (ov.titleFontSize ?? ov.titleFs) : ((slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : Math.round(28 * fontScale));
+      const bodyFontSize = (ov && (ov.bodyFontSize != null || ov.bodyFs != null)) ? (ov.bodyFontSize ?? ov.bodyFs) : Math.round(14 * fontScale);
 
       // left accent bar
       s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.1, h: 5.63, fill: { color: '4f8ef7' }, line: { type: 'none' } });
 
       const hasImg1 = !!(slide.imageUrl && includeImages);
       const hasImg2 = !!(slide.imageUrl2 && includeImages);
-      const textBox = (ov && ov.textBox && typeof ov.textBox.x === 'number') ? { x: ov.textBox.x, y: ov.textBox.y, w: Math.max(1, Math.min(9, ov.textBox.w || 5)), h: Math.max(1.5, Math.min(5.5, ov.textBox.h || 4)) } : null;
+      const textBox = (ov && ov.textBox && typeof ov.textBox.x === 'number') ? { x: ov.textBox.x, y: ov.textBox.y, w: Math.max(1, Math.min(9, ov.textBox.w || 5)), h: Math.max(1.5, Math.min(5.5, ov.textBox.h || 4)) } : (ov && ov.textX != null) ? { x: ov.textX, y: ov.textY, w: ov.textW || 5, h: ov.textH || 4 } : null;
       const textW = textBox ? textBox.w : ((ov && ov.textW != null) ? Math.max(1, Math.min(9, ov.textW)) : ((hasImg1 || hasImg2) ? 5.0 : 9.1));
       const textX = textBox ? textBox.x : 0.4;
       const textY = textBox ? textBox.y : 0.3;
@@ -1858,7 +1897,13 @@ async function exportPPT() {
     }
 
     setProgress(95);
-    await pptx.writeFile({ fileName: `ScholarSlide_${Date.now()}.pptx` });
+    const srcName = (typeof window.getFileName === 'function' ? window.getFileName() : fileName) || '';
+    const baseName = (typeof srcName === 'string' && srcName.trim() && !/^여러 파일/.test(srcName))
+      ? srcName.replace(/\.[^.]+$/, '').replace(/[/\\:*?"<>|]/g, '_').trim() || 'ScholarSlide'
+      : 'ScholarSlide';
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const exportName = `${baseName}_ssp_${dateStr}.pptx`;
+    await pptx.writeFile({ fileName: exportName });
     showToast('✅ PPTX 다운로드 완료');
   } catch (e) {
     console.error(e);
@@ -2892,10 +2937,10 @@ body{background:#383838;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-heig
 .fs-toolbar button{padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px}
 .fs-toolbar button:hover{background:#555;color:#fff;border-color:#4f8ef7}
 .fs-toolbar .fs-zoom-val{min-width:40px;text-align:center;font-size:12px}
-.fs-area{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab;background:#383838}
+.fs-area{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab;background:#383838;padding:60px 16px 16px}
 .fs-area:active{cursor:grabbing}
-.fs-wrap{transform-origin:center center;transition:transform 0.08s ease-out;line-height:0}
-.fs-wrap img{max-width:95vw;max-height:95vh;width:auto;height:auto;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.4);background:#fff}
+.fs-wrap{transform-origin:center center;transition:transform 0.08s ease-out;line-height:0;display:flex;align-items:center;justify-content:center}
+.fs-wrap img{max-width:min(95vw,calc(100vw - 32px));max-height:min(95vh,calc(100vh - 80px));width:auto;height:auto;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.4);background:#fff}
 </style></head><body>
 <div class="fs-toolbar">
   <button type="button" onclick="fsZoom(-0.25)" title="축소">−</button>
