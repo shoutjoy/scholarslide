@@ -73,6 +73,9 @@
       '<label style="margin-top:16px">원문 요약 글자 수</label>' +
       '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="2000000" step="1000" value="1500000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
       '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
+      '<label style="margin-top:16px">IMGSAVE URL (프로젝트 저장 모달의 IMGSAVE 링크 주소)</label>' +
+      '<input type="url" id="sw-misc-imgsave-url" placeholder="https://imgbb.com/" style="width:100%;max-width:400px;margin-top:4px;margin-bottom:4px">' +
+      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">이미지 업로드 사이트 주소. 기본: imgbb.com</p>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
@@ -257,6 +260,9 @@
       if (typeof win.showToast === 'function') win.showToast('저장되었습니다');
     });
 
+    var miscImgSaveUrl = $('sw-misc-imgsave-url');
+    if (miscImgSaveUrl) miscImgSaveUrl.value = localStorage.getItem('ss_imgsave_url') || 'https://imgbb.com/';
+
     var miscBtn = $('sw-misc-apply-btn');
     if (miscBtn) miscBtn.addEventListener('click', function () {
       if (miscCount) localStorage.setItem('ss_default_slide_count', miscCount.value || '15');
@@ -269,6 +275,10 @@
         if (!isNaN(val)) val = Math.max(10000, Math.min(2000000, val));
         else val = 1500000;
         localStorage.setItem('ss_summary_char_limit', String(val));
+      }
+      if (miscImgSaveUrl) {
+        var url = (miscImgSaveUrl.value || '').trim();
+        localStorage.setItem('ss_imgsave_url', url || 'https://imgbb.com/');
       }
       if (typeof win.renderLeftPanel === 'function') win.renderLeftPanel();
       if (typeof win.showToast === 'function') win.showToast('적용되었습니다');

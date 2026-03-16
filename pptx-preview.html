@@ -66,6 +66,7 @@
 <body class="theme-light">
   <div class="toolbar">
     <button type="button" class="btn btn-pri" id="pptx-export-btn">⬇ PPTX 내보내기</button>
+    <button type="button" class="btn btn-ghost" id="fullscreen-btn" title="전체화면 토글">⊞ 전체화면</button>
     <button type="button" class="btn btn-ghost" id="close-btn">닫기</button>
     <span class="toolbar-sep"></span>
     <button type="button" class="btn btn-ghost theme-btn active" id="theme-light-btn" title="라이트">☀️ 라이트</button>
@@ -596,6 +597,11 @@
   };
   var closeBtn = document.getElementById('close-btn');
   if (closeBtn) closeBtn.onclick = function () { window.close(); };
+  var fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) fsBtn.onclick = function () {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function () {});
+    else document.exitFullscreen();
+  };
   var scb = document.getElementById('swipe-cb');
   if (scb) scb.onchange = function () { SWIPE = !!scb.checked; };
   document.addEventListener('keydown', function (e) {

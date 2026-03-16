@@ -295,9 +295,28 @@ function closeAllChildWindows() {
   });
   _childWindows.length = 0;
 }
+function getViewerAIDataFromChildWindows() {
+  var scholarAI = [];
+  var sspImg = [];
+  try {
+    _childWindows.forEach(function (w) {
+      if (!w || w.closed) return;
+      try {
+        if (w.__scholarAIHistory && Array.isArray(w.__scholarAIHistory) && w.__scholarAIHistory.length) {
+          scholarAI.push.apply(scholarAI, w.__scholarAIHistory);
+        }
+        if (w.__viewerSSPImgHistory && Array.isArray(w.__viewerSSPImgHistory) && w.__viewerSSPImgHistory.length) {
+          sspImg.push.apply(sspImg, w.__viewerSSPImgHistory);
+        }
+      } catch (e) {}
+    });
+  } catch (e) {}
+  return { scholarAIHistory: scholarAI, sspImgHistory: sspImg };
+}
 if (typeof window !== 'undefined') {
   window.registerChildWindow = registerChildWindow;
   window.closeAllChildWindows = closeAllChildWindows;
+  window.getViewerAIDataFromChildWindows = getViewerAIDataFromChildWindows;
 }
 
 /* =========================================================
@@ -317,3 +336,14 @@ function getUserInfoForSummary() {
   } catch (e) { return ''; }
 }
 if (typeof window !== 'undefined') window.getUserInfoForSummary = getUserInfoForSummary;
+
+/* =========================================================
+   IMGSAVE URL — 설정에서 저장한 이미지 업로드 사이트 주소
+   ========================================================= */
+function getImgSaveUrl() {
+  try {
+    var url = (localStorage.getItem('ss_imgsave_url') || '').trim();
+    return url || 'https://imgbb.com/';
+  } catch (e) { return 'https://imgbb.com/'; }
+}
+if (typeof window !== 'undefined') window.getImgSaveUrl = getImgSaveUrl;

@@ -41,6 +41,20 @@
     var btn = document.getElementById('theme-btn');
     if (btn) btn.textContent = b.classList.contains('theme-dark') ? 'Dark/Light' : 'Light/Dark';
   }
+  function toggleViewerFullscreen() {
+    var fs = document.body.classList.toggle('viewer-in-app-fs');
+    if (fs) {
+      document.addEventListener('keydown', _viewerFsEscHandler);
+    } else {
+      document.removeEventListener('keydown', _viewerFsEscHandler);
+    }
+  }
+  function _viewerFsEscHandler(e) {
+    if (e.key === 'Escape' && document.body.classList.contains('viewer-in-app-fs')) {
+      document.body.classList.remove('viewer-in-app-fs');
+      document.removeEventListener('keydown', _viewerFsEscHandler);
+    }
+  }
   function saveAs(ext) {
     var a = document.createElement('a');
     a.href = 'data:text/' + (ext === 'md' ? 'markdown' : 'plain') + ';charset=utf-8,' + encodeURIComponent(window.__rawText || '');
@@ -171,6 +185,10 @@
     }
     return html;
   }
+  function viewerScrollToId(id) {
+    var target = document.getElementById(id);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   function viewerBuildNav() {
     var listPage = document.getElementById('nav-list-page');
     var listToc = document.getElementById('nav-list-toc');
@@ -189,7 +207,7 @@
       var id = sections[i].id;
       var n = id.replace('page-', '');
       var label = /^Slide\s+\d+$/.test(n) ? n : (n + '페이지');
-      pageHtml += '<a href="#' + id + '">' + label + '</a>';
+      pageHtml += '<a href="#" onclick="viewerScrollToId(\'' + id.replace(/'/g, "\\'") + '\'); return false">' + label + '</a>';
     }
     if (listPage) listPage.innerHTML = pageHtml || "<span style='color:#94a3b8'>페이지 구분 없음</span>";
     var headings = root.querySelectorAll('h1, h2, h3, h4');
@@ -202,7 +220,7 @@
       var tag = el.tagName.toLowerCase();
       var cls = tag === 'h1' ? '' : tag === 'h2' ? ' toc-h2' : tag === 'h3' ? ' toc-h3' : ' toc-h4';
       var txt = el.textContent.replace(/</g, '&lt;').substring(0, 50);
-      tocHtml += '<a href="#' + el.id + '" class="' + cls.trim() + '">' + txt + (el.textContent.length > 50 ? '…' : '') + '</a>';
+      tocHtml += '<a href="#" onclick="viewerScrollToId(\'' + el.id.replace(/'/g, "\\'") + '\'); return false" class="' + cls.trim() + '">' + txt + (el.textContent.length > 50 ? '…' : '') + '</a>';
     }
     if (listToc) listToc.innerHTML = tocHtml || "<span style='color:#94a3b8'>목차 없음</span>";
   }
@@ -212,24 +230,74 @@
     s = s.replace(/^(\d+(?:\.\d+)*\.\s+[^\n]+)$/gm, '### $1');
     return 'From ScholarSlide\n\n' + s;
   }
+  function showMdproPasswordModal(cb) {
+    var isDark = document.body.classList.contains('theme-dark');
+    var bg = isDark ? '#0c0e13' : '#f5f6f8';
+    var surface = isDark ? '#13161d' : '#fff';
+    var border = isDark ? '#2e3447' : '#e2e8f0';
+    var text = isDark ? '#e8ecf4' : '#1e293b';
+    var accent = '#4f8ef7';
+    var overlay = document.createElement('div');
+    overlay.id = 'mdpro-pwd-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:' + surface + ';border:1px solid ' + border + ';border-radius:10px;padding:20px;min-width:320px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,0.3);';
+    box.innerHTML = '<div style="font-size:14px;font-weight:600;color:' + text + ';margin-bottom:12px">mdlivepro 비밀번호</div>' +
+      '<p style="font-size:12px;color:' + (isDark ? '#94a3b8' : '#64748b') + ';margin:0 0 10px 0">mdlivepro 비밀번호를 입력하세요</p>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px">' +
+      '<input type="password" id="mdpro-pwd-input" autocomplete="current-password" placeholder="비밀번호" style="flex:1;padding:10px 12px;font-size:14px;border:1px solid ' + border + ';border-radius:6px;background:' + (isDark ? '#0c0e13' : '#f8fafc') + ';color:' + text + ';box-sizing:border-box">' +
+      '<button type="button" id="mdpro-pwd-toggle" title="비밀번호 보기/숨기기" style="width:40px;height:40px;padding:0;border:1px solid ' + border + ';border-radius:6px;background:' + (isDark ? '#1a1e28' : '#f1f5f9') + ';color:' + (isDark ? '#94a3b8' : '#64748b') + ';cursor:pointer;font-size:18px;line-height:1">👁</button>' +
+      '</div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px">' +
+      '<button type="button" id="mdpro-pwd-cancel" style="padding:8px 16px;border:1px solid ' + border + ';border-radius:6px;background:transparent;color:' + (isDark ? '#94a3b8' : '#64748b') + ';cursor:pointer;font-size:13px">취소</button>' +
+      '<button type="button" id="mdpro-pwd-ok" style="padding:8px 16px;border:none;border-radius:6px;background:' + accent + ';color:#fff;cursor:pointer;font-size:13px">확인</button>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    var input = document.getElementById('mdpro-pwd-input');
+    var toggleBtn = document.getElementById('mdpro-pwd-toggle');
+    var close = function (result) {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      cb(result);
+    };
+    toggleBtn.onclick = function () {
+      var type = input.type;
+      input.type = type === 'password' ? 'text' : 'password';
+      toggleBtn.textContent = type === 'password' ? '🙈' : '👁';
+      toggleBtn.title = type === 'password' ? '비밀번호 숨기기' : '비밀번호 보기';
+    };
+    document.getElementById('mdpro-pwd-cancel').onclick = function () { close(null); };
+    document.getElementById('mdpro-pwd-ok').onclick = function () {
+      var val = (input.value || '').trim();
+      if (!val) { alert('비밀번호를 입력해 주세요.'); return; }
+      close(val);
+    };
+    overlay.onclick = function (e) { if (e.target === overlay) close(null); };
+    input.focus();
+    input.onkeydown = function (e) {
+      if (e.key === 'Enter') document.getElementById('mdpro-pwd-ok').click();
+      if (e.key === 'Escape') close(null);
+    };
+  }
   function openMdproWithLogin() {
     var vp = document.getElementById('content-viewport');
     var ta = document.getElementById('viewer-edit-ta');
     var txt = (vp && vp.classList.contains('viewer-edit-active') && ta) ? ta.value : (window.__rawText || '');
     if (!txt || !txt.trim()) { alert('전송할 내용이 없습니다.'); return; }
-    var pwd = prompt('mdlivepro 비밀번호를 입력하세요', '');
-    if (pwd === null) return;
-    if (!pwd || !pwd.trim()) { alert('비밀번호를 입력해 주세요.'); return; }
-    var w = window.open('https://mdlivepro.vercel.app/', '_blank', 'width=1000,height=700');
-    if (!w) { alert('팝업이 차단되었습니다.'); return; }
-    window.__mdproPendingText = formatForMdpro(txt);
-    window.__mdproPassword = pwd;
-    if (window.__mdproPasswordTimer) clearInterval(window.__mdproPasswordTimer);
-    window.__mdproPasswordTimer = setInterval(function () {
-      if (!w || w.closed) { clearInterval(window.__mdproPasswordTimer); window.__mdproPasswordTimer = null; return; }
-      try { w.postMessage({ type: 'mdpro_password', password: window.__mdproPassword }, '*'); } catch (e) {}
-    }, 600);
-    setTimeout(function () { if (window.__mdproPasswordTimer) { clearInterval(window.__mdproPasswordTimer); window.__mdproPasswordTimer = null; } }, 8000);
+    showMdproPasswordModal(function (pwd) {
+      if (pwd === null) return;
+      if (!pwd || !pwd.trim()) { alert('비밀번호를 입력해 주세요.'); return; }
+      var w = window.open('https://mdlivepro.vercel.app/', '_blank', 'width=1000,height=700');
+      if (!w) { alert('팝업이 차단되었습니다.'); return; }
+      window.__mdproPendingText = formatForMdpro(txt);
+      window.__mdproPassword = pwd;
+      if (window.__mdproPasswordTimer) clearInterval(window.__mdproPasswordTimer);
+      window.__mdproPasswordTimer = setInterval(function () {
+        if (!w || w.closed) { clearInterval(window.__mdproPasswordTimer); window.__mdproPasswordTimer = null; return; }
+        try { w.postMessage({ type: 'mdpro_password', password: window.__mdproPassword }, '*'); } catch (e) {}
+      }, 600);
+      setTimeout(function () { if (window.__mdproPasswordTimer) { clearInterval(window.__mdproPasswordTimer); window.__mdproPasswordTimer = null; } }, 8000);
+    });
   }
   function toggleScholarAI() {
     var el = document.getElementById('scholar-ai-sidebar');
@@ -329,7 +397,7 @@
       ta.value = editTa.value.slice(start, end);
       __scholarAISelStart = start;
       __scholarAISelEnd = end;
-      if (!ta.value.trim() && (window.__contentType || '') === 'summary') ta.value = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다(from 제작자 박중희 교수).';
+      if (!ta.value.trim() && (window.__contentType || '') === 'summary') ta.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
       return;
     }
     __scholarAISelStart = __scholarAISelEnd = null;
@@ -338,11 +406,15 @@
     if (sel && target && sel.anchorNode && target.contains(sel.anchorNode)) {
       ta.value = sel.toString().trim();
     } else if (!ta.value.trim() && (window.__contentType || '') === 'summary') {
-      ta.value = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다(from 제작자 박중희 교수).';
+      ta.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
     }
+  }
+  function scholarAIHistorySave() {
+    try { localStorage.setItem('ss_viewer_scholar_ai_history', JSON.stringify(__scholarAIHistory)); } catch (e) {}
   }
   function scholarAIHistoryAdd(promptSnippet, resultText) {
     __scholarAIHistory.unshift({ id: Date.now(), prompt: promptSnippet || '', result: resultText || '', at: new Date().toISOString() });
+    scholarAIHistorySave();
   }
   function scholarAIHistoryRender() {
     var list = document.getElementById('scholar-ai-history-list');
@@ -367,6 +439,7 @@
   }
   function scholarAIHistoryDelete(idx) {
     __scholarAIHistory.splice(idx, 1);
+    scholarAIHistorySave();
     scholarAIHistoryRender();
   }
   function scholarAIHistorySaveMd(idx) {
@@ -555,10 +628,34 @@
   function viewerSSPFsDownload() {
     var img = document.getElementById('viewer-fs-img');
     if (!img || !img.src) return;
-    var a = document.createElement('a');
-    a.href = img.src;
-    a.download = 'image_' + Date.now() + '.png';
-    a.click();
+    var dataURL = img.src;
+    if (dataURL.indexOf('data:') === 0) {
+      try {
+        var arr = dataURL.split(',');
+        var mime = (arr[0].match(/:(.*?);/) || [])[1] || 'image/png';
+        var bstr = atob(arr[1]);
+        var n = bstr.length;
+        var u8arr = new Uint8Array(n);
+        for (var i = 0; i < n; i++) u8arr[i] = bstr.charCodeAt(i);
+        var blob = new Blob([u8arr], { type: mime });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'image_' + Date.now() + '.png';
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 200);
+      } catch (e) {
+        var a = document.createElement('a');
+        a.href = dataURL;
+        a.download = 'image_' + Date.now() + '.png';
+        a.click();
+      }
+    } else {
+      var a = document.createElement('a');
+      a.href = dataURL;
+      a.download = 'image_' + Date.now() + '.png';
+      a.click();
+    }
   }
   function viewerSSPFsInsert() {
     var img = document.getElementById('viewer-fs-img');
@@ -567,8 +664,33 @@
   }
   function viewerSSPFsCrop() {
     var img = document.getElementById('viewer-fs-img');
-    if (!img || !img.src || !window.opener) return;
-    try { window.opener.postMessage({ type: 'imgViewerCrop', dataURL: img.src }, '*'); viewerSSPCloseFullscreen(); } catch (e) {}
+    if (!img || !img.src) return;
+    var base = '';
+    try {
+      var h = (window.opener && window.opener.location && window.opener.location.href) ? window.opener.location.href : window.location.href;
+      if (h && h.indexOf('http') === 0) {
+        var i = h.lastIndexOf('/');
+        base = i >= 0 ? h.substring(0, i + 1) : h + '/';
+      }
+    } catch (e) {}
+    if (!base) base = './';
+    var cropWin = window.open(base + 'crop-editor.html', '_blank', 'width=920,height=720,resizable=yes,scrollbars=yes');
+    if (!cropWin) return;
+    viewerSSPCloseFullscreen();
+    var sendImage = function () {
+      try {
+        if (cropWin && !cropWin.closed && cropWin.postMessage) {
+          cropWin.postMessage({ type: 'cropEditorSetImage', dataURL: img.src }, '*');
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('message', function onCropReady(ev) {
+      if (ev.data && ev.data.type === 'cropEditorReady' && ev.source === cropWin) {
+        window.removeEventListener('message', onCropReady);
+        sendImage();
+      }
+    });
+    setTimeout(sendImage, 300);
   }
   function viewerSSPCloseFullscreen() {
     var overlay = document.getElementById('viewer-fs-overlay');
@@ -796,6 +918,8 @@
   window.setPageZoom = setPageZoom;
   window.setFontZoom = setFontZoom;
   window.toggleTheme = toggleTheme;
+  window.toggleViewerFullscreen = toggleViewerFullscreen;
+  window.viewerScrollToId = viewerScrollToId;
   window.saveAs = saveAs;
   window.viewerSwitchToEdit = viewerSwitchToEdit;
   window.viewerSwitchToView = viewerSwitchToView;
@@ -847,7 +971,15 @@
       if (sb) sb.style.display = 'none';
       if (eb) eb.style.display = 'none';
     }
+    try {
+      var saved = localStorage.getItem('ss_viewer_scholar_ai_history');
+      if (saved) {
+        var arr = JSON.parse(saved);
+        if (Array.isArray(arr) && arr.length) __scholarAIHistory = arr;
+      }
+    } catch (e) {}
     viewerBuildNav();
+    scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';
     var histSearch = document.getElementById('scholar-ai-history-search');
@@ -863,7 +995,12 @@
   });
 
   window.addEventListener('message', function (e) {
-    if (!e.data || e.data.type !== 'mdpro_ready' || !window.__mdproPendingText) return;
+    if (!e.data) return;
+    if (e.data.type === 'imgViewerInsert' && e.data.dataURL && window.opener && !window.opener.closed) {
+      try { window.opener.postMessage({ type: 'imgViewerInsert', dataURL: e.data.dataURL }, '*'); } catch (err) {}
+      return;
+    }
+    if (e.data.type !== 'mdpro_ready' || !window.__mdproPendingText) return;
     try {
       if (e.source && !e.source.closed) {
         e.source.postMessage({ type: 'mdpro_document', title: (window.__mdproDocTitle || 'ScholarSlide 문서'), content: window.__mdproPendingText }, '*');

@@ -137,6 +137,34 @@ function buildWorkspaceSnapshot() {
       ? Array.from(new Uint8Array(window._pdfArrayBuffer)) : undefined,
   };
   if (slots && slots.length) snap.fileSlots = slots;
+
+  // 새창 뷰어 AI 데이터 (ScholarAI 히스토리, SSP 이미지 히스토리, 뷰어 페이지 내용)
+  try {
+    var viewerPageData = {};
+    ['summary', 'raw', 'refs', 'manuscript'].forEach(function (t) {
+      var v = localStorage.getItem('ss_viewer_page_' + t);
+      if (v) viewerPageData[t] = v;
+    });
+    if (Object.keys(viewerPageData).length) snap.viewerPageData = viewerPageData;
+
+    var fromChild = (typeof window.getViewerAIDataFromChildWindows === 'function' && window.getViewerAIDataFromChildWindows()) || {};
+    var scholarAI = (fromChild.scholarAIHistory || []).length ? fromChild.scholarAIHistory : null;
+    var sspImg = (fromChild.sspImgHistory || []).length ? fromChild.sspImgHistory : null;
+    if (!scholarAI) {
+      try {
+        var raw = localStorage.getItem('ss_viewer_scholar_ai_history');
+        if (raw) scholarAI = JSON.parse(raw);
+      } catch (e) {}
+    }
+    if (!sspImg) {
+      try {
+        var raw = localStorage.getItem('ss_viewer_ssp_img_history');
+        if (raw) sspImg = JSON.parse(raw);
+      } catch (e) {}
+    }
+    if (scholarAI && scholarAI.length) snap.viewerScholarAIHistory = scholarAI;
+    if (sspImg && sspImg.length) snap.viewerSspImgHistory = sspImg;
+  } catch (e) { console.warn('[buildWorkspaceSnapshot] viewer AI data', e); }
   return snap;
 }
 
@@ -247,6 +275,23 @@ function applyWorkspaceSnapshot(snap) {
       window._pdfArrayBuffer = arr.slice(0).buffer;
       if (typeof loadPdfPreview === 'function') loadPdfPreview(arr.slice(0).buffer, snap.fileName);
     } catch (err) { console.warn('[restore PDF]', err); }
+  }
+  if (snap.viewerPageData && typeof snap.viewerPageData === 'object') {
+    try {
+      Object.keys(snap.viewerPageData).forEach(function (t) {
+        localStorage.setItem('ss_viewer_page_' + t, snap.viewerPageData[t]);
+      });
+    } catch (e) { console.warn('[restore] viewerPageData', e); }
+  }
+  if (snap.viewerScholarAIHistory && Array.isArray(snap.viewerScholarAIHistory) && snap.viewerScholarAIHistory.length) {
+    try {
+      localStorage.setItem('ss_viewer_scholar_ai_history', JSON.stringify(snap.viewerScholarAIHistory));
+    } catch (e) { console.warn('[restore] viewerScholarAIHistory', e); }
+  }
+  if (snap.viewerSspImgHistory && Array.isArray(snap.viewerSspImgHistory) && snap.viewerSspImgHistory.length) {
+    try {
+      localStorage.setItem('ss_viewer_ssp_img_history', JSON.stringify(snap.viewerSspImgHistory));
+    } catch (e) { console.warn('[restore] viewerSspImgHistory', e); }
   }
 }
 

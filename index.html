@@ -320,6 +320,7 @@
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeModal('project-modal')">닫기</button>
       <button class="btn btn-ghost btn-sm" onclick="saveSession()">💼 세션으로 저장</button>
+      <a id="imgsave-link" href="#" onclick="var u=(typeof getImgSaveUrl==='function'?getImgSaveUrl():'https://imgbb.com/'); if(u){window.open(u,'_blank','noopener');} return false" class="btn btn-ghost btn-sm" title="이미지 업로드 사이트 (설정에서 URL 변경 가능)">IMGSAVE</a>
       <button class="btn btn-primary btn-sm" onclick="exportProjectFile()">📦 파일로 내보내기</button>
     </div>
   </div>
@@ -1009,29 +1010,34 @@
 <div id="pdf-preview-panel">
   <div class="pdf-preview-header">
     <div class="pdf-preview-title">📄 <span id="pdf-preview-filename">PDF 미리보기</span></div>
-    <div style="display:flex;gap:4px">
+    <div class="pdf-preview-top-menu">
+      <button class="pdf-nav-btn" id="pdf-prev-btn" onclick="pdfNavPage(-1)" disabled title="이전 페이지">‹</button>
+      <div class="pdf-page-info"><span id="pdf-cur-page">1</span> / <span id="pdf-total-pages">1</span></div>
+      <button class="pdf-nav-btn" id="pdf-next-btn" onclick="pdfNavPage(1)" title="다음 페이지">›</button>
+      <div class="pdf-zoom-row">
+        <button class="pdf-zoom-btn" onclick="pdfZoom(-0.2)" title="축소">−</button>
+        <div class="pdf-zoom-val" id="pdf-zoom-val">100%</div>
+        <button class="pdf-zoom-btn" onclick="pdfZoom(0.2)" title="확대">+</button>
+      </div>
+      <button class="pdf-nav-btn" onclick="downloadPdfPreview()" title="PDF 다운로드" style="width:auto;padding:0 8px;font-size:11px">⬇ 다운로드</button>
       <button class="pdf-nav-btn" onclick="openPdfNewWindow()" title="새창으로 보기" style="width:auto;padding:0 8px;font-size:11px">↗ 새창</button>
       <button class="pdf-nav-btn" onclick="closePdfPreview()" title="닫기" style="width:auto;padding:0 8px;font-size:12px">✕</button>
     </div>
   </div>
-  <div class="pdf-preview-nav">
-    <button class="pdf-nav-btn" id="pdf-prev-btn" onclick="pdfNavPage(-1)" disabled>‹</button>
-    <div class="pdf-page-info"><span id="pdf-cur-page">1</span> / <span id="pdf-total-pages">1</span></div>
-    <button class="pdf-nav-btn" id="pdf-next-btn" onclick="pdfNavPage(1)">›</button>
-    <div class="pdf-zoom-row">
-      <button class="pdf-zoom-btn" onclick="pdfZoom(-0.2)">−</button>
-      <div class="pdf-zoom-val" id="pdf-zoom-val">100%</div>
-      <button class="pdf-zoom-btn" onclick="pdfZoom(+0.2)">+</button>
+  <div class="pdf-preview-body">
+    <div class="pdf-page-sidebar" id="pdf-page-sidebar">
+      <div class="pdf-sidebar-label">페이지</div>
+      <div class="pdf-thumb-strip" id="pdf-thumb-strip"></div>
+    </div>
+    <div class="pdf-canvas-wrap" id="pdf-canvas-wrap">
+      <div id="pdf-page-loading" class="pdf-loading-overlay" style="display:none">
+        <div style="font-size:20px">⏳</div><div>페이지 렌더링 중...</div>
+      </div>
+      <div class="pdf-canvas-inner" id="pdf-canvas-inner">
+        <canvas id="pdf-main-canvas"></canvas>
+      </div>
     </div>
   </div>
-  <div class="pdf-canvas-wrap" id="pdf-canvas-wrap">
-    <div id="pdf-page-loading" class="pdf-loading-overlay" style="display:none">
-      <div style="font-size:20px">⏳</div><div>페이지 렌더링 중...</div>
-    </div>
-    <canvas id="pdf-main-canvas"></canvas>
-  </div>
-  <div class="pdf-resize-handle" id="pdf-resize-handle" onmousedown="startPdfPanelResize(event)" title="드래그하여 상하 크기 조절"></div>
-  <div class="pdf-thumb-strip" id="pdf-thumb-strip"></div>
 </div>
 <button class="pdf-preview-toggle" id="pdf-preview-toggle" onclick="togglePdfPreview()" style="display:none">PDF</button>
 

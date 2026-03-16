@@ -486,6 +486,9 @@ function getTextViewerWindowHtml(opts) {
 + 'body.theme-light .viewer-edit-toolbar .ve-sep { background: #cbd5e1; }'
 + ''
 + '@media print { .toolbar { display: none !important; } .viewer-sidebar { display: none !important; } .scholar-ai-sidebar { display: none !important; } .ssp-ai-sidebar { display: none !important; } body { background: #fff; color: #111; } .content-viewport { padding: 0; } .page { box-shadow: none; border: none; } }'
++ 'body.viewer-in-app-fs .toolbar, body.viewer-in-app-fs .viewer-sidebar, body.viewer-in-app-fs .scholar-ai-sidebar, body.viewer-in-app-fs .ssp-ai-sidebar { display: none !important; }'
++ '.viewer-fs-exit-btn { position: fixed; top: 12px; right: 12px; z-index: 10000; padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: 6px; border: 1px solid #2e3447; background: #323234; color: #ddd; display: none; }'
++ 'body.viewer-in-app-fs .viewer-fs-exit-btn { display: block; } body.theme-light .viewer-fs-exit-btn { background: #fff; border-color: #cbd5e1; color: #475569; } .viewer-fs-exit-btn:hover { background: #4f8ef7; color: #fff; border-color: #4f8ef7; }'
 + '.toolbar { flex-shrink: 0; padding: 8px 16px; display: flex; flex-direction: column; gap: 8px; }'
 + '.toolbar-row { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }'
 + '.viewer-sidebar-list a.toc-h4 { padding-left: 28px; font-size: 11px; }'
@@ -547,24 +550,25 @@ function getTextViewerWindowHtml(opts) {
 + '.ssp-ai-sidebar { width: 0; min-width: 0; overflow: hidden; flex-shrink: 0; display: flex; flex-direction: column; background: #13161d; border-left: 1px solid #1e2332; transition: min-width 0.2s; position: relative; }'
 + 'body.theme-light .ssp-ai-sidebar { background: #e2e8f0; border-left-color: #cbd5e1; }'
 + '.ssp-ai-sidebar.open { min-width: 320px; width: 400px; max-width: 90vw; }'
-+ '.ssp-ai-sidebar .ssp-inner { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 10px; overflow-y: auto; }'
++ '.ssp-ai-sidebar .ssp-inner { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding: 10px; overflow: hidden; }'
++ '.ssp-ai-sidebar .ssp-main { flex: 0 1 auto; min-height: 0; overflow-y: auto; }'
 + '.ssp-ai-sidebar .ssp-header { flex-shrink: 0; padding: 8px 0; border-bottom: 1px solid #1e2332; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }'
 + 'body.theme-light .ssp-ai-sidebar .ssp-header { border-color: #cbd5e1; }'
 + '.ssp-ai-sidebar .ssp-header h3 { font-size: 13px; color: #f59e0b; margin: 0; }'
-+ '.ssp-ai-sidebar .ssp-upload { border: 2px dashed #2e3447; border-radius: 8px; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; cursor: pointer; margin-bottom: 8px; min-height: 60px; }'
++ '.ssp-ai-sidebar .ssp-upload { border: 2px dashed #2e3447; border-radius: 8px; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8; cursor: pointer; margin-bottom: 8px; min-height: 60px; max-height: 160px; overflow: hidden; flex-shrink: 0; }'
 + 'body.theme-light .ssp-ai-sidebar .ssp-upload { border-color: #cbd5e1; color: #64748b; }'
 + '.ssp-ai-sidebar .ssp-upload:hover { border-color: #f59e0b; color: #f59e0b; }'
 + '.ssp-ai-sidebar label { font-size: 10px; color: #94a3b8; display: block; margin-bottom: 4px; }'
 + '.ssp-ai-sidebar select, .ssp-ai-sidebar textarea { width: 100%; padding: 6px 8px; font-size: 11px; border: 1px solid #1e2332; border-radius: 4px; background: #0c0e13; color: #b0bac8; box-sizing: border-box; margin-bottom: 8px; }'
 + 'body.theme-light .ssp-ai-sidebar select, body.theme-light .ssp-ai-sidebar textarea { background: #fff; color: #1e293b; border-color: #e2e8f0; }'
-+ '.ssp-ai-sidebar textarea { min-height: 80px; resize: vertical; max-height: 200px; }'
++ '.ssp-ai-sidebar textarea { min-height: 56px; resize: vertical; max-height: 100px; flex-shrink: 0; }'
 + '.ssp-ai-sidebar .ssp-ratio-wrap { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }'
 + '.ssp-ai-sidebar .ssp-ratio-btn { padding: 4px 10px; font-size: 10px; border: 1px solid #2e3447; border-radius: 4px; background: #1a1e28; color: #94a3b8; cursor: pointer; }'
 + '.ssp-ai-sidebar .ssp-ratio-btn.active { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.15); }'
 + '.ssp-ai-sidebar .ssp-result { max-width: 100%; max-height: 200px; width: auto; height: auto; object-fit: contain; border-radius: 6px; margin-top: 8px; display: block; cursor: pointer; }'
 + '.ssp-ai-sidebar .ssp-status { font-size: 10px; color: #94a3b8; margin-top: 6px; }'
 + '.ssp-ai-sidebar .ssp-seed-loaded { display: flex; flex-direction: column; align-items: center; gap: 6px; }'
-+ '.ssp-ai-sidebar .ssp-seed-loaded img { max-width: 100%; max-height: 120px; border-radius: 6px; object-fit: contain; cursor: pointer; }'
++ '.ssp-ai-sidebar .ssp-seed-loaded img { max-width: 100%; max-height: 100px; border-radius: 6px; object-fit: contain; cursor: pointer; }'
 + '.ssp-ai-sidebar .ssp-seed-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }'
 + '.ssp-ai-sidebar .ssp-progress-wrap { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }'
 + '.ssp-ai-sidebar .ssp-progress-wrap.visible { display: flex; }'
@@ -572,7 +576,8 @@ function getTextViewerWindowHtml(opts) {
 + 'body.theme-light .ssp-ai-sidebar .ssp-progress-bar { background: #e2e8f0; }'
 + '.ssp-ai-sidebar .ssp-progress-fill { height: 100%; width: 0%; background: #f59e0b; transition: width 0.3s ease; }'
 + '.ssp-ai-sidebar .ssp-progress-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }'
-+ '.ssp-ai-sidebar .ssp-img-history-list { display: flex; flex-direction: column; gap: 6px; max-height: 120px; overflow-y: auto; }'
++ '.ssp-ai-sidebar .ssp-img-history { flex: 1; min-height: 100px; display: flex; flex-direction: column; overflow: hidden; }'
++ '.ssp-ai-sidebar .ssp-img-history-list { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; overflow-y: auto; }'
 + '.ssp-ai-sidebar .ssp-img-history-item { display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: #1a1e28; border-radius: 4px; font-size: 10px; }'
 + 'body.theme-light .ssp-ai-sidebar .ssp-img-history-item { background: #e2e8f0; }'
 + '.ssp-ai-sidebar .ssp-img-history-item img { width: 36px; height: 36px; object-fit: cover; border-radius: 4px; cursor: pointer; flex-shrink: 0; }'
@@ -605,6 +610,7 @@ function getTextViewerWindowHtml(opts) {
 + (contentType === 'refs' ? '    <button class="tbtn ghost" onclick="if(window.opener && typeof window.opener.reExtractReferencesFromDocument === \'function\'){ window.opener.reExtractReferencesFromDocument(); if(typeof window.opener.openRefExpWindow === \'function\') window.opener.openRefExpWindow(); window.close(); } else { alert(\'메인 창을 찾을 수 없습니다.\'); }" title="원문 재추출">🔄 원문 재추출</button>  <button class="tbtn ghost" onclick="if(window.opener && typeof window.opener.extractReferencesWithAI === \'function\'){ window.opener.extractReferencesWithAI(function(){ if(window.opener && typeof window.opener.openRefExpWindow === \'function\'){ window.opener.openRefExpWindow(); window.close(); } }); } else { alert(\'메인 창을 찾을 수 없습니다.\'); }" title="AI 추출">🤖 AI 추출</button>' : '')
 + '    <button class="tbtn" onclick="toggleScholarAI()" title="인공지능 추가 기능">ScholarAI</button>'
 + '    <button class="tbtn" onclick="toggleViewerSSP()" title="SSP 이미지 생성기 (새창 전용, 슬라이드와 무관)">sspAI</button>'
++ '    <button class="tbtn ghost" onclick="toggleViewerFullscreen()" title="전체화면 토글">⊞ 전체화면</button>'
 + '    <button class="tbtn ghost" onclick="window.close()">닫기</button>'
 + '  </div>'
 + '  <div class="toolbar-row">'
@@ -690,6 +696,7 @@ function getTextViewerWindowHtml(opts) {
 + '<div class="ssp-ai-sidebar" id="ssp-ai-sidebar">'
 + '<div class="ssp-inner">'
 + '<div class="ssp-header"><h3>🖼 SSP 이미지 생성기</h3><button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">× 닫기</button></div>'
++ '<div class="ssp-main">'
 + '<div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById(\'ssp-file-input\').click()" title="클릭 또는 드래그하여 업로드">이미지 업로드 (JPG, PNG, GIF, WebP)<br><small>또는 Ctrl+V 붙여넣기</small></div>'
 + '<input type="file" id="ssp-file-input" accept="image/*" style="display:none">'
 + '<label>프롬프트 (비우면 시드 이미지 기반 변형)</label>'
@@ -704,12 +711,14 @@ function getTextViewerWindowHtml(opts) {
 + '<div id="ssp-status" class="ssp-status"></div>'
 + '<img id="ssp-result-img" class="ssp-result" style="display:none" alt="생성 결과" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="클릭하면 크게 보기">'
 + '<button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>다운로드 저장</button>'
++ '</div>'
 + '<div class="ssp-img-history" style="margin-top:12px;border-top:1px solid #2e3447;padding-top:8px">'
 + '<label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:6px">이미지 생성 히스토리</label>'
 + '<div id="ssp-img-history-list" class="ssp-img-history-list"></div>'
 + '</div>'
 + '</div></div>'
 + '</div>'
++ '<button type="button" class="viewer-fs-exit-btn" id="viewer-fs-exit-btn" onclick="toggleViewerFullscreen()" title="전체화면 해제 (Esc)">⊟ 전체화면 해제</button>'
 + '<div id="viewer-fs-overlay" class="viewer-fs-overlay" onclick="if(event.target.id===\'viewer-fs-overlay\'||event.target.id===\'viewer-fs-area\') viewerSSPCloseFullscreen()">'
 + '<div class="viewer-fs-toolbar" onclick="event.stopPropagation()">'
 + '<button type="button" onclick="viewerSSPFsZoom(-0.25)" title="축소">−</button>'
@@ -780,6 +789,9 @@ function getTranslationViewerWindowHtml(opts) {
 + '.trans-page .page-content h1,.trans-page .page-content h2,.trans-page .page-content h3 { font-family: sans-serif; color: #4f8ef7; margin-top: 1em; margin-bottom: 0.5em; scroll-margin-top: 16px; }'
 + '.trans-page .page-content .page-section { margin-bottom: 2em; }'
 + '@media print { .toolbar { display: none !important; } .trans-viewer-sidebar { display: none !important; } body { background: #fff; color: #111; } .trans-viewport { padding: 0; } .trans-page { box-shadow: none; border: none; } }'
++ 'body.viewer-in-app-fs .toolbar, body.viewer-in-app-fs .trans-viewer-sidebar { display: none !important; }'
++ '.viewer-fs-exit-btn { position: fixed; top: 12px; right: 12px; z-index: 10000; padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: 6px; border: 1px solid #2e3447; background: #323234; color: #ddd; display: none; }'
++ 'body.viewer-in-app-fs .viewer-fs-exit-btn { display: block; } body.theme-light .viewer-fs-exit-btn { background: #fff; border-color: #cbd5e1; color: #475569; } .viewer-fs-exit-btn:hover { background: #4f8ef7; color: #fff; border-color: #4f8ef7; }'
 + '</style></head><body class="theme-light">'
 + '<div class="toolbar">'
 + '  <h2>🌐 번역 보기 — ' + (label === '요약' ? '요약' : '원문') + '</h2>'
@@ -793,8 +805,10 @@ function getTranslationViewerWindowHtml(opts) {
 + '  <button class="tbtn ghost" onclick="setFontZoom(1)" title="폰트 확대">🔤 +</button>'
 + '  <button class="tbtn ghost" id="theme-btn" onclick="toggleTheme()" title="다크/라이트">🌓 Light/Dark</button>'
 + '  <button class="tbtn ghost" onclick="copyTransContent()">📋 복사</button>'
++ '  <button class="tbtn ghost" onclick="toggleViewerFullscreen()" title="전체화면 토글">⊞ 전체화면</button>'
 + '  <button class="tbtn ghost" onclick="window.close()">닫기</button>'
 + '</div>'
++ '<button type="button" class="viewer-fs-exit-btn" onclick="toggleViewerFullscreen()" title="전체화면 해제 (Esc)">⊟ 전체화면 해제</button>'
 + '<div class="trans-main-with-sidebar">'
 + '<aside class="trans-viewer-sidebar">'
 + '  <div class="trans-viewer-sidebar-tabs">'
@@ -822,6 +836,8 @@ function getTranslationViewerWindowHtml(opts) {
 + 'function setPageZoom(delta) { _pageZoom = Math.max(30, Math.min(200, _pageZoom + delta)); document.querySelectorAll(".trans-page").forEach(function(p){ p.style.setProperty("--zoom", _pageZoom/100); }); var zv = document.getElementById("zoom-val"); if(zv) zv.textContent = _pageZoom + "%"; }'
 + 'function setFontZoom(delta) { var pages = document.querySelectorAll(".trans-page"); var fs = _fontBase; if (pages.length) fs = parseFloat(getComputedStyle(pages[0]).fontSize) || _fontBase; fs = Math.max(10, Math.min(28, fs + delta*2)); pages.forEach(function(p){ p.style.fontSize = fs + "px"; }); }'
 + 'function toggleTheme() { var b = document.body; b.classList.toggle("theme-dark"); b.classList.toggle("theme-light"); var btn = document.getElementById("theme-btn"); if(btn) btn.textContent = b.classList.contains("theme-dark") ? "🌓 Dark/Light" : "🌓 Light/Dark"; }'
++ 'function toggleViewerFullscreen() { var fs = document.body.classList.toggle("viewer-in-app-fs"); if (fs) document.addEventListener("keydown", _transFsEsc); else document.removeEventListener("keydown", _transFsEsc); }'
++ 'function _transFsEsc(e) { if (e.key === "Escape" && document.body.classList.contains("viewer-in-app-fs")) { document.body.classList.remove("viewer-in-app-fs"); document.removeEventListener("keydown", _transFsEsc); } }'
 + 'function copyTransContent() { var text = _transMode === "original" ? __original : _transMode === "translated" ? __translated : __original + "\\n\\n--- 번역 ---\\n\\n" + __translated; navigator.clipboard.writeText(text).then(function(){ alert("복사됨"); }); }'
 + 'if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", loadData); else loadData();'
 + 'setTransViewMode("split");'
@@ -2345,6 +2361,8 @@ let _pdfScale = 2.0;
 let _pdfRendering = false;
 let _pdfPendingPage = null;
 let _pdfThumbsRendered = false;
+let _pdfFileName = '';
+let _pdfPan = { x: 0, y: 0, active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 };
 
 // ── Open / Close (팝업: 오른쪽 하단, 헤더 드래그로 이동) ──
 let _pdfPanelDragInited = false;
@@ -2415,37 +2433,61 @@ function togglePdfPreview() {
   }
 }
 
-// ── PDF 패널 상하 리사이즈 (캔버스 영역 vs 썸네일 스트립) ──
-let _pdfResizeActive = false;
-let _pdfResizeStartY = 0;
-let _pdfResizeStartH = 0;
-
-function startPdfPanelResize(e) {
-  e.preventDefault();
-  const strip = document.getElementById('pdf-thumb-strip');
-  if (!strip) return;
-  _pdfResizeActive = true;
-  _pdfResizeStartY = e.clientY;
-  _pdfResizeStartH = strip.offsetHeight;
-  document.body.classList.add('pdf-panel-resizing');
-  document.addEventListener('mousemove', doPdfPanelResize);
-  document.addEventListener('mouseup', stopPdfPanelResize);
+// ── PDF 패닝 (확대 시 마우스 드래그로 이동) ──
+function initPdfPan() {
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  const inner = document.getElementById('pdf-canvas-inner');
+  if (!wrap || !inner) return;
+  wrap.addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || e.target.closest('#pdf-page-loading')) return;
+    _pdfPan.active = true;
+    _pdfPan.startX = e.clientX;
+    _pdfPan.startY = e.clientY;
+    _pdfPan.startPanX = _pdfPan.x;
+    _pdfPan.startPanY = _pdfPan.y;
+    wrap.classList.add('pdf-panning');
+  });
+  document.addEventListener('mousemove', function onPdfPanMove(e) {
+    if (!_pdfPan.active) return;
+    const dx = e.clientX - _pdfPan.startX;
+    const dy = e.clientY - _pdfPan.startY;
+    const innerW = inner.offsetWidth;
+    const innerH = inner.offsetHeight;
+    const wrapW = wrap.clientWidth;
+    const wrapH = wrap.clientHeight;
+    let nx = _pdfPan.startPanX + dx;
+    let ny = _pdfPan.startPanY + dy;
+    const minX = wrapW - innerW;
+    const minY = wrapH - innerH;
+    _pdfPan.x = Math.max(minX, Math.min(0, nx));
+    _pdfPan.y = Math.max(minY, Math.min(0, ny));
+    inner.style.transform = 'translate(' + _pdfPan.x + 'px, ' + _pdfPan.y + 'px)';
+  });
+  document.addEventListener('mouseup', function onPdfPanUp() {
+    if (_pdfPan.active) {
+      _pdfPan.active = false;
+      wrap.classList.remove('pdf-panning');
+    }
+  });
 }
 
-function doPdfPanelResize(e) {
-  if (!_pdfResizeActive) return;
-  const strip = document.getElementById('pdf-thumb-strip');
-  if (!strip) return;
-  const dy = e.clientY - _pdfResizeStartY;
-  let h = Math.max(48, Math.min(200, _pdfResizeStartH + dy));
-  strip.style.height = h + 'px';
-}
-
-function stopPdfPanelResize() {
-  _pdfResizeActive = false;
-  document.body.classList.remove('pdf-panel-resizing');
-  document.removeEventListener('mousemove', doPdfPanelResize);
-  document.removeEventListener('mouseup', stopPdfPanelResize);
+function downloadPdfPreview() {
+  if (!window._pdfArrayBuffer || !_pdfFileName) {
+    showToast('⚠️ 다운로드할 PDF가 없습니다.');
+    return;
+  }
+  try {
+    const blob = new Blob([window._pdfArrayBuffer], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = _pdfFileName;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 200);
+    showToast('✅ PDF 다운로드됨: ' + _pdfFileName);
+  } catch (e) {
+    showToast('❌ 다운로드 실패: ' + (e.message || e));
+  }
 }
 
 // ── Load PDF for preview (called from handleFileUpload) ──
@@ -2459,11 +2501,18 @@ async function loadPdfPreview(arrayBuffer, name) {
     _pdfThumbsRendered = false;
 
     // Update UI
+    _pdfFileName = name || 'document.pdf';
     const fnEl = document.getElementById('pdf-preview-filename');
     if (fnEl) fnEl.textContent = name || 'PDF 미리보기';
     const totalEl = document.getElementById('pdf-total-pages');
     if (totalEl) totalEl.textContent = _pdfTotalPages;
 
+    _pdfPan.x = 0;
+    _pdfPan.y = 0;
+    if (!window._pdfPanInited) {
+      initPdfPan();
+      window._pdfPanInited = true;
+    }
     openPdfPreview();
     await pdfRenderPage(_pdfCurrentPage);
     pdfRenderAllThumbs();
@@ -2478,6 +2527,10 @@ async function pdfRenderPage(pageNum) {
   if (!_pdfDoc) return;
   if (_pdfRendering) { _pdfPendingPage = pageNum; return; }
   _pdfRendering = true;
+  if (pageNum !== _pdfCurrentPage) {
+    _pdfPan.x = 0;
+    _pdfPan.y = 0;
+  }
 
   const loadingEl = document.getElementById('pdf-page-loading');
   if (loadingEl) loadingEl.style.display = 'flex';
@@ -2515,6 +2568,26 @@ async function pdfRenderPage(pageNum) {
     // Zoom label
     const zoomEl = document.getElementById('pdf-zoom-val');
     if (zoomEl) zoomEl.textContent = Math.round(_pdfScale * 100) + '%';
+
+    // Pan: center when small, allow drag when zoomed
+    const inner = document.getElementById('pdf-canvas-inner');
+    const wrap = document.getElementById('pdf-canvas-wrap');
+    if (inner && wrap) {
+      const wrapW = wrap.clientWidth;
+      const wrapH = wrap.clientHeight;
+      const innerW = inner.offsetWidth;
+      const innerH = inner.offsetHeight;
+      if (innerW <= wrapW && innerH <= wrapH) {
+        _pdfPan.x = (wrapW - innerW) / 2;
+        _pdfPan.y = (wrapH - innerH) / 2;
+      } else {
+        const minX = wrapW - innerW;
+        const minY = wrapH - innerH;
+        _pdfPan.x = Math.max(minX, Math.min(0, _pdfPan.x));
+        _pdfPan.y = Math.max(minY, Math.min(0, _pdfPan.y));
+      }
+      inner.style.transform = 'translate(' + _pdfPan.x + 'px, ' + _pdfPan.y + 'px)';
+    }
 
   } catch (e) {
     console.error('[PDF render page]', e);
@@ -5847,11 +5920,11 @@ function openPdfNewWindow() {
     + 'canvas{box-shadow:0 4px 24px rgba(0,0,0,.5);border-radius:4px;max-width:100%}'
     + 'h3{color:#4f8ef7;font-family:sans-serif;font-size:14px;margin:0 0 8px;align-self:flex-start}'
     + '</style></head><body>'
-    + '<h3>\ud83d\udcc4 ' + escapeHtml(fileName) + '</h3>'
+    + '<h3>\ud83d\udcc4 ' + escapeHtml(_pdfFileName || 'PDF') + '</h3>'
     + '<div id="pages"></div>'
     + '<script>'
     + 'pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";'
-    + 'var buf = ' + JSON.stringify(Array.from(new Uint8Array(window._pdfArrayBuffer || []))) + ';'
+    + 'var buf = ' + JSON.stringify(Array.from(new Uint8Array((window.opener && window.opener._pdfArrayBuffer) || []))) + ';'
     + 'var data = new Uint8Array(buf);'
     + 'pdfjsLib.getDocument({data:data}).promise.then(function(doc){'
     + '  var pg=document.getElementById("pages");'

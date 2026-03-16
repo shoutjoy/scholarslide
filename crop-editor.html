@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>이미지 자르기</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#1a1e28;color:#e0e0e0;font-family:'Segoe UI',sans-serif;padding:16px;min-height:100vh}
+    h2{font-size:14px;margin-bottom:12px;color:#4f8ef7}
+    .crop-ratio-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+    .crop-ratio-btn{padding:6px 12px;border-radius:6px;border:1px solid #2e3447;background:#252a37;color:#b0bac8;cursor:pointer;font-size:12px}
+    .crop-ratio-btn:hover{background:#2e3447;color:#fff}
+    .crop-ratio-btn.active{background:#4f8ef7;color:#fff;border-color:#4f8ef7}
+    .crop-wrap{position:relative;max-width:100%;background:#0c0e13;border-radius:8px;overflow:hidden;margin-bottom:12px;line-height:0}
+    #crop-canvas{display:block;max-width:100%;cursor:crosshair}
+    #crop-overlay{position:absolute;top:0;left:0;cursor:crosshair;pointer-events:all}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+    .toolbar button{padding:8px 14px;border-radius:6px;border:1px solid #2e3447;background:#252a37;color:#b0bac8;cursor:pointer;font-size:12px}
+    .toolbar button:hover{background:#2e3447;color:#fff}
+    .toolbar .btn-pri{background:#4f8ef7;color:#fff;border-color:#4f8ef7}
+    .toolbar .btn-pri:hover{background:#3b7de6}
+    .result-wrap{margin-top:16px;padding-top:16px;border-top:1px solid #2e3447}
+    .result-wrap img{max-width:100%;max-height:240px;border-radius:6px;display:block;margin-top:8px;cursor:pointer}
+    .status{font-size:11px;color:#94a3b8;margin-top:8px}
+  </style>
+</head>
+<body>
+  <h2>✂ 이미지 자르기</h2>
+  <div class="crop-ratio-bar">
+    <button class="crop-ratio-btn active" data-ratio="free">자유</button>
+    <button class="crop-ratio-btn" data-ratio="1:1">1:1</button>
+    <button class="crop-ratio-btn" data-ratio="4:3">4:3</button>
+    <button class="crop-ratio-btn" data-ratio="3:4">3:4</button>
+    <button class="crop-ratio-btn" data-ratio="16:9">16:9</button>
+    <button class="crop-ratio-btn" data-ratio="9:16">9:16</button>
+  </div>
+  <div class="crop-wrap" id="crop-wrap">
+    <canvas id="crop-canvas"></canvas>
+    <canvas id="crop-overlay"></canvas>
+  </div>
+  <div class="toolbar">
+    <button onclick="resetFull()">↺ 전체</button>
+    <button class="btn-pri" onclick="applyCrop()">✂ 크롭 적용</button>
+    <button onclick="downloadResult()">⬇ 다운로드 저장</button>
+    <button onclick="sendToMain()" title="메인 앱 슬라이드에 삽입">슬라이드에 삽입</button>
+    <button onclick="window.close()">닫기</button>
+  </div>
+  <div class="result-wrap" id="result-wrap" style="display:none">
+    <div class="status">크롭 결과 — 클릭하면 크게 보기</div>
+    <img id="result-img" alt="크롭 결과" onclick="if(this.src) window.open(this.src)" title="클릭하면 크게 보기">
+  </div>
+  <div class="status" id="status">이미지 로딩 중...</div>
+
+  <script>
+(function(){
+  var img=null, sel={x:0,y:0,w:0,h:0}, ratio='free', dispScale=1, displayW=0, displayH=0, dragging=false, startX=0, startY=0;
+  var canvas=document.getElementById('crop-canvas'), overlay=document.getElementById('crop-overlay'), wrap=document.getElementById('crop-wrap');
+  var resultWrap=document.getElementById('result-wrap'), resultImg=document.getElementById('result-img'), statusEl=document.getElementById('status');
+  var croppedDataURL=null;
+
+  function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+  function applyRatio(w,h){
+    if(ratio==='1:1') h=w;
+    else if(ratio==='4:3') h=w*3/4;
+    else if(ratio==='3:4') w=h*3/4;
+    else if(ratio==='16:9') h=w*9/16;
+    else if(ratio==='9:16') w=h*9/16;
+    return{w:w,h:h};
+  }
+  function drawCanvas(){
+    if(!img) return;
+    var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+    var maxW=wrap.clientWidth||640, maxH=480;
+    dispScale=Math.min(maxW/iw,maxH/ih,1);
+    displayW=Math.round(iw*dispScale);
+    displayH=Math.round(ih*dispScale);
+    canvas.width=displayW; canvas.height=displayH;
+    canvas.style.width=displayW+'px'; canvas.style.height=displayH+'px';
+    overlay.width=displayW; overlay.height=displayH;
+    overlay.style.width=displayW+'px'; overlay.style.height=displayH+'px';
+    canvas.getContext('2d').drawImage(img,0,0,displayW,displayH);
+    if(!sel.w) sel={x:0,y:0,w:iw,h:ih};
+    drawOverlay();
+  }
+  function drawOverlay(){
+    if(!overlay||!displayW) return;
+    var ctx=overlay.getContext('2d');
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(0,0,overlay.width,overlay.height);
+    var sx=Math.round(sel.x*dispScale), sy=Math.round(sel.y*dispScale), sw=Math.max(1,Math.round(sel.w*dispScale)), sh=Math.max(1,Math.round(sel.h*dispScale));
+    ctx.clearRect(sx,sy,sw,sh);
+    ctx.strokeStyle='#4f8ef7';
+    ctx.lineWidth=2;
+    ctx.strokeRect(sx,sy,sw,sh);
+  }
+  function getPos(clientX,clientY){
+    var rect=overlay.getBoundingClientRect();
+    var scaleX=displayW/rect.width, scaleY=displayH/rect.height;
+    return{x:(clientX-rect.left)*scaleX/dispScale, y:(clientY-rect.top)*scaleY/dispScale};
+  }
+  overlay.onmousedown=function(e){
+    if(e.button!==0) return;
+    var p=getPos(e.clientX,e.clientY);
+    startX=p.x; startY=p.y;
+    dragging=true;
+    sel={x:startX,y:startY,w:0,h:0};
+  };
+  overlay.onmousemove=function(e){
+    if(!dragging||!img) return;
+    var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+    var p=getPos(e.clientX,e.clientY);
+    var x=Math.min(startX,p.x), y=Math.min(startY,p.y), w=Math.abs(p.x-startX), h=Math.abs(p.y-startY);
+    var c=applyRatio(w,h); w=c.w; h=c.h;
+    x=clamp(x,0,iw-w); y=clamp(y,0,ih-h);
+    w=clamp(w,0,iw-x); h=clamp(h,0,ih-y);
+    sel={x:x,y:y,w:w,h:h};
+    drawOverlay();
+  };
+  overlay.onmouseup=overlay.onmouseleave=function(){ dragging=false; };
+  document.querySelectorAll('.crop-ratio-btn').forEach(function(b){
+    b.onclick=function(){
+      document.querySelectorAll('.crop-ratio-btn').forEach(function(x){x.classList.remove('active');});
+      b.classList.add('active');
+      ratio=b.getAttribute('data-ratio')||'free';
+      if(!img) return;
+      var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+      if(ratio==='free') sel={x:0,y:0,w:iw,h:ih};
+      else{
+        var s=Math.min(iw,ih);
+        if(ratio==='1:1') sel={x:(iw-s)/2,y:(ih-s)/2,w:s,h:s};
+        else if(ratio==='16:9'){ var w=iw, h=w*9/16; if(h>ih){ h=ih; w=h*16/9; } sel={x:(iw-w)/2,y:(ih-h)/2,w:w,h:h}; }
+        else if(ratio==='9:16'){ var h=ih, w=h*9/16; if(w>iw){ w=iw; h=w*16/9; } sel={x:(iw-w)/2,y:(ih-h)/2,w:w,h:h}; }
+        else if(ratio==='4:3'){ var w=iw, h=w*3/4; if(h>ih){ h=ih; w=h*4/3; } sel={x:(iw-w)/2,y:(ih-h)/2,w:w,h:h}; }
+        else if(ratio==='3:4'){ var h=ih, w=h*3/4; if(w>iw){ w=iw; h=w*4/3; } sel={x:(iw-w)/2,y:(ih-h)/2,w:w,h:h}; }
+      }
+      drawOverlay();
+    };
+  });
+  function resetFull(){
+    if(!img) return;
+    var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+    sel={x:0,y:0,w:iw,h:ih};
+    drawOverlay();
+    statusEl.textContent='전체 선택으로 초기화됨';
+  }
+  function applyCrop(){
+    if(!img) return;
+    var x=sel.x, y=sel.y, w=sel.w, h=sel.h;
+    if(!w||!h||w<4||h<4){ x=0;y=0; w=img.naturalWidth||img.width; h=img.naturalHeight||img.height; }
+    var out=document.createElement('canvas');
+    out.width=Math.round(w); out.height=Math.round(h);
+    out.getContext('2d').drawImage(img,x,y,w,h,0,0,w,h);
+    croppedDataURL=out.toDataURL('image/png');
+    resultImg.src=croppedDataURL;
+    resultWrap.style.display='block';
+    statusEl.textContent='크롭 적용됨 — 다운로드 저장 또는 슬라이드에 삽입하세요';
+  }
+  function sendToMain(){
+    if(!croppedDataURL){ statusEl.textContent='먼저 크롭 적용을 누르세요'; return; }
+    try{
+      var o=window.opener;
+      if(o&&!o.closed){
+        o.postMessage({type:'imgViewerInsert',dataURL:croppedDataURL},'*');
+        statusEl.textContent='메인 앱으로 전송됨';
+      }else statusEl.textContent='메인 창을 찾을 수 없습니다';
+    }catch(e){ statusEl.textContent='전송 실패: '+e.message; }
+  }
+  function downloadResult(){
+    var dataURL=croppedDataURL;
+    if(!dataURL){ statusEl.textContent='먼저 크롭 적용을 누르세요'; return; }
+    try{
+      var arr=dataURL.split(',');
+      var mime=(arr[0].match(/:(.*?);/)||[])[1]||'image/png';
+      var bstr=atob(arr[1]);
+      var n=bstr.length, u8arr=new Uint8Array(n);
+      for(var i=0;i<n;i++) u8arr[i]=bstr.charCodeAt(i);
+      var blob=new Blob([u8arr],{type:mime});
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement('a');
+      a.href=url;
+      a.download='cropped_'+Date.now()+'.png';
+      a.click();
+      setTimeout(function(){URL.revokeObjectURL(url);},200);
+      statusEl.textContent='다운로드 저장됨';
+    }catch(e){
+      var a=document.createElement('a');
+      a.href=dataURL;
+      a.download='cropped_'+Date.now()+'.png';
+      a.click();
+      statusEl.textContent='다운로드 저장됨';
+    }
+  }
+  function init(dataURL){
+    if(!dataURL){ statusEl.textContent='이미지 데이터가 없습니다'; return; }
+    img=new Image();
+    img.onload=function(){
+      sel={x:0,y:0,w:img.naturalWidth||img.width,h:img.naturalHeight||img.height};
+      drawCanvas();
+      statusEl.textContent='드래그하여 영역 선택 후 크롭 적용';
+    };
+    img.onerror=function(){ statusEl.textContent='이미지 로드 실패'; };
+    img.src=dataURL;
+  }
+  window.initCropEditor=init;
+  window.addEventListener('message',function(e){
+    if(e.data&&e.data.type==='cropEditorSetImage'&&e.data.dataURL) init(e.data.dataURL);
+  });
+  if(window.opener&&!window.opener.closed) window.opener.postMessage({type:'cropEditorReady'},'*');
+})();
+  </script>
+</body>
+</html>
