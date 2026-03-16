@@ -451,6 +451,7 @@
     var target = document.getElementById('page-content');
     if (sel && target && sel.anchorNode && target.contains(sel.anchorNode)) {
       ta.value = sel.toString().trim();
+      try { sel.removeAllRanges(); } catch (e) {}
     } else if (!ta.value.trim() && (window.__contentType || '') === 'summary') {
       ta.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
     }
@@ -520,7 +521,7 @@
     if (resultEl) resultEl.value = '처리 중...';
     try {
       var fullPrompt = passage + '\n\n사용자 질문 또는 지시: ' + (userQ || '위 지문을 요약하거나 핵심을 설명해 주세요.');
-      var sys = (window.opener.getScholarAISystemInstruction && window.opener.getScholarAISystemInstruction()) || 'You are a scholarly assistant. Answer concisely in Korean based on the given passage.';
+      var sys = (window.opener.getScholarAISystemInstruction && window.opener.getScholarAISystemInstruction()) || 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage. 인용정보는 연구자의 연구의 인용정보, 연구자(연도)를 표시해주고 APA형식의 reference를 줘';
       var modelId = (window.opener.getScholarAIModelId && window.opener.getScholarAIModelId()) || null;
       var res = await window.opener.callGemini(fullPrompt, sys, false, modelId);
       var text = res && res.text ? res.text : (res || '');

@@ -334,7 +334,7 @@ function getImageAspectRatio() { return (typeof localStorage !== 'undefined' && 
 function getTextModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_TEXT_MODEL)) || 'gemini-2.5-pro'; }
 function getScholarAISystemInstruction() {
   const preset = (typeof localStorage !== 'undefined' && localStorage.getItem(LS_SCHOLARAI_PRESET)) || 'apa_search';
-  const defaultShort = 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage.';
+  const defaultShort = 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage. 인용정보는 연구자의 연구의 인용정보, 연구자(연도)를 표시해주고 APA형식의 reference를 줘';
   if (preset === 'none' || !preset) return defaultShort;
   const getOverride = typeof window.getPromptOverride === 'function' ? window.getPromptOverride : function () { return null; };
   const getDefaults = typeof window.getDefaultPrompts === 'function' ? window.getDefaultPrompts : function () { return {}; };

@@ -337,30 +337,7 @@
       value: 'Extract every reference from the following document in APA 7th edition format. Focus on the END of the document where reference sections typically appear under headings such as: Reference, References, 참고문헌, 참고, Bibliography, Works Cited, or similar. Include only entries that have at least: author(s) and publication year. For each reference return one object with keys: authors, year, title, journal, volume, issue, pages, doi. Return ONLY a JSON array of such objects, nothing else.\n\nDocument text:\n{{TEXT}}'
     };
 
-    var scholarAIPresetText = [
-      'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage.',
-      '',
-      'Citation and references:',
-      '- When you use or refer to content from the literature, cite researchers in the body as (Author, Year) to support your claims.',
-      '- For each cited work, provide a full reference entry. Format all references strictly in APA 7th edition.',
-      '- At the end of your response, list every cited source in a References section. Format all references strictly in APA 7th edition.',
-      '',
-      'Task (when searching for literature):',
-      'Search for real, peer-reviewed journal articles on the following topic: [여기에 주제 입력]',
-      '',
-      'Search conditions:',
-      '- Publication years: [연도 범위 입력]',
-      '- Only include verifiable, existing journal articles. Do NOT fabricate citations.',
-      '- If bibliographic information is uncertain, explicitly state uncertainty.',
-      '',
-      'Output requirements:',
-      '1. Format all references strictly in APA 7th edition.',
-      '2. Include DOI when available.',
-      '3. Indicate journal indexing status (SSCI/SCIE/ESCI/Scopus if known).',
-      '4. Separate domestic (Korean) and international studies if applicable.',
-      '5. For each article, provide 2–3 sentences summarizing: Research purpose; Methodology (e.g., SEM, multilevel modeling, regression, meta-analysis); Key findings.',
-      '6. Focus on recent theoretical frameworks when relevant.'
-    ].join('\n');
+    var scholarAIPresetText = 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage. 인용정보는 연구자의 연구의 인용정보, 연구자(연도)를 표시해주고 APA형식의 reference를 줘';
     out.scholarai_prompt = {
       category: 'other',
       label: 'ScholarAI 사전 프롬프트',
