@@ -362,7 +362,7 @@
   <div class="modal-box modal-wide img-modal-box" onclick="event.stopPropagation()" style="max-width:760px;max-height:90vh;display:flex;flex-direction:column">
     <div class="modal-header" style="display:flex;align-items:center;gap:8px">
       <button class="btn btn-ghost btn-xs" id="img-modal-sidebar-btn" onclick="event.stopPropagation();toggleImgModalSidebar()" title="우측에 고정하여 배경을 보면서 편집">→ 우측 사이드바로</button>
-      <div class="modal-title" style="flex:1;text-align:center">🖼 이미지 업로드 &amp; 편집</div>
+      <div class="modal-title" style="flex:1;text-align:center">🖼 SSP 이미지 생성기</div>
       <button class="modal-close" onclick="closeModal('img-modal')">&#x2715;</button>
     </div>
     <div class="modal-body" style="overflow-y:auto;flex:1">
@@ -445,6 +445,16 @@
         </div>
         <label class="design-label" style="font-size:10px;margin-bottom:2px">프롬프트 (비우면 시드 이미지 기반 변형)</label>
         <textarea id="img-ai-prompt" class="control" rows="2" placeholder="예: 이 이미지를 학술적 다이어그램 스타일로&#10;예: Make this a professional infographic with blue tones"></textarea>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer">
+            <input type="checkbox" id="img-ai-mode-academic" checked onchange="if(this.checked) document.getElementById('img-ai-mode-simple').checked=false">
+            학술적 이미지 생성
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);cursor:pointer">
+            <input type="checkbox" id="img-ai-mode-simple" onchange="if(this.checked) document.getElementById('img-ai-mode-academic').checked=false">
+            단순 이미지 생성 <span style="font-size:9px;color:var(--text3)">(텍스트 없음)</span>
+          </label>
+        </div>
         <button class="btn btn-secondary btn-sm" onclick="aiEditImage()" id="img-ai-gen-btn" style="align-self:flex-start">🎨 AI 재생성</button>
         <div id="img-ai-status" style="font-size:10px;color:var(--text3)"></div>
       </div>

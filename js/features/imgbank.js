@@ -43,7 +43,7 @@
         + '</div></div>'
         + '<div class="imgbank-sidebar-preview-area" id="imgbank-preview-wrap">'
         + '<div class="imgbank-sidebar-preview-inner" id="imgbank-preview-inner">'
-        + '<img id="imgbank-preview-img" alt="" style="display:none;cursor:pointer;pointer-events:auto;max-width:100%;max-height:100%;object-fit:contain" title="클릭 시 크게 보기"/>'
+        + '<img id="imgbank-preview-img" alt="" style="display:none;cursor:pointer;pointer-events:auto;max-width:100%;max-height:100%;object-fit:contain" title="클릭하면 크게 보기"/>'
         + '</div>'
         + '<p id="imgbank-preview-placeholder" class="imgbank-sidebar-placeholder">왼쪽에서 이미지를 선택하세요</p>'
         + '</div>'
@@ -127,10 +127,9 @@
       var item = list.find(function (x) { return x.id === id; });
       window._imgBankSelect(item || null);
     };
-    /** 썸네일 클릭 시 선택 후 크게 보기(라이트박스) 열기 — 사이드바 갤러리용 */
+    /** 썸네일 클릭 시 프리뷰 영역에만 표시 (크게 보기는 프리뷰에서 클릭 시) */
     window._imgBankSelectAndOpenLightbox = function (id) {
       window._imgBankSelectById(id);
-      if (_imgBankSelected && _imgBankSelected.dataURL) window._imgBankOpenInAppZoom();
     };
 
     window._imgBankSelect = function (item) {
@@ -278,8 +277,9 @@
         grid.innerHTML = list.map(function (item) {
           var thumb = item.dataURL ? '<img src="' + esc(item.dataURL) + '" alt="" class="imgbank-thumb-img"/>' : '<div class="imgbank-thumb-empty">🖼</div>';
           var label = isSidebarLayout ? '' : '<span class="imgbank-thumb-label">' + esc(item.name || '#' + item.id) + '</span>';
-          var onClick = isSidebarLayout ? 'window._imgBankSelectAndOpenLightbox(' + item.id + ')' : 'window._imgBankSelectById(' + item.id + ')';
-          return '<div class="imgbank-grid-item' + (isSidebarLayout ? ' imgbank-sidebar-thumb' : '') + '" data-id="' + esc(item.id) + '" onclick="' + onClick + '" title="클릭하면 크게 보기">' + thumb + label + '</div>';
+          var onClick = isSidebarLayout ? 'window._imgBankSelectById(' + item.id + ')' : 'window._imgBankSelectById(' + item.id + ')';
+          var titleText = isSidebarLayout ? '클릭하면 아래 프리뷰에 표시' : '클릭하면 프리뷰에 표시';
+          return '<div class="imgbank-grid-item' + (isSidebarLayout ? ' imgbank-sidebar-thumb' : '') + '" data-id="' + esc(item.id) + '" onclick="' + onClick + '" title="' + titleText + '">' + thumb + label + '</div>';
         }).join('');
         window._imgBankList = list;
       }).catch(function () {

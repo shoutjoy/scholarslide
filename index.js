@@ -131,10 +131,13 @@ async function generateImage(prompt, options = {}) {
   const signal = _abortController.signal;
   const modelId = modelOverride || (typeof getImageModelId === 'function' ? getImageModelId() : 'gemini-3.1-flash-image-preview');
   const hasSeed = seedImage && typeof seedImage === 'string' && seedImage.startsWith('data:image');
+  const noText = options.noText === true;
+  const noTextHint = noText ? ' CRITICAL: Do not include any text, letters, words, numbers, or written content in the image. Generate only visual elements without any typography.' : '';
   const faceHint = hasSeed ? ' When the image contains a face, preserve and reference facial features in the output.' : '';
-  const textPrompt = hasSeed
+  let textPrompt = hasSeed
     ? (prompt ? `${prompt}.${faceHint}` : `Use this image as reference. Generate a professional variation while preserving the main subject and composition.${faceHint}`)
-    : `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones. Aspect ratio: ${aspectRatio}.`;
+    : (noText ? `Create a simple visual image without any text: ${prompt}. No letters, words, numbers, or written content. Clean minimal style. Aspect ratio: ${aspectRatio}.` : `Create a professional academic diagram for a presentation slide: ${prompt}. Clean minimal style, blue-grey tones. Aspect ratio: ${aspectRatio}.`);
+  if (noText) textPrompt += noTextHint;
   const seedMime = seedImage && seedImage.match(/data:image\/(\w+);/)?.[1];
   const seedBase64 = seedImage && seedImage.split(',')[1];
   const parts = hasSeed
@@ -147,10 +150,11 @@ async function generateImage(prompt, options = {}) {
   const isImagen = /^imagen-4\.0-(generate|ultra-generate|fast-generate)-001$/.test(modelId);
   const effectiveModelId = (hasSeed && isImagen) ? 'gemini-3.1-flash-image-preview' : modelId;
   if (isImagen && !hasSeed) {
+    const imagenPrompt = noText ? `Simple visual image without text, no letters or numbers, ${aspectRatio}, white background: ${prompt}` : `Professional academic diagram, clean minimal style, blue-grey tones, ${aspectRatio}, white background: ${prompt}`;
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelId}:predict?key=${key}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, ${aspectRatio}, white background: ${prompt}` }], parameters: { sampleCount: 1 } }),
+        body: JSON.stringify({ instances: [{ prompt: imagenPrompt }], parameters: { sampleCount: 1 } }),
         signal: signal
       });
       const data = res.ok ? await res.json() : null;
@@ -212,10 +216,11 @@ async function generateImage(prompt, options = {}) {
   const imagenFallbacks = hasSeed ? [] : ['imagen-4.0-generate-001', 'imagen-4.0-fast-generate-001', 'imagen-4.0-ultra-generate-001'];
   for (const fb of imagenFallbacks) {
     if (fb === modelId) continue;
+    const fallbackImagenPrompt = noText ? `Simple visual image without text, no letters or numbers, ${aspectRatio}, white background: ${prompt}` : `Professional academic diagram, clean minimal style, blue-grey tones, ${aspectRatio}, white background: ${prompt}`;
     try {
       const res3 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${fb}:predict?key=${key}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instances: [{ prompt: `Professional academic diagram, clean minimal style, blue-grey tones, ${aspectRatio}, white background: ${prompt}` }], parameters: { sampleCount: 1 } }),
+        body: JSON.stringify({ instances: [{ prompt: fallbackImagenPrompt }], parameters: { sampleCount: 1 } }),
         signal: signal
       });
       if (res3.ok) { const data3 = await res3.json(); if (data3.predictions?.[0]?.bytesBase64Encoded) return `data:image/png;base64,${data3.predictions[0].bytesBase64Encoded}`; }
@@ -2489,6 +2494,53 @@ function updateImgModalSidebarButton() {
   btn.title = isSidebar ? '중앙 모달로 돌아가기' : '우측에 고정하여 배경을 보면서 편집';
 }
 
+/** SSP 이미지 생성기 사이드바 모드에서 슬라이드 이미지 클릭 시 해당 이미지를 편집 영역에 로드 */
+function loadSlideImageIntoSSPModal(slideIdx, slotIndex) {
+  const modal = document.getElementById('img-modal');
+  if (!modal || !modal.classList.contains('open') || !modal.classList.contains('img-modal-sidebar')) return;
+  const slide = slides[slideIdx];
+  if (!slide) return;
+  const imgs = getSlideImages(slide);
+  const si = typeof slotIndex === 'number' ? slotIndex : (parseInt(String(slotIndex || '1'), 10) - 1);
+  const imgObj = imgs[si];
+  if (!imgObj || !imgObj.url) return;
+  _targetSlideForImage = slideIdx;
+  window._applyAsImageSlot = si;
+  window._applyAsSecondImage = si > 0;
+  const dataURL = imgObj.url;
+  const row = document.getElementById('img-upload-paste-row');
+  const dropZone = document.getElementById('img-drop-zone');
+  const cropArea = document.getElementById('crop-area');
+  if (row) row.style.display = 'none';
+  if (dropZone) dropZone.style.display = 'none';
+  if (cropArea) cropArea.style.display = 'block';
+  const img = new Image();
+  img.onload = function () {
+    _currentCropImg = img;
+    _origImageDataURL = dataURL;
+    _finalCroppedDataURL = dataURL;
+    _initialUploadDataURL = dataURL;
+    _cropSelection = { x: 0, y: 0, w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+    _cropEventsAttached = false;
+    const origPrev = document.getElementById('orig-preview-img');
+    const curPrev = document.getElementById('crop-result-img');
+    const wrap = document.getElementById('crop-result-wrap');
+    if (origPrev) origPrev.src = dataURL;
+    if (curPrev) curPrev.src = dataURL;
+    if (wrap) wrap.style.display = 'block';
+    _cropRatio = 'free';
+    document.querySelectorAll('.crop-ratio-btn').forEach(function (b) { b.classList.remove('active'); });
+    const freeBtn = document.querySelector('.crop-ratio-btn');
+    if (freeBtn) freeBtn.classList.add('active');
+    if (typeof drawCropCanvas === 'function') drawCropCanvas();
+    if (typeof setupCropEvents === 'function') setTimeout(setupCropEvents, 50);
+    const promptEl = document.getElementById('img-ai-prompt');
+    if (promptEl && slide.visPrompt) promptEl.value = slide.visPrompt;
+    if (typeof showToast === 'function') showToast('✓ 선택한 이미지를 편집할 수 있습니다');
+  };
+  img.src = dataURL;
+}
+
 // ── Open image modal ─────────────────────────────────────
 function openImageModal(slideIdx, options) {
   const opts = options || {};
@@ -3752,7 +3804,7 @@ function updateDesignPanel(subtab) {
       <div style="display:flex;gap:6px;margin-top:8px">
         <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="openImageModal(${activeSlideIndex},{prefillPrompt:true})" title="공통 도구를 열고 현재 프롬프트를 채웁니다">🎨 AI 이미지 생성</button>
         <button class="btn btn-ghost btn-sm" onclick="openImageModal(${activeSlideIndex},{prefillPrompt:true})" title="같은 도구로 열기">↗</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="openImageModal(${activeSlideIndex})">📁 이미지 업로드</button>
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" onclick="openImageModal(${activeSlideIndex})">🖼 SSP 이미지 생성기</button>
       </div>
       <div id="ai-img-inline-result" style="display:none;margin-top:10px"></div>
     </div>
@@ -4284,6 +4336,13 @@ function applyYoutubeResizedStyles() {
             };
           }
         }
+      }
+    } else if (_move.isSlideImg && typeof loadSlideImageIntoSSPModal === 'function') {
+      var sw = _move.wrap.closest('.slide-wrapper');
+      var idx = sw && sw.id && sw.id.indexOf('sw-') === 0 ? parseInt(sw.id.slice(3), 10) : parseInt(_move.wrap.getAttribute('data-slide-index'), 10);
+      if (idx >= 0 && typeof slides !== 'undefined' && slides[idx]) {
+        var slotNum = parseInt(_move.slot || '1', 10);
+        loadSlideImageIntoSSPModal(idx, slotNum - 1);
       }
     }
     _move.wrap = null;
@@ -5398,7 +5457,7 @@ async function aiEditImage() {
   const aspectRatio = (typeof getImageAspectRatio === 'function' ? getImageAspectRatio() : '1:1');
 
   if (statusEl) {
-    statusEl.innerHTML = '<div class="img-ai-progress-wrap" style="display:flex;flex-direction:column;gap:4px"><div style="font-size:10px;color:var(--text3)">AI 이미지 생성 중</div><div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div id="img-ai-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s ease"></div></div><span id="img-ai-progress-pct" style="font-size:10px;color:var(--text2)">0%</span></div>';
+    statusEl.innerHTML = '<div class="img-ai-progress-wrap" style="display:flex;flex-direction:column;gap:4px"><div style="font-size:10px;color:var(--text3)">AI 이미지 생성 중</div><div style="height:8px;background:var(--surface2);border-radius:4px;overflow:hidden"><div id="img-ai-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s ease"></div></div><span id="img-ai-progress-pct" style="font-size:10px;color:var(--text2)">0%</span><button class="btn btn-warn btn-sm" onclick="abortCurrentTask()" style="margin-top:6px;align-self:flex-start">⏹ 생성 중지</button></div>';
   }
   if (genBtn) genBtn.disabled = true;
 
@@ -5413,12 +5472,15 @@ async function aiEditImage() {
   };
   const iv = setInterval(tickProgress, 400);
 
+  const simpleMode = document.getElementById('img-ai-mode-simple')?.checked === true;
   let dataURL = null;
   try {
-    dataURL = await generateImage(prompt || '', { seedImage: hasSeed ? seedImage : null, modelId: modelId, aspectRatio: aspectRatio });
+    dataURL = await generateImage(prompt || '', { seedImage: hasSeed ? seedImage : null, modelId: modelId, aspectRatio: aspectRatio, noText: simpleMode });
   } catch (e) {
     clearInterval(iv);
-    if (e && e.message === 'NO_API_KEY') {
+    if (e && (e.name === 'AbortError' || e.message === 'Aborted')) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--warning)">⏹ 생성 중지됨</span>';
+    } else if (e && e.message === 'NO_API_KEY') {
       if (statusEl) statusEl.innerHTML = '<span style="color:var(--danger)">❌ API 키를 설정해주세요 (설정 또는 상단 🔑)</span>';
       if (typeof showToast === 'function') showToast('⚠️ API 키를 설정해주세요');
     } else {
@@ -5663,7 +5725,26 @@ function stopResize() {
    V3.1 — INIT ADDITIONS
    ========================================================= */
 // V4.1.1 BOOTSTRAP (DOM ready)
+/** 이미지 모달 열림 + 프롬프트 빈 상태에서 텍스트 선택 시 프롬프트에 자동 입력 */
+let _imgPromptSyncDebounce = null;
+function syncSelectionToImgPrompt() {
+  clearTimeout(_imgPromptSyncDebounce);
+  _imgPromptSyncDebounce = setTimeout(function () {
+    const modal = document.getElementById('img-modal');
+    const promptEl = document.getElementById('img-ai-prompt');
+    if (!modal || !promptEl || !modal.classList.contains('open')) return;
+    if (promptEl.value.trim() !== '') return;
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || !sel.toString().trim()) return;
+    const txt = sel.toString().trim();
+    const imgModal = document.getElementById('img-modal');
+    if (imgModal && sel.anchorNode && imgModal.contains(sel.anchorNode)) return;
+    promptEl.value = txt;
+    if (typeof showToast === 'function') showToast('✓ 선택한 텍스트가 프롬프트에 적용됨');
+  }, 120);
+}
 document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('selectionchange', syncSelectionToImgPrompt);
   try { loadAiImgHistory(); } catch (e) { console.warn(e); }
   try { initApiKey(); } catch (e) { console.warn(e); }
   try { renderLeftPanel(); } catch (e) { console.warn(e); }
