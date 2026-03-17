@@ -41,6 +41,77 @@
     var btn = document.getElementById('theme-btn');
     if (btn) btn.textContent = b.classList.contains('theme-dark') ? 'Dark/Light' : 'Light/Dark';
   }
+  function tidyBrokenLines(text) {
+    if (!text || typeof text !== 'string') return text;
+    var lines = text.split('\n');
+    var result = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var next = lines[i + 1];
+      while (next != null && next.trim() !== '' &&
+          !/^#+\s/.test(next) && !/^[-*]\s/.test(next) && !/^\d+\.\s/.test(next.trim()) && !/^>\s/.test(next.trim())) {
+        var trimmed = line.trimRight();
+        var endsHyphen = /-\s*$/.test(trimmed);
+        var endsSentence = /[.!?:]\s*$/.test(trimmed);
+        if (endsHyphen) {
+          line = trimmed.replace(/\s*-\s*$/, '') + next.trim();
+        } else if (!endsSentence && trimmed.length > 0) {
+          line = trimmed + ' ' + next.trim();
+        } else break;
+        i++;
+        next = lines[i + 1];
+      }
+      result.push(line);
+      i++;
+    }
+    return result.join('\n');
+  }
+  function applyTidy() {
+    var ta = document.getElementById('viewer-edit-ta');
+    var vp = document.getElementById('content-viewport');
+    var pc = document.getElementById('page-content');
+    var isEdit = vp && vp.classList.contains('viewer-edit-active');
+    var fullText = (isEdit && ta) ? ta.value : (window.__rawText || '');
+    var selText = '';
+    var start = 0, end = fullText.length;
+    if (isEdit && ta) {
+      start = ta.selectionStart;
+      end = ta.selectionEnd;
+      if (start !== end) selText = fullText.substring(start, end);
+    } else if (pc) {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && sel.rangeCount > 0 && pc.contains(sel.anchorNode)) {
+        selText = sel.toString().trim();
+        if (selText) {
+          var idx = fullText.indexOf(selText);
+          var matchLen = selText.length;
+          if (idx < 0) {
+            var norm = selText.replace(/\n+/g, '\n');
+            idx = fullText.indexOf(norm);
+            if (idx >= 0) matchLen = norm.length;
+          }
+          if (idx >= 0) { start = idx; end = idx + matchLen; } else { start = 0; end = fullText.length; selText = ''; }
+        }
+      }
+    }
+    var text = selText || fullText;
+    var tidied = tidyBrokenLines(text);
+    if (tidied === text) {
+      alert(selText ? '선택 영역에 연결할 끊긴 줄이 없습니다.' : '연결할 끊긴 줄이 없습니다.');
+      return;
+    }
+    var result = fullText.substring(0, start) + tidied + fullText.substring(end);
+    window.__rawText = result;
+    if (isEdit && ta) {
+      ta.value = result;
+      ta.setSelectionRange(start, start + tidied.length);
+    } else {
+      viewerSwitchToView();
+    }
+    try { localStorage.setItem('ss_viewer_page_' + (window.__contentType || 'raw'), result); } catch (e) {}
+    alert(selText ? '선택 영역의 끊긴 줄을 연결했습니다.' : '끊긴 줄을 연결했습니다.');
+  }
   var _viewerMaximized = false;
   var _viewerRestoreRect = { x: 100, y: 100, w: 900, h: 700 };
   function toggleViewerFullscreen() {
@@ -550,6 +621,64 @@
     __scholarAIResultFontSize = Math.max(10, Math.min(24, __scholarAIResultFontSize + delta));
     el.style.fontSize = __scholarAIResultFontSize + 'px';
   }
+  function scholarAIResultZoomOpen() {
+    var resultEl = document.getElementById('scholar-ai-result');
+    var overlay = document.getElementById('scholar-ai-result-zoom-overlay');
+    var zoomTa = document.getElementById('scholar-ai-result-zoom-ta');
+    if (!resultEl || !overlay || !zoomTa) return;
+    zoomTa.value = resultEl.value || '';
+    overlay.classList.add('open');
+    zoomTa.focus();
+    function onEsc(e) {
+      if (e.key === 'Escape') {
+        scholarAIResultZoomClose();
+        document.removeEventListener('keydown', onEsc);
+      }
+    }
+    document.addEventListener('keydown', onEsc);
+    overlay._zoomEsc = onEsc;
+  }
+  function scholarAIResultZoomClose() {
+    var overlay = document.getElementById('scholar-ai-result-zoom-overlay');
+    if (overlay && overlay._zoomEsc) {
+      document.removeEventListener('keydown', overlay._zoomEsc);
+      overlay._zoomEsc = null;
+    }
+    var resultEl = document.getElementById('scholar-ai-result');
+    var zoomTa = document.getElementById('scholar-ai-result-zoom-ta');
+    if (resultEl && zoomTa) resultEl.value = zoomTa.value;
+    if (overlay) overlay.classList.remove('open');
+  }
+  function scholarAIResultWrapInitResize() {
+    var handle = document.getElementById('scholar-ai-result-resize-handle');
+    var wrap = document.getElementById('scholar-ai-result-wrap');
+    if (!handle || !wrap) return;
+    var minH = 160;
+    var maxH = 600;
+    var startY = 0;
+    var startH = 0;
+    function onMove(e) {
+      var dy = e.clientY - startY;
+      var h = Math.max(minH, Math.min(maxH, startH + dy));
+      wrap.style.height = h + 'px';
+      wrap.style.minHeight = h + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    handle.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      startY = e.clientY;
+      startH = wrap.offsetHeight;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
+  }
   function handleScholarAIInsertClick() {
     var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
     if (!isEdit) { alert('편집창으로 전환합니다'); viewerSwitchToEdit(); return; }
@@ -965,6 +1094,7 @@
   window.setPageZoom = setPageZoom;
   window.setFontZoom = setFontZoom;
   window.toggleTheme = toggleTheme;
+  window.applyTidy = applyTidy;
   window.toggleViewerFullscreen = toggleViewerFullscreen;
   window.viewerScrollToId = viewerScrollToId;
   window.saveAs = saveAs;
@@ -992,6 +1122,8 @@
   window.scholarAICopyResult = scholarAICopyResult;
   window.scholarAIClearResult = scholarAIClearResult;
   window.scholarAIResultFont = scholarAIResultFont;
+  window.scholarAIResultZoomOpen = scholarAIResultZoomOpen;
+  window.scholarAIResultZoomClose = scholarAIResultZoomClose;
   window.handleScholarAIInsertClick = handleScholarAIInsertClick;
   window.toggleScholarAIInsertMenu = toggleScholarAIInsertMenu;
   window.closeScholarAIInsertMenu = closeScholarAIInsertMenu;
@@ -1055,6 +1187,7 @@
     } catch (e) {}
     viewerBuildNav();
     viewerSidebarInitResize();
+    scholarAIResultWrapInitResize();
     scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';

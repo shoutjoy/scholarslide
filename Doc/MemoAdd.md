@@ -945,8 +945,30 @@ exportPPT() 실행 시 window.pptxPreviewOverrides 가 있으면:
 이제 헤더에서 「📄 PPTX 미리보기」 로 새 창을 띄운 뒤, 설정을 바꿔가며 확인하고 「⬇ PPTX 내보내기」 로 같은 설정으로 내보내면 됩니다.
 
 
+# 문서내 상비후 커서가 마지막줄로 이동하는 경우 
+변경 사항
+원인
+텍스트를 넣은 뒤 ta.value = newVal만 하고 있어서, 브라우저가 텍스트 영역 끝으로 포커스/스크롤을 보내 페이지 맨 아래로 내려가던 상태였습니다.
 
+수정 내용
+js/ui/viewers.js (뷰어 창용)
 
+삽입이 끝난 위치 insertEnd를 계산합니다.
+모드 1(한 줄 아래 삽입): start + (end - start) + 2 + resultText.length
+모드 2(선택 내용 대체): start + resultText.length
+삽입 후 **scrollToPageInTextarea(insertEnd)**를 호출해:
+해당 오프셋에 커서를 두고
+텍스트 영역 스크롤을 그 줄이 보이도록 조정합니다.
+scrollToPageInTextarea가 없을 때를 대비해, 같은 동작(포커스 + setSelectionRange + scrollTop 계산)을 하는 폴백 코드를 넣었습니다.
+index.js (메인 창에 포함된 뷰어 스크립트)
+
+이미 insertEnd와 setSelectionRange만 설정하고 있어서 스크롤이 없었습니다.
+여기에도 scrollToPageInTextarea(insertEnd) 호출을 추가하고, 없을 때는 위와 같은 스크롤·커서 로직을 쓰도록 했습니다.
+이제 문서내 삽입을 하면:
+
+삽입된 텍스트 바로 뒤에 커서가 위치하고,
+텍스트 영역이 그 위치가 보이도록 스크롤되며,
+페이지 맨 아래로 자동 이동하는 현상은 나오지 않습니다.
 
 
 
@@ -1179,3 +1201,99 @@ style.css
 -96
 /* ── AI IMAGE HISTORY GRID ── */.ai-hist-grid {  display: flex;  flex-direction: column;  gap: 10px;
 /* ── AI IMAGE HISTORY GRID ── */.ai-hist-grid {  display: flex;  flex-direction: column;  gap: 10px;}.ai-hist-card {  background: var(--surface2);  border: 1px solid var(--border2);  border-radius: var(--radius);  overflow: visible;  transition: border-color 0.15s;}.ai-hist-card:hover { border-color: var(--accent); }.ai-hist-thumb-wrap {  position: relative;  cursor: pointer;  background: var(--surface2);  display: flex;  align-items: center;  justify-content: center;  border-radius: var(--radius) var(--radius) 0 0;  overflow: hidden;}/* 이미지 이력 썸네일: 검은색 영역 제거 */#ai-img-history-list-inner .ai-hist-thumb-wrap {  background: transparent;}#ai-img-history-list-inner .ai-hist-thumb-wrap img.ai-hist-thumb {  background: transparent;  vertical-align: middle;}.ai-hist-thumb {  width: 100%;  height: auto;  max-width: 100%;  display: block;  transition: transform 0.2s;  border-radius: var(--radius) var(--radius) 0 0;}.ai-hist-thumb-wrap:hover .ai-hist-thumb { transform: scale(1.03); }.ai-hist-thumb-empty {  display: flex;  flex-direction: column;  align-items: center;  justify-content: center;  font-size: 22px;  color: var(--text3);  gap: 4px;  width: 100%;  height: 100%;}.ai-hist-thumb-empty span { font-size: 10px; }.ai-hist-overlay {  position: absolute;  inset: 0;  background: transparent;  display: flex;  align-items: center;  justify-content: center;  font-size: 12px;  color: #fff;  opacity: 0;  transition: opacity 0.15s, background 0.15s;  pointer-events: none;}.ai-hist-thumb-wrap:hover .ai-hist-overlay {  opacity: 1;  background: rgba(0,0,0,0.4);  pointer-events: auto;}.ai-hist-info {  padding: 8px 10px 4px;}.ai-hist-prompt {  font-size: 10px;  color: var(--text2);  line-height: 1.4;  display: -webkit-box;  -webkit-line-clamp: 2;  -webkit-box-orient: vertical;  overflow: hidden;}.ai-hist-meta {  font-size: 9px;  color: var(--text3);  font-family: var(--font-mono);  margin-top: 3px;}.ai-hist-actions {  display: flex;  gap: 4px;  padding: 6px 8px 8px;  align-items: center;}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+수정 사항
+1. Unexpected token ')' / document.write SyntaxError
+문서 내용에 </script>가 포함되면 스크립트가 중간에 끊겨 구문 오류가 발생합니다. rawTextJson에 </script>가 들어가면 <\/script>로 치환하도록 했습니다.
+
+index.js: getTextViewerWindowHtml에서 rawTextJson 처리 시 </script> 이스케이프
+js/ui/viewers.js: 동일한 이스케이프 처리 추가
+2. toggleViewerSSP, toggleScholarAI, viewerSwitchToEdit is not defined
+viewers.js가 먼저 로드되어 구버전 getTextViewerWindowHtml을 쓰고 있었습니다. index.js에는 ScholarAI, sspAI, 편집 기능이 포함된 최신 버전이 있습니다.
+
+viewers.js: openSummaryWindow, openFullTextWindow, openKoreanViewWindow에서 window.getTextViewerWindowHtml이 있으면 그 함수를 사용하도록 변경
+viewers.js: window.getTextViewerWindowHtml이 이미 정의되어 있으면 덮어쓰지 않도록 변경
+이제 새창보기에서 ScholarAI, sspAI, 편집 버튼이 정상 동작해야 합니다.
+
+
+getTranslationViewerWindowHtml에서 rawTextJson 사용 여부 확인 중.
+
+수정을 반영했습니다. 원인과 변경 사항을 정리하면 다음과 같습니다.
+
+원인
+rawTextJson 직접 삽입
+var __rawText = + rawTextJson + ; 형태로 스크립트에 넣으면, 원문에 포함된 문자가 스크립트 구문을 깨뜨립니다.
+
+문제가 되는 문자
+
+</script> → HTML 파서가 스크립트를 조기 종료
+\u2028, \u2029 → 줄바꿈으로 인식되어 구문 오류
+"); → 문자열 리터럴 종료로 인식
+" + \ → 이스케이프 처리 오류
+결과
+
+Unexpected token ')'와 같은 구문 오류
+toggleViewerSSP, toggleScholarAI, viewerSwitchToEdit 등이 정의되지 않아 undefined 오류 발생
+수정 내용
+type="application/json" 데이터 블록으로 전달하도록 변경합니다.
+
+index.js
+
+<head>에 <script type="application/json" id="viewer-raw-data">로 JSON 문자열을 넣음
+__rawText는 document.getElementById("viewer-raw-data")로 읽어서 JSON.parse로 파싱
+js/ui/viewers.js
+
+동일한 방식으로 rawTextJson을 스크립트에 직접 삽입하지 않고, JSON 데이터 블록을 사용하도록 수정
+</script> 이스케이프
+
+</script> → <\/script>
+\u2028, \u2029 → \\u2028, \\u2029
+이제 원문에 특수 문자가 있어도 스크립트가 깨지지 않고, 뷰어 버튼(편집, ScholarAI, sspAI)이 정상 동작합니다.
+
+수정 사항
+1. content-viewport 닫는 </div> 추가
+viewer-edit-wrap 다음에 content-viewport를 닫는 </div>가 없어 scholar-ai-sidebar와 ssp-ai-sidebar가 content-viewport 안에 잘못 들어가 있었습니다. 닫는 태그를 추가해 레이아웃 구조를 맞췄습니다.
+
+2. window.getTextViewerWindowHtml 명시적 설정
+index.js에서 window.getTextViewerWindowHtml = getTextViewerWindowHtml;를 추가해, viewers.js의 openTranslationViewer, openKoreanViewWindow 등이 항상 index.js의 뷰어 HTML(편집, ScholarAI, sspAI 포함)을 사용하도록 했습니다.
+
+3. 이전 수정 사항
+rawTextJson을 type="application/json" 데이터 블록으로 전달해 스크립트 구문 오류 방지
+문자표 기능 제거로 유니코드 관련 오류 제거
+이제 새창(요약/원문 새창보기)에서 편집, ScholarAI, sspAI 버튼이 정상 동작해야 합니다. 한 번 확인해 보세요.
+
+
+정 반영했습니다. 외부 발표에서도 편집기에서 배치한 위치·크기대로 이미지가 나오도록 바꿨습니다.
+
+변경 사항 요약 (js/ui/zoom-pres.js)
+
+이미지 배치 정보 전달
+
+각 슬라이드마다 imageItems 배열을 넘기도록 했습니다.
+항목 하나는 { url, pos } 형태이고, pos에는 편집기의 slideImage 기준으로 left, top, right, centerY, w, h를 넣습니다.
+편집에서 위치/크기를 안 정한 이미지는 getDefaultImageSlotPos와 동일한 기본값을 씁니다.
+(첫 번째: 우측 세로 중앙 280×280, 그 다음: 좌상단부터 20+40*i px 간격, 200×150)
+외부 발표에서 절대 위치로 렌더
+
+imageItems가 있으면 편집기와 같은 픽셀 좌표로 이미지 레이어를 그립니다.
+이미지 레이어: position:absolute; inset:0; z-index:1
+각 이미지: position:absolute + left/top 또는 right/top, centerY일 때는 top:50%; transform:translateY(-50%), width/height 적용.
+텍스트/제목/불릿이 가려지지 않도록 콘텐츠 영역에 z-index:2를 두어 이미지 레이어보다 앞에 오게 했습니다.
+호환
+
+imageItems가 없는 예전 데이터나 단일 이미지만 있는 경우에는, 기존처럼 imageUrls(flex 나열) 또는 imageUrl(한 장) 방식으로 그대로 표시됩니다.
+이제 외부 발표 창에서도 편집 화면에서 옮기고 리사이즈한 배치 그대로 여러 이미지가 보입니다. 한 번 발표 모드로 확인해 보시면 됩니다.

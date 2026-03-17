@@ -537,6 +537,22 @@ function getTextViewerWindowHtml(opts) {
 + '#scholar-ai-pre-prompt-text, .scholar-ai-pre-prompt-ta { color: #fff; }'
 + 'body.theme-light #scholar-ai-pre-prompt-panel .scholar-ai-pre-prompt-ta, body.theme-light #scholar-ai-pre-prompt-panel textarea, body.theme-light #scholar-ai-model-panel select { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }'
 + 'body.theme-light #scholar-ai-pre-prompt-text { color: #1e293b; }'
++ '.scholar-ai-result-wrap { display: flex; flex-direction: column; flex: 1; min-height: 200px; max-height: 600px; position: relative; }'
++ '.scholar-ai-result-wrap .scholar-ai-result { flex: 1; min-height: 120px; }'
++ '.scholar-ai-result-resize-handle { height: 6px; cursor: row-resize; background: rgba(79,142,247,0.12); flex-shrink: 0; border-radius: 0 0 4px 4px; }'
++ '.scholar-ai-result-resize-handle:hover { background: rgba(79,142,247,0.35); }'
++ 'body.theme-light .scholar-ai-result-resize-handle { background: rgba(79,142,247,0.15); }'
++ 'body.theme-light .scholar-ai-result-resize-handle:hover { background: rgba(79,142,247,0.3); }'
++ '.scholar-ai-result-zoom-overlay { position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; padding: 20px; }'
++ '.scholar-ai-result-zoom-overlay.open { display: flex; }'
++ '.scholar-ai-result-zoom-box { background: #13161d; border: 1px solid #2e3447; border-radius: 12px; max-width: 90%; max-height: 90%; width: 700px; height: 80vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 16px 48px rgba(0,0,0,0.4); }'
++ 'body.theme-light .scholar-ai-result-zoom-box { background: #fff; border-color: #cbd5e1; }'
++ '.scholar-ai-result-zoom-box .scholar-ai-result-zoom-header { flex-shrink: 0; padding: 10px 14px; border-bottom: 1px solid #2e3447; display: flex; justify-content: space-between; align-items: center; }'
++ 'body.theme-light .scholar-ai-result-zoom-box .scholar-ai-result-zoom-header { border-color: #e2e8f0; }'
++ '.scholar-ai-result-zoom-box .scholar-ai-result-zoom-header span { font-size: 13px; color: #94a3b8; }'
++ '.scholar-ai-result-zoom-box .scholar-ai-result-zoom-body { flex: 1; min-height: 0; padding: 12px; overflow: auto; }'
++ '.scholar-ai-result-zoom-box .scholar-ai-result-zoom-body textarea { width: 100%; height: 100%; min-height: 200px; font-size: 16px; line-height: 1.6; padding: 12px; border: 1px solid #2e3447; border-radius: 8px; background: #0c0e13; color: #e8ecf4; resize: none; box-sizing: border-box; }'
++ 'body.theme-light .scholar-ai-result-zoom-box .scholar-ai-result-zoom-body textarea { background: #f8fafc; color: #1e293b; border-color: #e2e8f0; }'
 + '.scholar-ai-result { min-height: 260px; font-size: 13px; flex: 1; }'
 + '.scholar-ai-footer { flex-shrink: 0; padding: 8px 10px; border-top: 1px solid #1e2332; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }'
 + 'body.theme-light .scholar-ai-footer { border-color: #cbd5e1; }'
@@ -637,6 +653,7 @@ function getTextViewerWindowHtml(opts) {
 + '    <button class="tbtn ghost" onclick="setFontZoom(-1)" title="폰트 축소">− 축소</button>'
 + '    <button class="tbtn ghost" onclick="setFontZoom(1)" title="폰트 확대">+ 확대</button>'
 + '    <button class="tbtn ghost" id="theme-btn" onclick="toggleTheme()" title="다크/라이트">Light/Dark</button>'
++ '    <button class="tbtn ghost" onclick="applyTidy()" title="PDF 추출 시 끊긴 줄 연결. 선택 시 선택 영역만, 미선택 시 전체">Tidy</button>'
 + '  </div>'
 + '</div>'
 + '<div class="main-with-sidebar">'
@@ -694,14 +711,20 @@ function getTextViewerWindowHtml(opts) {
 + '<label>입력된 지문 (선택한 텍스트)</label><textarea id="scholar-ai-selected" readonly placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다."></textarea>'
 + '<label>프롬프트 작성 창</label><textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>'
 + '<button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>'
-+ '<label>결과창</label><textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 후 결과가 표시됩니다. 편집 가능합니다."></textarea>'
++ '<div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap"><label>결과창</label><textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 후 결과가 표시됩니다. 편집 가능합니다."></textarea><div class="scholar-ai-result-resize-handle" id="scholar-ai-result-resize-handle" title="드래그하여 결과창 높이 조절"></div></div>'
 + '</div>'
 + '<div class="scholar-ai-footer">'
 + '<div class="scholar-ai-insert-wrap"><button type="button" class="sa-btn ghost" onclick="handleScholarAIInsertClick()">문서내 삽입</button><div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu"><button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">커서위치삽입</button><button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 한줄 아래에 삽입</button><button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 내용 대체</button></div></div>'
++ '<button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="결과를 크게 보기">🔍 결과 크게 보기</button>'
 + '<span class="sa-font">font</span><button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">−</button><button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(1)">+</button>'
 + '<button type="button" class="sa-btn" onclick="scholarAICopyResult()">결과복사</button>'
 + '<button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="결과창 내용 지우기">결과창 지우기</button>'
 + '</div>'
++ '<div id="scholar-ai-result-zoom-overlay" class="scholar-ai-result-zoom-overlay" onclick="if(event.target.id===\'scholar-ai-result-zoom-overlay\') scholarAIResultZoomClose()">'
++ '<div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">'
++ '<div class="scholar-ai-result-zoom-header"><span>인공지능 실행 결과 — 크게 보기</span><button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button></div>'
++ '<div class="scholar-ai-result-zoom-body"><textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다."></textarea></div>'
++ '</div></div>'
 + '<div class="scholar-ai-history">'
 + '<label>히스토리</label>'
 + '<input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색..." class="scholar-ai-history-search">'
@@ -1121,6 +1144,80 @@ function changeTitleFontSize(slideIndex, delta) {
 }
 function updateSlideBullet(i, bi, val) { if (slides[i]) slides[i].bullets[bi] = val; }
 function updateSlideNotes(i, val) { if (slides[i]) slides[i].notes = val; }
+
+/** 찾아서 바꾸기(새 창)용: 전체 슬라이드 텍스트 반환 */
+function getSlidesContentForFindReplace() {
+  if (!slides || !slides.length) return { slides: [] };
+  return {
+    slides: slides.map(function (s) {
+      return {
+        title: s.title != null ? String(s.title) : '',
+        bullets: Array.isArray(s.bullets) ? s.bullets.map(function (b) { return String(b); }) : [],
+        notes: s.notes != null ? String(s.notes) : ''
+      };
+    })
+  };
+}
+window.getSlidesContentForFindReplace = getSlidesContentForFindReplace;
+
+/** 찾아서 바꾸기: 한 영역(제목/불릿/노트) 전체를 새 텍스트로 교체 */
+function applyFindReplaceReplacement(slideIndex, field, bulletIndex, newText) {
+  if (!slides[slideIndex]) return;
+  if (typeof pushSlideUndoState === 'function') pushSlideUndoState();
+  var s = slides[slideIndex];
+  if (field === 'title') {
+    s.title = newText;
+  } else if (field === 'bullets' && bulletIndex >= 0 && Array.isArray(s.bullets)) {
+    if (bulletIndex < s.bullets.length) s.bullets[bulletIndex] = newText;
+    else s.bullets.push(newText);
+  } else if (field === 'notes') {
+    s.notes = newText;
+  }
+  renderSlides();
+  renderThumbs();
+  if (typeof updateDesignPanel === 'function') updateDesignPanel();
+  selectSlide(slideIndex);
+}
+window.applyFindReplaceReplacement = applyFindReplaceReplacement;
+
+/** 찾아서 바꾸기: 해당 슬라이드로 이동 후 해당 필드 포커스 */
+function focusFindReplaceMatch(slideIndex, field, bulletIndex) {
+  if (slideIndex < 0 || slideIndex >= (slides || []).length) return;
+  selectSlide(slideIndex);
+  setTimeout(function () {
+    var sw = document.getElementById('sw-' + slideIndex);
+    if (!sw) return;
+    if (field === 'title') {
+      var ta = document.getElementById('slide-title-wrap-' + slideIndex);
+      if (ta) ta = ta.querySelector('.slide-title-input');
+      if (ta) { ta.focus(); ta.select(); }
+    } else if (field === 'bullets') {
+      var bulletWrap = sw.querySelector('.slide-bullets');
+      if (bulletWrap) {
+        var inputs = bulletWrap.querySelectorAll('textarea, input');
+        var el = inputs[bulletIndex >= 0 ? bulletIndex : 0];
+        if (el) { el.focus(); el.select(); }
+      }
+    } else if (field === 'notes') {
+      var notesEl = sw.querySelector('[id^="slide-notes"]');
+      if (notesEl) { notesEl.focus(); notesEl.select(); }
+    }
+  }, 150);
+}
+window.focusFindReplaceMatch = focusFindReplaceMatch;
+
+/** Ctrl+H: 새 창에서 찾아서 바꾸기 열기 */
+function openFindReplaceWindow() {
+  var base = window.location.href;
+  var findReplaceUrl = (base.indexOf('index.html') !== -1)
+    ? base.replace('index.html', 'find-replace.html')
+    : base.replace(/\/?$/, '/') + 'find-replace.html';
+  var w = window.open(findReplaceUrl, 'find-replace', 'width=480,height=340,scrollbars=no,resizable=yes');
+  if (!w && typeof showToast === 'function') showToast('⚠️ 팝업이 차단되었습니다. 팝업 허용 후 Ctrl+H를 다시 시도하세요.');
+  else if (typeof registerChildWindow === 'function') registerChildWindow(w);
+}
+window.openFindReplaceWindow = openFindReplaceWindow;
+
 function removeSlideImage(i) { removeSlideImageAt(i, 0); }
 function removeSlideImage2(i) { removeSlideImageAt(i, 1); }
 
@@ -1188,11 +1285,12 @@ function slideRedo() {
 window.slideUndo = slideUndo;
 window.slideRedo = slideRedo;
 
-// 슬라이드 창: Ctrl+Z 실행 취소, Ctrl+Shift+Z 다시 실행, Ctrl+Y 다시 실행 (전방위 적용)
+// 슬라이드 창: Ctrl+Z 실행 취소, Ctrl+Shift+Z 다시 실행, Ctrl+Y 다시 실행, Ctrl+H 찾아서 바꾸기
 document.addEventListener('keydown', function (e) {
   if (e.target.id === 'md-editor-ta') return;
   var isEditable = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || (e.target.closest && e.target.closest('[contenteditable="true"]'));
   if (isEditable) return;
+  if (e.ctrlKey && e.key === 'h') { e.preventDefault(); openFindReplaceWindow(); return; }
   if (e.ctrlKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); slideUndo(); return; }
   if (e.ctrlKey && (e.key === 'z' && e.shiftKey || e.key === 'y')) { e.preventDefault(); slideRedo(); return; }
 });

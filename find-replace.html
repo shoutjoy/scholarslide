@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>찾아서 바꾸기</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { margin: 0; padding: 16px; background: var(--bg); color: var(--text); font-family: var(--font-body); min-width: 420px; }
+    h2 { margin: 0 0 12px 0; font-size: 1rem; font-weight: 600; color: var(--text2); }
+    .fr-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .fr-row label { width: 72px; flex-shrink: 0; font-size: 13px; color: var(--text2); }
+    .fr-row input[type="text"] { flex: 1; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 14px; }
+    .fr-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .fr-btns button { padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--border2); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 13px; }
+    .fr-btns button:hover { border-color: var(--accent); color: var(--accent); }
+    .fr-btns button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .fr-btns button.primary:hover { filter: brightness(1.1); }
+    .fr-status { margin-top: 12px; font-size: 12px; color: var(--text3); }
+    .fr-warn { margin-top: 8px; font-size: 12px; color: var(--warning); }
+    .fr-error { color: var(--danger); }
+    .fr-check { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+    .fr-check input { width: 16px; height: 16px; }
+  </style>
+</head>
+<body>
+  <h2>찾아서 바꾸기</h2>
+  <div class="fr-row">
+    <label>찾기</label>
+    <input type="text" id="find-input" placeholder="찾을 문자열" />
+  </div>
+  <div class="fr-row">
+    <label>바꿀 내용</label>
+    <input type="text" id="replace-input" placeholder="바꿀 문자열" />
+  </div>
+  <div class="fr-check">
+    <input type="checkbox" id="case-sensitive" />
+    <label for="case-sensitive">대소문자 구분</label>
+  </div>
+  <div class="fr-btns">
+    <button type="button" id="btn-prev" title="이전 찾기">◀ 이전 찾기</button>
+    <button type="button" id="btn-next" title="다음 찾기">다음 찾기 ▶</button>
+    <button type="button" id="btn-replace" class="primary" title="현재 항목만 바꾸기">교체</button>
+    <button type="button" id="btn-replace-all" class="primary" title="모든 항목 바꾸기">모두 바꾸기</button>
+  </div>
+  <div class="fr-status" id="fr-status"></div>
+  <div class="fr-warn" id="fr-warn" style="display:none">메인 창에서 슬라이드를 연 상태에서 사용하세요.</div>
+
+  <script>
+(function () {
+  var findInput = document.getElementById('find-input');
+  var replaceInput = document.getElementById('replace-input');
+  var caseCheck = document.getElementById('case-sensitive');
+  var btnPrev = document.getElementById('btn-prev');
+  var btnNext = document.getElementById('btn-next');
+  var btnReplace = document.getElementById('btn-replace');
+  var btnReplaceAll = document.getElementById('btn-replace-all');
+  var statusEl = document.getElementById('fr-status');
+  var warnEl = document.getElementById('fr-warn');
+
+  var content = null;   // { slides: [ { title, bullets: [], notes } ] }
+  var matches = [];    // { slideIndex, field, bulletIndex, start, end, segmentText }
+  var currentIndex = -1;
+  var segmentCache = []; // { slideIndex, field, bulletIndex, text } for each segment
+
+  function getOpener() {
+    if (!window.opener || window.opener.closed) return null;
+    if (typeof window.opener.getSlidesContentForFindReplace !== 'function') return null;
+    return window.opener;
+  }
+
+  function loadContent() {
+    var op = getOpener();
+    if (!op) {
+      content = null;
+      warnEl.style.display = 'block';
+      return false;
+    }
+    warnEl.style.display = 'none';
+    try {
+      content = op.getSlidesContentForFindReplace();
+    } catch (e) {
+      content = null;
+      statusEl.textContent = '콘텐츠를 가져올 수 없습니다.';
+      return false;
+    }
+    if (!content || !content.slides || !content.slides.length) {
+      content = { slides: [] };
+    }
+    return true;
+  }
+
+  function buildSegments() {
+    segmentCache = [];
+    if (!content || !content.slides) return;
+    content.slides.forEach(function (s, i) {
+      if (s.title != null) segmentCache.push({ slideIndex: i, field: 'title', bulletIndex: -1, text: String(s.title) });
+      if (Array.isArray(s.bullets)) s.bullets.forEach(function (b, bi) { segmentCache.push({ slideIndex: i, field: 'bullets', bulletIndex: bi, text: String(b) }); });
+      if (s.notes != null) segmentCache.push({ slideIndex: i, field: 'notes', bulletIndex: -1, text: String(s.notes) });
+    });
+  }
+
+  function findInSegments() {
+    matches = [];
+    var findText = findInput.value;
+    if (!findText.trim()) {
+      updateStatus('');
+      return;
+    }
+    if (!loadContent()) return;
+    buildSegments();
+    var caseSens = caseCheck.checked;
+    var search = caseSens ? findText : findText.toLowerCase();
+    segmentCache.forEach(function (seg) {
+      var text = seg.text;
+      var hay = caseSens ? text : text.toLowerCase();
+      var idx = 0;
+      for (;;) {
+        var pos = hay.indexOf(search, idx);
+        if (pos === -1) break;
+        matches.push({
+          slideIndex: seg.slideIndex,
+          field: seg.field,
+          bulletIndex: seg.bulletIndex,
+          start: pos,
+          end: pos + findText.length,
+          segmentText: text
+        });
+        idx = pos + 1;
+      }
+    });
+    currentIndex = -1;
+    updateStatus();
+    highlightCurrent();
+  }
+
+  function updateStatus(msg) {
+    if (msg !== undefined) {
+      statusEl.textContent = msg;
+      statusEl.classList.remove('fr-error');
+      return;
+    }
+    if (matches.length === 0) {
+      statusEl.textContent = findInput.value.trim() ? '찾는 문자열이 없습니다.' : '';
+      return;
+    }
+    if (currentIndex < 0) statusEl.textContent = matches.length + '개 찾음 (이전/다음 찾기로 이동)';
+    else statusEl.textContent = (currentIndex + 1) + ' / ' + matches.length + '개 찾음';
+  }
+
+  function highlightCurrent() {
+    var op = getOpener();
+    if (!op || typeof op.focusFindReplaceMatch !== 'function') return;
+    if (currentIndex < 0 || currentIndex >= matches.length) return;
+    var m = matches[currentIndex];
+    try {
+      op.focusFindReplaceMatch(m.slideIndex, m.field, m.bulletIndex);
+    } catch (e) {}
+  }
+
+  function replaceOne() {
+    if (currentIndex < 0 || currentIndex >= matches.length) {
+      statusEl.textContent = '먼저 찾기를 실행하세요.';
+      statusEl.classList.add('fr-error');
+      return;
+    }
+    var op = getOpener();
+    if (!op || typeof op.applyFindReplaceReplacement !== 'function') {
+      statusEl.textContent = '메인 창과 연결되지 않았습니다.';
+      statusEl.classList.add('fr-error');
+      return;
+    }
+    var m = matches[currentIndex];
+    var newSegmentText = m.segmentText.slice(0, m.start) + replaceInput.value + m.segmentText.slice(m.end);
+    try {
+      op.applyFindReplaceReplacement(m.slideIndex, m.field, m.bulletIndex, newSegmentText);
+    } catch (e) {
+      statusEl.textContent = '교체 실패: ' + e.message;
+      statusEl.classList.add('fr-error');
+      return;
+    }
+    loadContent();
+    findInSegments();
+    if (matches.length === 0) {
+      currentIndex = -1;
+      updateStatus('교체했습니다. 더 이상 해당 문자열이 없습니다.');
+    } else {
+      currentIndex = 0;
+      updateStatus((currentIndex + 1) + ' / ' + matches.length + '개 찾음 (교체 후)');
+      highlightCurrent();
+    }
+  }
+
+  function replaceAll() {
+    var findText = findInput.value.trim();
+    if (!findText) {
+      statusEl.textContent = '찾을 문자열을 입력하세요.';
+      statusEl.classList.add('fr-error');
+      return;
+    }
+    if (!loadContent()) return;
+    buildSegments();
+    var caseSens = caseCheck.checked;
+    var search = caseSens ? findText : findText;
+    var repl = replaceInput.value;
+    var edits = [];
+    segmentCache.forEach(function (seg) {
+      var text = seg.text;
+      var hay = caseSens ? text : text.toLowerCase();
+      var searchFor = caseSens ? search : search.toLowerCase();
+      var idx = 0;
+      var list = [];
+      for (;;) {
+        var pos = hay.indexOf(searchFor, idx);
+        if (pos === -1) break;
+        list.push({ start: pos, end: pos + findText.length });
+        idx = pos + 1;
+      }
+      if (list.length === 0) return;
+      list.sort(function (a, b) { return b.start - a.start; });
+      var newText = text;
+      list.forEach(function (r) {
+        newText = newText.slice(0, r.start) + repl + newText.slice(r.end);
+      });
+      edits.push({ slideIndex: seg.slideIndex, field: seg.field, bulletIndex: seg.bulletIndex, newText: newText });
+    });
+    var op = getOpener();
+    if (!op || typeof op.applyFindReplaceReplacement !== 'function') {
+      statusEl.textContent = '메인 창과 연결되지 않았습니다.';
+      statusEl.classList.add('fr-error');
+      return;
+    }
+    var done = 0;
+    edits.forEach(function (e) {
+      try {
+        op.applyFindReplaceReplacement(e.slideIndex, e.field, e.bulletIndex, e.newText);
+        done++;
+      } catch (err) {}
+    });
+    loadContent();
+    findInSegments();
+    statusEl.textContent = '모두 바꾸기 완료. ' + done + '개 영역을 수정했습니다.';
+    statusEl.classList.remove('fr-error');
+  }
+
+  btnPrev.addEventListener('click', function () {
+    findInSegments();
+    if (matches.length === 0) return;
+    if (currentIndex < 0) currentIndex = matches.length - 1;
+    else currentIndex = (currentIndex - 1 + matches.length) % matches.length;
+    updateStatus();
+    highlightCurrent();
+  });
+
+  btnNext.addEventListener('click', function () {
+    findInSegments();
+    if (matches.length === 0) return;
+    if (currentIndex < 0) currentIndex = 0;
+    else currentIndex = (currentIndex + 1) % matches.length;
+    updateStatus();
+    highlightCurrent();
+  });
+
+  btnReplace.addEventListener('click', replaceOne);
+  btnReplaceAll.addEventListener('click', replaceAll);
+
+  findInput.addEventListener('input', function () { currentIndex = -1; updateStatus(''); });
+  findInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); btnNext.click(); }
+  });
+  replaceInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); btnReplace.click(); }
+  });
+
+  window.addEventListener('focus', function () {
+    if (findInput.value.trim()) loadContent();
+  });
+
+  if (getOpener()) loadContent();
+  else updateStatus('');
+})();
+  </script>
+</body>
+</html>
