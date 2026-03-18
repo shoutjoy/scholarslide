@@ -29,6 +29,14 @@ function askThenSummary(type) {
   const slideRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_aspect_ratio')) || '16:9';
   const imageRatio = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_image_aspect_ratio')) || '1:1';
   const lastUseSummary = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_use_summary') === '1');
+  const slideGenType = (document.getElementById('slide-gen-type') && document.getElementById('slide-gen-type').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_type')) || 'precision';
+  const customPromptVal = (document.getElementById('custom-instruction-manuscript') && document.getElementById('custom-instruction-manuscript').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_custom_instruction_manuscript')) || '';
+  const writingStyleVal = (document.getElementById('writing-style-val') && document.getElementById('writing-style-val').value) || (typeof window.getWritingStyle === 'function' ? window.getWritingStyle() : 'academic-da');
+  const writingStyleHtml = '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">문체 설정</label>'
+    + '<select id="slide-gen-modal-writing-style" class="control" style="font-size:12px;width:100%;padding:8px 10px">'
+    + '<option value="academic-da"' + (writingStyleVal === 'academic-da' ? ' selected' : '') + '>학술체 (~이다)</option>'
+    + '<option value="academic-im"' + (writingStyleVal === 'academic-im' ? ' selected' : '') + '>학술체 (~임, ~함)</option>'
+    + '<option value="polite"' + (writingStyleVal === 'polite' ? ' selected' : '') + '>일반체 (존댓말)</option></select></div>';
   let old = document.getElementById('slide-gen-confirm-modal');
   if (old) old.remove();
   const m = document.createElement('div');
@@ -38,6 +46,24 @@ function askThenSummary(type) {
   const sourceSummaryActive = lastUseSummary ? ' active' : '';
   const sourceRawActive = lastUseSummary ? '' : ' active';
   const sourceHintText = lastUseSummary ? '요약된 내용을 기준으로 슬라이드를 생성합니다. (요약이 없으면 먼저 요약을 생성하세요.)' : '원문 텍스트를 기준으로 슬라이드를 생성합니다.';
+  const slideGenTypeOptions = [
+    { v: 'precision', l: 'A. 정밀 요약형 (Precision Archive)' },
+    { v: 'presentation', l: 'B. 발표 최적화형 (Presentation Focus)' },
+    { v: 'notebook', l: 'C. 노트북/학습형 (Concept Mastery)' },
+    { v: 'critical', l: 'D. 비판적 검토형 (Critical Analysis)' },
+    { v: 'evidence', l: 'E. 시각적 증거형 (Evidence-Based Claims)' },
+    { v: 'logic', l: 'F. 인과관계 도식형 (Logic Flow)' },
+    { v: 'quiz', l: 'G. 상호작용형 (Interactive Quiz)' },
+    { v: 'workshop', l: 'H. 워크숍형 (Practical Action)' },
+    { v: 'auto_visual', l: 'I. AII 자동 시각화형 (Auto Visualizer)' }
+  ];
+  const slideGenTypeSelectHtml = '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 생성 유형</label>'
+    + '<select id="slide-gen-modal-type" class="control" style="font-size:12px;width:100%;padding:8px 10px">'
+    + slideGenTypeOptions.map(function (o) { return '<option value="' + o.v + '"' + (slideGenType === o.v ? ' selected' : '') + '>' + o.l + '</option>'; }).join('')
+    + '</select></div>';
+  const escVal = function (s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
+  const customPromptHtml = '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">커스텀 프롬프트</label>'
+    + '<textarea id="slide-gen-modal-custom" class="control" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력..." style="width:100%;resize:vertical;min-height:3em;font-size:12px">' + escVal(customPromptVal) + '</textarea></div>';
   const imageRatioHtml = isAllSlide
     ? '<div style="margin-top:12px"><label class="label" style="font-size:12px;display:block;margin-bottom:6px">이미지 생성 비율</label>'
     + '<style>.img-ratio-modal-btn.active{background:var(--primary,#4f8ef7)!important;color:#fff!important;border-color:var(--primary,#4f8ef7)!important;}</style>'
@@ -66,6 +92,9 @@ function askThenSummary(type) {
     + '<option value="a4_portrait"' + (slideRatio==='a4_portrait'?' selected':'') + '>A4 세로</option>'
     + '<option value="1:1"' + (slideRatio==='1:1'?' selected':'') + '>1:1</option>'
     + '</select></div>'
+    + slideGenTypeSelectHtml
+    + writingStyleHtml
+    + customPromptHtml
     + imageRatioHtml
     + '</div>'
     + '<div class="modal-footer" style="justify-content:flex-end;gap:8px">'
@@ -99,20 +128,35 @@ function askThenSummary(type) {
   document.getElementById('slide-gen-modal-exec').onclick = function(){
     const ratioSel = document.getElementById('slide-gen-modal-ratio');
     const slideVal = ratioSel ? ratioSel.value : '16:9';
+    const typeSel = document.getElementById('slide-gen-modal-type');
+    const slideTypeVal = (typeSel && typeSel.value) || (isAllSlide ? 'auto_visual' : 'precision');
+    const customTa = document.getElementById('slide-gen-modal-custom');
+    const customVal = (customTa && customTa.value) ? customTa.value.trim() : '';
+    const writingStyleSel = document.getElementById('slide-gen-modal-writing-style');
+    const writingStyleModalVal = (writingStyleSel && writingStyleSel.value) || 'academic-da';
+    if (typeof window.setWritingStyle === 'function') window.setWritingStyle(writingStyleModalVal);
+    var elWriting = document.getElementById('writing-style-val');
+    if (elWriting) elWriting.value = writingStyleModalVal;
     const sourceBtn = m.querySelector('.slide-gen-source-btn.active');
     const useSummary = sourceBtn && sourceBtn.getAttribute('data-source') === 'summary';
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('ss_slide_aspect_ratio', slideVal);
       localStorage.setItem('ss_slide_gen_use_summary', useSummary ? '1' : '0');
+      localStorage.setItem('ss_slide_gen_type', slideTypeVal);
+      localStorage.setItem('ss_custom_instruction_manuscript', customVal);
       if (isAllSlide) {
         const imgBtn = m.querySelector('.img-ratio-modal-btn.active');
         const imgVal = imgBtn ? (imgBtn.getAttribute('data-ratio') || '1:1') : '1:1';
         localStorage.setItem('ss_image_aspect_ratio', imgVal);
       }
     }
+    var elMan = document.getElementById('custom-instruction-manuscript');
+    if (elMan) elMan.value = customVal;
+    var elType = document.getElementById('slide-gen-type');
+    if (elType) elType.value = slideTypeVal;
     if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio();
     m.remove();
-    generateSummary(type, { useSummaryForSlides: useSummary });
+    generateSummary(type, { useSummaryForSlides: useSummary, customInstruction: customVal, slideGenType: slideTypeVal, writingStyle: writingStyleModalVal });
   };
 }
 function askThenFetchSources() {
@@ -123,7 +167,33 @@ function askThenFetchSources() {
 }
 function askThenGenerateScript() {
   if (!slides.length) { showToast('⚠️ 슬라이드가 없습니다'); return; }
-  showConfirm('발표 원고 생성', `${slides.length}개 슬라이드의 발표 원고를 생성하시겠습니까?\n슬라이드 수에 따라 시간이 걸릴 수 있습니다.`, () => generatePresentationScript());
+  var old = document.getElementById('script-gen-confirm-modal');
+  if (old) old.remove();
+  var savedMemo = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_manuscript_script_memo')) || '';
+  var m = document.createElement('div');
+  m.id = 'script-gen-confirm-modal';
+  m.className = 'modal-backdrop open';
+  m.onclick = function (e) { if (e.target === m) m.remove(); };
+  m.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">'
+    + '<div class="modal-header"><div class="modal-title">발표 원고 생성</div><button class="modal-close" onclick="document.getElementById(\'script-gen-confirm-modal\').remove()">&#x2715;</button></div>'
+    + '<div class="modal-body" style="display:flex;flex-direction:column;gap:12px">'
+    + '<p style="font-size:13px;color:var(--text2);line-height:1.6">' + slides.length + '개 슬라이드의 발표 원고를 생성하시겠습니까? 슬라이드 수에 따라 시간이 걸릴 수 있습니다.</p>'
+    + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">메모 또는 추가 지시사항</label>'
+    + '<textarea class="control" id="script-gen-memo-input" rows="3" placeholder="메모 또는 추가 지시사항..." style="width:100%;resize:vertical;min-height:3.5em"></textarea></div>'
+    + '</div>'
+    + '<div class="modal-footer" style="justify-content:flex-end;gap:8px">'
+    + '<button class="btn btn-ghost btn-sm" onclick="document.getElementById(\'script-gen-confirm-modal\').remove()">취소</button>'
+    + '<button class="btn btn-primary btn-sm" id="script-gen-modal-exec">&#x2713; 실행</button>'
+    + '</div></div>';
+  document.body.appendChild(m);
+  var ta = m.querySelector('#script-gen-memo-input');
+  if (ta) ta.value = savedMemo;
+  document.getElementById('script-gen-modal-exec').onclick = function () {
+    var memo = (ta && ta.value) ? ta.value.trim() : '';
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem('ss_manuscript_script_memo', memo); } catch (e) {}
+    m.remove();
+    generatePresentationScript(memo);
+  };
 }
 function askThenGenerateImages() { askThenVisualizeAll(); }
 function askThenRewrite(index) {

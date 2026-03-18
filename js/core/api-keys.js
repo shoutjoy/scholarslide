@@ -24,7 +24,60 @@ function initApiKey() {
 }
 function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; f.type = 'password'; const btn = document.getElementById('key-toggle'); if (btn) btn.innerHTML = '&#128065;'; updateApiKeyStrength(f.value); renderSavedKeysList(); }
 function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'img-modal') setTimeout(setupCropEvents, 100); }
-function closeModal(id) { const el = document.getElementById(id); if (el) { el.classList.remove('open'); if (id === 'img-modal') el.classList.remove('img-modal-sidebar'); } }
+function resetModalBoxPosition(id) {
+  const modal = document.getElementById(id);
+  if (!modal) return;
+  const box = modal.querySelector('.modal-box');
+  if (box) {
+    box.style.position = '';
+    box.style.left = '';
+    box.style.top = '';
+    box.style.transform = '';
+    box.style.margin = '';
+    box.style.width = '';
+  }
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    resetModalBoxPosition(id);
+    el.classList.remove('open');
+    if (id === 'img-modal') el.classList.remove('img-modal-sidebar');
+  }
+}
+/* 모달 드래그: 헤더를 잡고 이동 가능 */
+(function initModalDrag() {
+  document.addEventListener('mousedown', function (e) {
+    const header = e.target.closest('.modal-header');
+    if (!header || e.target.closest('.modal-close')) return;
+    const box = header.closest('.modal-box');
+    const backdrop = header.closest('.modal-backdrop');
+    if (!box || !backdrop || !backdrop.classList.contains('open')) return;
+    if (backdrop.id === 'imgbank-modal') return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const rect = box.getBoundingClientRect();
+    box.style.position = 'fixed';
+    box.style.width = box.offsetWidth + 'px';
+    box.style.left = rect.left + 'px';
+    box.style.top = rect.top + 'px';
+    box.style.transform = 'none';
+    box.style.margin = '0';
+    function onMove(ev) {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      box.style.left = (rect.left + dx) + 'px';
+      box.style.top = (rect.top + dy) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+})();
 function handleModalBackdropClick(e, id) {
   if (e.target !== document.getElementById(id)) return;
   if (id === 'img-modal' && document.getElementById(id).classList.contains('img-modal-sidebar')) return;

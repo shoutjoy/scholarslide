@@ -21,7 +21,10 @@
         + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="loadFromTextInput()">✅ 텍스트 로드</button></div>';
       return;
     }
-    var customVal = document.getElementById('custom-instruction-val') && document.getElementById('custom-instruction-val').value || '';
+    var elSum = document.getElementById('custom-instruction-summary');
+    var elMan = document.getElementById('custom-instruction-manuscript');
+    if (elSum) try { localStorage.setItem('ss_custom_instruction_summary', elSum.value); } catch (e) {}
+    if (elMan) try { localStorage.setItem('ss_custom_instruction_manuscript', elMan.value); } catch (e) {}
     var leftTab = typeof window.getLeftTab === 'function' ? window.getLeftTab() : 'summary';
     var summaryText = typeof window.getSummaryText === 'function' ? window.getSummaryText() : '';
     var presentationScript = typeof window.getPresentationScript === 'function' ? window.getPresentationScript() : [];
@@ -32,7 +35,7 @@
     var displayContent = '';
 
     if (leftTab === 'script' && typeof window.buildManuscriptTabContent === 'function') {
-      var customVal = (document.getElementById('custom-instruction-val') && document.getElementById('custom-instruction-val').value) || '';
+      var customVal = (elMan && elMan.value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_custom_instruction_manuscript')) || '';
       var fileSizeLabel = (rawText.length / 1000).toFixed(1) + 'k';
       var isPdf = fileName.toLowerCase().endsWith('.pdf');
       content.innerHTML = window.buildManuscriptTabContent({
@@ -115,6 +118,9 @@
           + '</div>';
       }
       fileSlotsHtml += '</div>';
+      if (leftTab === 'raw') {
+        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>';
+      }
     } else {
       var _isPdf = (fileName || '').toLowerCase().endsWith('.pdf');
       fileSlotsHtml = '<div class="file-badge">'
@@ -123,6 +129,9 @@
         + '<span class="file-size">' + (rawText.length / 1000).toFixed(1) + 'k</span>'
         + (_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
         + '</div>';
+      if (leftTab === 'raw') {
+        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>';
+      }
     }
     var totalChars = rawText.length;
     var summaryLimit = parseInt((typeof localStorage !== 'undefined' && localStorage.getItem('ss_summary_char_limit')) || '1500000', 10) || 1500000;
@@ -134,18 +143,28 @@
       + '<div>요약 한도 ' + (summaryLimit / 1000).toFixed(0) + 'k자 (설정에서 변경 가능)</div>'
       + (willTruncate ? '<div style="margin-top:4px;color:var(--warning)">⚠ 앞 ' + (summaryLimit / 1000).toFixed(0) + 'k자만 요약됩니다</div>' : '<div style="margin-top:4px;color:var(--success)">✓ 전체 원문이 요약 대상입니다</div>')
       + '</div>';
-    content.innerHTML = fileSlotsHtml + capacityInfo
-      + '<div style="margin-bottom:8px"><label class="label">문체 설정</label>'
-      + '<select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="font-size:11px">'
+    var showWritingStyle = (typeof localStorage !== 'undefined' && (leftTab === 'raw' ? localStorage.getItem('ss_show_writing_style_raw') : localStorage.getItem('ss_show_writing_style_summary')) === '1');
+    var writingStyleHtml = showWritingStyle
+      ? '<div style="margin-bottom:8px"><label class="label">문체 설정</label><select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="font-size:11px">'
       + '<option value="academic-da" ' + (writingStyle === 'academic-da' ? 'selected' : '') + '>학술체 (~이다)</option>'
       + '<option value="academic-im" ' + (writingStyle === 'academic-im' ? 'selected' : '') + '>학술체 (~임, ~함)</option>'
       + '<option value="polite" ' + (writingStyle === 'polite' ? 'selected' : '') + '>일반체 (존댓말)</option></select></div>'
+      : '<select class="control" id="writing-style-val" onchange="setWritingStyle(this.value)" style="display:none">'
+      + '<option value="academic-da" ' + (writingStyle === 'academic-da' ? 'selected' : '') + '>학술체 (~이다)</option>'
+      + '<option value="academic-im" ' + (writingStyle === 'academic-im' ? 'selected' : '') + '>학술체 (~임, ~함)</option>'
+      + '<option value="polite" ' + (writingStyle === 'polite' ? 'selected' : '') + '>일반체 (존댓말)</option></select>';
+    content.innerHTML = fileSlotsHtml + capacityInfo
+      + writingStyleHtml
       + '<div class="action-grid">'
       + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📖</span>전문요약 도구</button>'
       + '<button class="action-card" onclick="openSummaryOptionsModal()"><span class="action-card-icon">📋</span>슬라이드 초안제작</button></div>'
-      + '<label class="label">커스텀 지시사항</label>'
-      + '<textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력...">' + escapeHtml(customVal) + '</textarea>'
-      + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>'
+      + (function () {
+        var showCustom = leftTab === 'raw' ? (localStorage.getItem('ss_show_custom_instruction_raw') === '1') : (localStorage.getItem('ss_show_custom_instruction_summary') === '1');
+        if (typeof localStorage === 'undefined') showCustom = false;
+        return showCustom
+          ? '<label class="label">커스텀 지시사항</label><textarea class="control" id="custom-instruction-summary" rows="2" placeholder="예: supplement·information theory까지 요약, 20페이지 분량 괜찮음...">' + escapeHtml((elSum && elSum.value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_custom_instruction_summary')) || '') + '</textarea>'
+          : '<textarea class="control" id="custom-instruction-summary" rows="2" placeholder="" style="display:none">' + escapeHtml((elSum && elSum.value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_custom_instruction_summary')) || '') + '</textarea>';
+      }())
       + '<hr class="sep"/>' + displayContent;
   }
 

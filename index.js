@@ -2180,9 +2180,12 @@ function openSummaryOptionsModal() {
   var slideCountInput = document.getElementById('summary-options-slide-count');
   var mainSlideCount = document.getElementById('slide-count-val');
   var customInModal = document.getElementById('summary-options-custom-instruction');
-  var customInPanel = document.getElementById('custom-instruction-val');
+  var customInPanel = document.getElementById('custom-instruction-summary');
+  var writingStyleModal = document.getElementById('summary-options-writing-style');
+  var writingStylePanel = document.getElementById('writing-style-val');
   if (slideCountInput && mainSlideCount && mainSlideCount.value) slideCountInput.value = mainSlideCount.value;
   if (customInModal) customInModal.value = (customInPanel && customInPanel.value) ? customInPanel.value : '';
+  if (writingStyleModal) writingStyleModal.value = (writingStylePanel && writingStylePanel.value) ? writingStylePanel.value : (typeof window.getWritingStyle === 'function' ? window.getWritingStyle() : 'academic-da');
   function updateSlideCountVisibility() {
     var styleRadios = document.querySelectorAll('input[name="summary-style"]');
     var styleId = 'research';
@@ -2222,10 +2225,16 @@ function confirmSummaryOptions() {
   var customInstruction = '';
   var customInModal = document.getElementById('summary-options-custom-instruction');
   if (customInModal && customInModal.value) customInstruction = customInModal.value.trim();
-  var customInPanel = document.getElementById('custom-instruction-val');
+  var customInPanel = document.getElementById('custom-instruction-summary');
   if (customInPanel) customInPanel.value = customInstruction;
+  var writingStyleModal = document.getElementById('summary-options-writing-style');
+  var writingStyleVal = (writingStyleModal && writingStyleModal.value) ? writingStyleModal.value : 'academic-da';
+  if (typeof window.setWritingStyle === 'function') window.setWritingStyle(writingStyleVal);
+  var writingStylePanel = document.getElementById('writing-style-val');
+  if (writingStylePanel) writingStylePanel.value = writingStyleVal;
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem('ss_custom_instruction_summary', customInstruction || ''); } catch (e) {}
   closeModal('summary-options-modal');
-  generateSummary('full', { mode: mode, styleId: styleId, slideCount: slideCount, granularity: granularity, customInstruction: customInstruction });
+  generateSummary('full', { mode: mode, styleId: styleId, slideCount: slideCount, granularity: granularity, customInstruction: customInstruction, writingStyle: writingStyleVal });
 }
 
 

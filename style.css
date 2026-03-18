@@ -48,8 +48,7 @@ body.app-theme-light .control,
 body.app-theme-light input,
 body.app-theme-light select,
 body.app-theme-light textarea { background: var(--surface2); border-color: var(--border2); color: var(--text); }
-body.app-theme-light .modal-backdrop { background: rgba(15,23,42,0.6); }
-body.app-theme-light #img-modal.modal-backdrop { background: rgba(0,0,0,0.05); backdrop-filter: none; }
+body.app-theme-light .modal-backdrop { background: transparent; backdrop-filter: none; }
 body.app-theme-light .modal-box { background: var(--surface); border-color: var(--border); }
 body.app-theme-light .slide-wrapper { background: var(--surface2); }
 body.app-theme-light #slides-canvas { background: var(--surface2); }
@@ -60,6 +59,12 @@ body.app-theme-light .center-toolbar { background: var(--surface); border-color:
 body.app-theme-light #slide-footer { background: var(--surface); border-color: var(--border); }
 body.app-theme-light .header-mode-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
 body.app-theme-light .global-progress-panel { background: var(--surface); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+
+/* 설정 패널: 다크/라이트 테마 연동 (CSS 변수로 자동 적용) */
+body.app-theme-light #settings-panel-root { background: var(--bg); color: var(--text2); }
+body.app-theme-light #settings-panel-root .sw-panel input,
+body.app-theme-light #settings-panel-root .sw-panel select,
+body.app-theme-light #settings-panel-root .sw-panel textarea { background: var(--surface2); border-color: var(--border2); color: var(--text); }
 
 /* 테마 토글: 반은 검정 반은 하얀 원형 버튼 */
 .app-theme-toggle-btn {
@@ -362,8 +367,9 @@ textarea.control:focus, input.control:focus, select.control:focus { border-color
 textarea.control::placeholder, input.control::placeholder { color: var(--text3); }
 select.control option { background: var(--surface2); }
 
-/* 커스텀 지시사항 텍스트영역: 세로 크기 조절 가능 */
-#custom-instruction-val { resize: vertical; min-height: 3.5em; max-height: 200px; }
+/* 커스텀 지시사항 텍스트영역: 세로 크기 조절 가능 (요약/원고 각각 분리) */
+#custom-instruction-summary,
+#custom-instruction-manuscript { resize: vertical; min-height: 3.5em; max-height: 200px; }
 
 .summary-text { font-size: 12px; line-height: 1.7; color: var(--text2); white-space: pre-wrap; }
 .raw-text {
@@ -389,6 +395,39 @@ select.control option { background: var(--surface2); }
 .translate-row { display: flex; gap: 6px; margin-bottom: 8px; }
 .translate-row .btn { flex: 1; justify-content: center; font-size: 10px; }
 .translate-row .btn.active { color: var(--accent); font-weight: 600; }
+
+/* 원고 탭 메뉴 (발표원고 | 슬라이드생성 | All Slide생성) — 네모난 탭 스타일 */
+.manuscript-tab-menu {
+  display: flex;
+  margin-bottom: 10px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface2);
+}
+.manuscript-tab-menu-btn {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  background: var(--surface2);
+  color: var(--text2);
+  transition: background 0.15s, color 0.15s;
+}
+.manuscript-tab-menu-btn:hover {
+  background: var(--surface3);
+  color: var(--text);
+}
+.manuscript-tab-menu-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+.manuscript-tab-menu-btn:not(:first-child) {
+  border-left: 1px solid var(--border2);
+}
 .viz-ratio-btn.active, .img-ratio-btn.active, .img-ai-ratio-btn.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 .placeholder-msg { text-align: center; color: var(--text3); font-size: 12px; padding: 32px 0; }
@@ -772,13 +811,10 @@ footer {
 /* ── MODAL ── */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 10000;
-  background: rgba(0,0,0,0.65); backdrop-filter: blur(6px);
+  background: transparent; backdrop-filter: none;
   display: none; align-items: center; justify-content: center; padding: 24px;
 }
 .modal-backdrop.open { display: flex; animation: fadeIn 0.15s ease; }
-/* 이미지 업로드·편집 모달: 바탕이 보이도록 최소 오버레이 (문서와 함께 사용) */
-#img-modal.modal-backdrop { background: rgba(0,0,0,0.06); backdrop-filter: none; }
-#img-modal.modal-backdrop.open { background: rgba(0,0,0,0.06); backdrop-filter: none; }
 /* 사이드바 모드: 우측 고정, 배경 터치로 닫지 않음, 배경 영역 클릭/선택/복사 가능 */
 #img-modal.img-modal-sidebar.modal-backdrop { align-items: stretch; justify-content: flex-end; padding: 0; background: transparent; backdrop-filter: none; pointer-events: none; }
 #img-modal.img-modal-sidebar.modal-backdrop .img-modal-box { pointer-events: auto; max-width: 420px; width: 420px; max-height: 100vh; height: 100%; margin: 0; border-radius: var(--radius-lg) 0 0 var(--radius-lg); box-shadow: -8px 0 24px rgba(0,0,0,0.3); animation: none; }
@@ -795,7 +831,9 @@ footer {
 .modal-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  cursor: move; user-select: none;
 }
+.modal-header .modal-close { cursor: pointer; }
 .modal-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .modal-close {
   width: 28px; height: 28px; border-radius: 50%; border: none;
@@ -1037,7 +1075,7 @@ footer {
 
 /* imgBank 모달: 바탕 화면 보이게 투명 배경 + 헤더 드래그로 이동 */
 #imgbank-modal.modal-backdrop {
-  background: rgba(0,0,0,0.08); backdrop-filter: blur(1px);
+  background: transparent; backdrop-filter: none;
   align-items: flex-start; justify-content: flex-start; padding: 0;
 }
 #imgbank-modal-box {

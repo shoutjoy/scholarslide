@@ -1297,3 +1297,17 @@ imageItems가 있으면 편집기와 같은 픽셀 좌표로 이미지 레이어
 
 imageItems가 없는 예전 데이터나 단일 이미지만 있는 경우에는, 기존처럼 imageUrls(flex 나열) 또는 imageUrl(한 장) 방식으로 그대로 표시됩니다.
 이제 외부 발표 창에서도 편집 화면에서 옮기고 리사이즈한 배치 그대로 여러 이미지가 보입니다. 한 번 발표 모드로 확인해 보시면 됩니다.
+
+
+
+변경 사항
+1. index.js – 툴바에 Tidy 버튼 추가
+Light/Dark 버튼 바로 다음에 Tidy 버튼 추가
+title: "PDF 추출 시 끊긴 줄 연결 (space+delete)"
+2. js/ui/viewer-standalone.js – Tidy 로직 구현
+tidyBrokenLines(text): PDF 추출로 끊긴 줄을 연결
+줄 끝이 -(하이픈): ac-\n + tions → actions (하이픈 제거 후 붙임)
+줄 끝이 . ! ? :가 아님: teacher and\n + student → teacher and student (공백으로 연결)
+# 제목, -/* 리스트, 1. 번호 목록, > 인용은 연결하지 않음
+applyTidy(): Tidy 실행 후 __rawText 갱신, 보기 모드에서 자동 재렌더링, localStorage 저장
+새창 보기에서 Tidy 버튼을 누르면 끊긴 줄이 자동으로 연결됩니다.

@@ -20,21 +20,21 @@
     var parent = 'window._settingsParent';
     return '<style>' +
       '.sw-tabs{display:flex;gap:4px;margin-bottom:16px;flex-shrink:0}' +
-      '.sw-tab{padding:8px 14px;background:#1a1e28;border:1px solid #2e3447;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:12px}' +
-      '.sw-tab:hover{background:#252a37;color:#b0bac8}.sw-tab.active{background:#4f8ef7;border-color:#4f8ef7;color:#fff}' +
-      '.sw-prompt-filter-btn.active{background:var(--bg-hover,#252a37);color:var(--primary,#4f8ef7);border-color:var(--primary,#4f8ef7)}' +
+      '.sw-tab{padding:8px 14px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text2);cursor:pointer;font-size:12px}' +
+      '.sw-tab:hover{background:var(--surface3);color:var(--text2)}.sw-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}' +
+      '.sw-prompt-filter-btn.active{background:var(--surface3);color:var(--accent);border-color:var(--accent)}' +
       '.sw-panel{display:none}.sw-panel.active{display:block}' +
-      '.sw-panel label{display:block;font-size:12px;font-weight:500;color:#94a3b8;margin-bottom:6px}' +
-      '.sw-panel input,.sw-panel select,.sw-panel textarea{width:100%;padding:10px 12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8;font-size:13px;font-family:JetBrains Mono,Noto Sans KR,monospace}' +
+      '.sw-panel label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px}' +
+      '.sw-panel input,.sw-panel select,.sw-panel textarea{width:100%;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;font-family:JetBrains Mono,Noto Sans KR,monospace}' +
       '.sw-panel textarea{min-height:80px;resize:vertical}' +
       '.sw-panel .btn{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none}' +
-      '.sw-panel .btn-primary{background:#4f8ef7;color:#fff}.sw-panel .btn-primary:hover{opacity:0.9}' +
-      '.sw-panel .btn-ghost{background:#1a1e28;color:#b0bac8;border:1px solid #2e3447}.sw-panel .btn-ghost:hover{background:#252a37;color:#fff}' +
-      '.sw-panel .prompt-item{margin-bottom:16px}.sw-panel .prompt-item label{font-size:11px;color:#f59e0b;font-weight:600}' +
-      '.sw-panel .prompt-category{margin-top:20px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #2e3447;font-size:13px;font-weight:600;color:#4f8ef7}' +
+      '.sw-panel .btn-primary{background:var(--accent);color:#fff}.sw-panel .btn-primary:hover{opacity:0.9}' +
+      '.sw-panel .btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}.sw-panel .btn-ghost:hover{background:var(--surface3);color:var(--text)}' +
+      '.sw-panel .prompt-item{margin-bottom:16px}.sw-panel .prompt-item label{font-size:11px;color:var(--warning);font-weight:600}' +
+      '.sw-panel .prompt-category{margin-top:20px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--border2);font-size:13px;font-weight:600;color:var(--accent)}' +
       '.sw-panel .prompt-category:first-child{margin-top:0}' +
-      '.sw-panel .key-row{display:flex;align-items:center;gap:8px;padding:8px;background:#13161d;border:1px solid #1e2332;border-radius:6px;margin-bottom:6px;font-size:12px;color:#b0bac8}' +
-      '#settings-panel-root{background:#0c0e13;color:#b0bac8}' +
+      '.sw-panel .key-row{display:flex;align-items:center;gap:8px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:12px;color:var(--text2)}' +
+      '#settings-panel-root{background:var(--bg);color:var(--text2)}' +
       '</style>' +
       '<div class="sw-tabs">' +
       '<button class="sw-tab active" data-tab="misc">기타 설정</button>' +
@@ -42,23 +42,37 @@
       '<button class="sw-tab" data-tab="prompts">프롬프트 설정</button>' +
       '</div>' +
       '<div id="sw-panel-misc" class="sw-panel active">' +
-      '<p style="color:#94a3b8;font-size:12px;margin-bottom:16px">슬라이드 생성 시 사용할 기본값을 미리 설정합니다.</p>' +
-      '<div style="margin-bottom:20px;padding:12px;background:#13161d;border-radius:6px;border:1px solid #1e2332">' +
-      '<label style="display:block;font-size:12px;font-weight:600;color:#94a3b8;margin-bottom:10px">사용자 정보 (요약문서 제목 아래에 표시)</label>' +
+      '<p style="color:var(--text2);font-size:12px;margin-bottom:16px">슬라이드 생성 시 사용할 기본값을 미리 설정합니다.</p>' +
+      '<div style="margin-bottom:20px;padding:12px;background:var(--surface);border-radius:6px;border:1px solid var(--border)">' +
+      '<label style="display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">사용자 정보 (요약문서 제목 아래에 표시)</label>' +
       '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:8px">' +
-      '<input type="text" id="sw-user-name" placeholder="이름" style="width:80px;padding:6px 12px;font-size:12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8">' +
-      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0"><input type="checkbox" id="sw-user-name-v"> v</label>' +
-      '<input type="text" id="sw-user-affiliation" placeholder="소속" style="width:100px;padding:6px 12px;font-size:12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8">' +
-      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0"><input type="checkbox" id="sw-user-affiliation-v"> v</label>' +
-      '<input type="text" id="sw-user-email" placeholder="메일" style="width:120px;padding:6px 12px;font-size:12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8">' +
-      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0"><input type="checkbox" id="sw-user-email-v"> v</label>' +
-      '<input type="text" id="sw-user-phone" placeholder="연락처" style="width:100px;padding:6px 12px;font-size:12px;background:#13161d;border:1px solid #1e2332;border-radius:6px;color:#b0bac8">' +
-      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0"><input type="checkbox" id="sw-user-phone-v"> v</label>' +
+      '<input type="text" id="sw-user-name" placeholder="이름" class="control" style="width:80px;padding:6px 12px;font-size:12px">' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0;color:var(--text2)"><input type="checkbox" id="sw-user-name-v"> v</label>' +
+      '<input type="text" id="sw-user-affiliation" placeholder="소속" class="control" style="width:100px;padding:6px 12px;font-size:12px">' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0;color:var(--text2)"><input type="checkbox" id="sw-user-affiliation-v"> v</label>' +
+      '<input type="text" id="sw-user-email" placeholder="메일" class="control" style="width:120px;padding:6px 12px;font-size:12px">' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0;color:var(--text2)"><input type="checkbox" id="sw-user-email-v"> v</label>' +
+      '<input type="text" id="sw-user-phone" placeholder="연락처" class="control" style="width:100px;padding:6px 12px;font-size:12px">' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;margin:0;color:var(--text2)"><input type="checkbox" id="sw-user-phone-v"> v</label>' +
       '<button class="btn btn-primary btn-sm" id="sw-user-save">save</button>' +
-      '</div><p style="font-size:10px;color:#94a3b8;margin:0">체크된 항목만 요약문서 제목 아래에 표시됩니다.</p></div>' +
+      '</div><p style="font-size:10px;color:var(--text2);margin:0">체크된 항목만 요약문서 제목 아래에 표시됩니다.</p></div>' +
       '<label>기본 슬라이드 수 (페이지)</label>' +
       '<input type="number" id="sw-misc-default-slide-count" min="5" max="200" value="15" style="width:80px;margin-bottom:12px">' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer"><input type="checkbox" id="sw-misc-default-include-cover" checked> 표지 포함 기본값</label>' +
+      '<div class="sw-visibility-section" style="margin-top:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">' +
+      '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">표시 설정 (탭별)</div>' +
+      '<p style="font-size:10px;color:var(--text3);margin-bottom:12px">각 탭에서 표시할 항목을 선택합니다.</p>' +
+      '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">' +
+      '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">원문</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-writing-style-raw"> 문체설정 보이기</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-raw"> 커스텀 지시사항 보이기</label></div>' +
+      '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">요약</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-writing-style-summary"> 문체설정 보이기</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-summary"> 커스텀 지시사항 보이기</label></div>' +
+      '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">원고</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-slide-gen-type-manuscript"> 슬라이드생성유형 보이기</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-manuscript"> 커스텀 프롬프트 보이기</label></div>' +
+      '</div></div>' +
       '<label style="margin-top:12px">페이지 범위 기본값 (All Slide 등)</label>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;margin-bottom:12px">' +
       '<input type="number" id="sw-misc-range-min" min="1" max="999" placeholder="최소" style="width:72px">' +
@@ -72,14 +86,14 @@
       '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option><option value="auto_visual">I. AII 자동 시각화형</option></select>' +
       '<label style="margin-top:16px">원문 요약 글자 수</label>' +
       '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="2000000" step="1000" value="1500000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
-      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
+      '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
       '<label style="margin-top:16px">IMGSAVE URL (프로젝트 저장 모달의 IMGSAVE 링크 주소)</label>' +
       '<input type="url" id="sw-misc-imgsave-url" placeholder="https://imgbb.com/" style="width:100%;max-width:400px;margin-top:4px;margin-bottom:4px">' +
-      '<p style="font-size:10px;color:#94a3b8;margin:0 0 12px 0">이미지 업로드 사이트 주소. 기본: imgbb.com</p>' +
+      '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">이미지 업로드 사이트 주소. 기본: imgbb.com</p>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
-      '<p style="color:#94a3b8;font-size:12px;margin-bottom:12px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:#4f8ef7">Google AI Studio</a>에서 발급한 API 키를 입력하세요.</p>' +
+      '<p style="color:var(--text2);font-size:12px;margin-bottom:12px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Google AI Studio</a>에서 발급한 API 키를 입력하세요.</p>' +
       '<label>API 키</label>' +
       '<div style="position:relative">' +
       '<input type="password" id="sw-api-key-field" placeholder="AIza..." autocomplete="off" style="padding-right:40px">' +
@@ -109,7 +123,7 @@
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-api-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-prompts" class="sw-panel">' +
-      '<p style="color:#94a3b8;font-size:12px;margin-bottom:8px">요약·번역·슬라이드 생성 등에 사용되는 프롬프트를 사전 설정합니다.</p>' +
+      '<p style="color:var(--text2);font-size:12px;margin-bottom:8px">요약·번역·슬라이드 생성 등에 사용되는 프롬프트를 사전 설정합니다.</p>' +
       '<label style="margin-bottom:6px">ScholarAI에서 사전 프롬프트 선택</label>' +
       '<select id="sw-scholara-i-preset-select" style="width:100%;max-width:320px;margin-bottom:12px">' +
       '<option value="none">사전프롬프트없음</option>' +
@@ -218,12 +232,34 @@
 
     var miscCount = $('sw-misc-default-slide-count');
     var miscCover = $('sw-misc-default-include-cover');
+    var miscShowWritingStyleRaw = $('sw-misc-show-writing-style-raw');
+    var miscShowWritingStyleSummary = $('sw-misc-show-writing-style-summary');
+    var miscShowCustomRaw = $('sw-misc-show-custom-raw');
+    var miscShowCustomSummary = $('sw-misc-show-custom-summary');
+    var miscShowSlideGenTypeManuscript = $('sw-misc-show-slide-gen-type-manuscript');
+    var miscShowCustomManuscript = $('sw-misc-show-custom-manuscript');
     var miscType = $('sw-misc-default-slide-gen-type');
     var miscSummaryLimit = $('sw-misc-summary-char-limit');
     var miscRangeMin = $('sw-misc-range-min');
     var miscRangeMax = $('sw-misc-range-max');
     if (miscCount) miscCount.value = localStorage.getItem('ss_default_slide_count') || '15';
     if (miscCover) miscCover.checked = localStorage.getItem('ss_default_include_cover') !== 'false';
+    var _raw = localStorage.getItem('ss_show_writing_style_raw');
+    var _sum = localStorage.getItem('ss_show_writing_style_summary');
+    if (_raw === null) _raw = localStorage.getItem('ss_show_writing_style');
+    if (_sum === null) _sum = localStorage.getItem('ss_show_writing_style');
+    if (miscShowWritingStyleRaw) miscShowWritingStyleRaw.checked = _raw === '1';
+    if (miscShowWritingStyleSummary) miscShowWritingStyleSummary.checked = _sum === '1';
+    var _cRaw = localStorage.getItem('ss_show_custom_instruction_raw');
+    var _cSum = localStorage.getItem('ss_show_custom_instruction_summary');
+    var _cMan = localStorage.getItem('ss_show_custom_instruction_manuscript');
+    var _slideGenMan = localStorage.getItem('ss_show_slide_gen_type_manuscript');
+    if (_cRaw === null) _cRaw = localStorage.getItem('ss_show_summary_custom_instruction');
+    if (_cSum === null) _cSum = localStorage.getItem('ss_show_summary_custom_instruction');
+    if (miscShowCustomRaw) miscShowCustomRaw.checked = _cRaw === '1';
+    if (miscShowCustomSummary) miscShowCustomSummary.checked = _cSum === '1';
+    if (miscShowCustomManuscript) miscShowCustomManuscript.checked = _cMan === '1';
+    if (miscShowSlideGenTypeManuscript) miscShowSlideGenTypeManuscript.checked = _slideGenMan === '1';
     if (miscType) miscType.value = localStorage.getItem('ss_slide_gen_type') || 'precision';
     if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '1500000';
     if (miscRangeMin) miscRangeMin.value = localStorage.getItem('ss_slide_range_default_min') || '1';
@@ -267,6 +303,12 @@
     if (miscBtn) miscBtn.addEventListener('click', function () {
       if (miscCount) localStorage.setItem('ss_default_slide_count', miscCount.value || '15');
       if (miscCover) localStorage.setItem('ss_default_include_cover', miscCover.checked ? 'true' : 'false');
+      if (miscShowWritingStyleRaw) localStorage.setItem('ss_show_writing_style_raw', miscShowWritingStyleRaw.checked ? '1' : '0');
+      if (miscShowWritingStyleSummary) localStorage.setItem('ss_show_writing_style_summary', miscShowWritingStyleSummary.checked ? '1' : '0');
+      if (miscShowCustomRaw) localStorage.setItem('ss_show_custom_instruction_raw', miscShowCustomRaw.checked ? '1' : '0');
+      if (miscShowCustomSummary) localStorage.setItem('ss_show_custom_instruction_summary', miscShowCustomSummary.checked ? '1' : '0');
+      if (miscShowCustomManuscript) localStorage.setItem('ss_show_custom_instruction_manuscript', miscShowCustomManuscript.checked ? '1' : '0');
+      if (miscShowSlideGenTypeManuscript) localStorage.setItem('ss_show_slide_gen_type_manuscript', miscShowSlideGenTypeManuscript.checked ? '1' : '0');
       if (miscType) localStorage.setItem('ss_slide_gen_type', miscType.value || 'precision');
       if (miscRangeMin) localStorage.setItem('ss_slide_range_default_min', String(miscRangeMin.value || '1').trim() || '1');
       if (miscRangeMax) localStorage.setItem('ss_slide_range_default_max', String(miscRangeMax.value || '30').trim() || '30');
@@ -360,7 +402,7 @@
         }
       }
       var container = $('sw-prompts-container');
-      if (container) container.innerHTML = html || '<p style="color:#94a3b8">기본 프롬프트 목록을 불러오려면 새로고침하세요.</p>';
+      if (container) container.innerHTML = html || '<p style="color:var(--text2)">기본 프롬프트 목록을 불러오려면 새로고침하세요.</p>';
       document.querySelectorAll('#settings-panel-root .sw-prompt-filter-btn').forEach(function (b) {
         b.classList.toggle('active', (b.getAttribute('data-filter') || 'all') === filterCategory);
       });

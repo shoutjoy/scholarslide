@@ -370,7 +370,8 @@
       + (isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
       + '</div>';
 
-    var slideGenTypeRow = '<div style="margin-bottom:8px"><label class="label">슬라이드 생성 유형</label>'
+    var showSlideGenTypeManuscript = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_show_slide_gen_type_manuscript') === '1');
+    var slideGenTypeRow = '<div style="margin-bottom:8px' + (showSlideGenTypeManuscript ? '' : ';display:none') + '"><label class="label">슬라이드 생성 유형</label>'
       + '<select class="control" id="slide-gen-type" style="font-size:11px;width:100%" onchange="if(typeof localStorage!==\'undefined\')localStorage.setItem(\'ss_slide_gen_type\',this.value)">'
       + '<option value="precision" ' + (slideGenType === 'precision' ? 'selected' : '') + '>A. 정밀 요약형 (Precision Archive)</option>'
       + '<option value="presentation" ' + (slideGenType === 'presentation' ? 'selected' : '') + '>B. 발표 최적화형 (Presentation Focus)</option>'
@@ -398,25 +399,23 @@
       + '<button type="button" class="btn btn-sm btn-slide-gen-auto" style="' + btnGenStyle + '" onclick="askThenSummary(\'slides_auto\')">🧠 All Slide생성</button>'
       + '</div>';
 
-    var row2 = '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
-      + '<textarea class="control" id="custom-instruction-val" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력..." style="width:100%;margin-bottom:10px;resize:vertical">' + esc(customVal) + '</textarea>';
+    var showCustomManuscript = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_show_custom_instruction_manuscript') === '1');
+    var row2 = showCustomManuscript
+      ? '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
+        + '<textarea class="control" id="custom-instruction-manuscript" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력..." style="width:100%;margin-bottom:10px;resize:vertical">' + esc(customVal) + '</textarea>'
+      : '<textarea class="control" id="custom-instruction-manuscript" rows="2" placeholder="" style="display:none">' + esc(customVal) + '</textarea>';
 
     var row3 = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
       + '<button type="button" class="btn btn-ghost btn-sm" onclick="askThenGenerateScript()">📄 발표원고 생성</button>'
-      + '<button type="button" class="btn btn-ghost btn-sm" style="justify-content:center" onclick="document.getElementById(\'file-input-manuscript\').click()">📂 파일선택</button>'
-      + '<input type="file" id="file-input-manuscript" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/>'
       + '</div>';
-
-    var row4 = '<label class="label" style="margin-bottom:4px">텍스트입력창</label>'
-      + '<textarea class="control" id="manuscript-text-input" rows="3" placeholder="메모 또는 추가 지시사항..." style="width:100%;margin-bottom:10px;resize:vertical"></textarea>';
 
     var toggleActiveScript = view === 'script' ? ' active' : '';
     var toggleActiveSlides = view === 'slides' ? ' active' : '';
     var toggleActiveAllSlides = view === 'allslides' ? ' active' : '';
-    var row5 = '<div class="translate-row" style="margin-bottom:8px">'
-      + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveScript + '" onclick="setManuscriptView(\'script\')">발표원고</button>'
-      + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveSlides + '" onclick="setManuscriptView(\'slides\')">슬라이드생성</button>'
-      + '<button type="button" class="btn btn-ghost btn-xs' + toggleActiveAllSlides + '" onclick="setManuscriptView(\'allslides\')">All Slide생성</button>'
+    var row5 = '<div class="manuscript-tab-menu">'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveScript + '" onclick="setManuscriptView(\'script\')">발표원고</button>'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveSlides + '" onclick="setManuscriptView(\'slides\')">슬라이드생성</button>'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveAllSlides + '" onclick="setManuscriptView(\'allslides\')">All Slide생성</button>'
       + '</div>';
 
     var selectedId = window._selectedManuscriptHistoryId || null;
@@ -548,7 +547,6 @@
       + slideRangeRow
       + row2
       + row3
-      + row4
       + row5
       + row6
       + resultArea;

@@ -942,6 +942,14 @@
         <input type="number" class="control" id="summary-options-slide-count" value="12" min="5" max="30" style="width:80px;text-align:center"/>
       </div>
       <div>
+        <label class="label">문체 설정</label>
+        <select class="control" id="summary-options-writing-style" style="font-size:12px;width:100%;max-width:240px">
+          <option value="academic-da">학술체 (~이다)</option>
+          <option value="academic-im">학술체 (~임, ~함)</option>
+          <option value="polite">일반체 (존댓말)</option>
+        </select>
+      </div>
+      <div>
         <label class="label">커스텀 지시사항 (프롬프트)</label>
         <textarea class="control" id="summary-options-custom-instruction" rows="2" placeholder="예: supplement·information theory까지 요약, 20페이지 분량 괜찮음..." style="width:100%;resize:vertical;min-height:3.5em"></textarea>
         <p style="font-size:10px;color:var(--text3);margin-top:4px">요약 시 AI에 전달되는 추가 지시사항입니다. 좌측 패널의 커스텀 지시사항과 연동됩니다.</p>

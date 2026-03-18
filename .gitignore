@@ -1,2 +1,8 @@
 # 로컬 백업 (GitHub에 올리지 않음)
 jsBackup/
+
+# Objects 폴더 (Git push 제외)
+Objects/
+
+# sidebarAI 모듈 (로컬/배포용 분리 시)
+sidebarAI/
