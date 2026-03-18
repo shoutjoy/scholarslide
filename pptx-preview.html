@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PPTX 미리보기 — ScholarSlide</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Malgun Gothic', sans-serif; padding: 12px; min-height: 100vh; display: flex; flex-direction: column; transition: background .2s, color .2s; }
@@ -74,7 +76,7 @@
 <body class="theme-light">
   <div class="toolbar">
     <button type="button" class="btn btn-pri" id="pptx-export-btn">⬇ PPTX 내보내기</button>
-    <button type="button" class="btn btn-ghost" id="fullscreen-btn" title="전체화면 토글">⊞ 전체화면</button>
+    <button type="button" class="btn btn-pri" id="pdf-export-btn">📄 PDF 내보내기</button>
     <button type="button" class="btn btn-ghost" id="close-btn">닫기</button>
     <span class="toolbar-sep"></span>
     <button type="button" class="btn btn-ghost theme-btn active" id="theme-light-btn" title="라이트">☀️ 라이트</button>
@@ -884,13 +886,61 @@
     toast.style.display = 'block';
     toast.onclick = function () { toast.style.display = 'none'; };
   });
+  function showExportToast(msg, isErr) {
+    var toast = document.getElementById('pptx-export-toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.toggle('err', !!isErr);
+    toast.style.display = 'block';
+    toast.onclick = function () { toast.style.display = 'none'; };
+  }
+  var pdfBtn = document.getElementById('pdf-export-btn');
+  if (pdfBtn) pdfBtn.onclick = function () {
+    if (!SL.length) { showExportToast('내보낼 슬라이드가 없습니다', true); return; }
+    if (typeof html2canvas !== 'function') {
+      showExportToast('PDF 내보내기를 사용할 수 없습니다', true);
+      return;
+    }
+    var JsPDF = (typeof jspdf !== 'undefined' && jspdf.jsPDF) ? jspdf.jsPDF : (typeof window.jspdf !== 'undefined' && window.jspdf.jsPDF) ? window.jspdf.jsPDF : (typeof window.jsPDF !== 'undefined') ? window.jsPDF : null;
+    if (!JsPDF) { showExportToast('PDF 라이브러리를 불러올 수 없습니다', true); return; }
+    var main = document.getElementById('preview-main');
+    var savedIdx = IDX;
+    var pdf = new JsPDF({ orientation: 'l', unit: 'mm', format: [297, 167] });
+    var w = 297, h = 167;
+    var idx = 0;
+    function captureNext() {
+      if (idx >= SL.length) {
+        try {
+          var fn = 'pres_preview_' + new Date().toISOString().slice(0, 10) + '.pdf';
+          pdf.save(fn);
+          IDX = savedIdx;
+          render();
+          showExportToast('PDF 내보내기가 완료되었습니다 확인하세요');
+        } catch (e) {
+          showExportToast('PDF 저장 실패: ' + (e && e.message ? e.message : '알 수 없는 오류'), true);
+        }
+        return;
+      }
+      IDX = idx;
+      render();
+      requestAnimationFrame(function () {
+        setTimeout(function () {
+          html2canvas(main.firstElementChild || main, { useCORS: true, allowTaint: true, backgroundColor: null, scale: 2 }).then(function (c) {
+            var imgData = c.toDataURL('image/png');
+            if (idx > 0) pdf.addPage();
+            pdf.addImage(imgData, 'PNG', 0, 0, w, h);
+            idx++;
+            captureNext();
+          }).catch(function (e) {
+            showExportToast('캡쳐 실패: ' + (e && e.message ? e.message : '알 수 없는 오류'), true);
+          });
+        }, 100);
+      });
+    }
+    captureNext();
+  };
   var closeBtn = document.getElementById('close-btn');
   if (closeBtn) closeBtn.onclick = function () { window.close(); };
-  var fsBtn = document.getElementById('fullscreen-btn');
-  if (fsBtn) fsBtn.onclick = function () {
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function () {});
-    else document.exitFullscreen();
-  };
   var scb = document.getElementById('swipe-cb');
   if (scb) scb.onchange = function () { SWIPE = !!scb.checked; };
   document.addEventListener('keydown', function (e) {

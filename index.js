@@ -752,7 +752,10 @@ function getTextViewerWindowHtml(opts) {
 + '<label>이미지 비율</label>'
 + '<div class="ssp-ratio-wrap"><button type="button" class="ssp-ratio-btn active" data-ratio="1:1">1:1</button><button type="button" class="ssp-ratio-btn" data-ratio="16:9">16:9</button><button type="button" class="ssp-ratio-btn" data-ratio="9:16">9:16</button><button type="button" class="ssp-ratio-btn" data-ratio="4:3">4:3</button><button type="button" class="ssp-ratio-btn" data-ratio="3:4">3:4</button></div>'
 + '<label><input type="checkbox" id="ssp-no-text"> 단순 이미지 (텍스트 없음)</label>'
-+ '<button type="button" class="sa-btn" style="background:#f59e0b;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:6px" onclick="viewerSSPGenerate()">🎨 AI 재생성</button>'
++ '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">'
++ '<button type="button" class="sa-btn" style="background:#f59e0b;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="viewerSSPGenerate()">🎨 AI 재생성</button>'
++ '<button type="button" class="sa-btn ghost" style="padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;border:1px solid #2e3447" onclick="window.open(\'https://imgbb.com/\', \'_blank\')" title="이미지 호스팅 imgbb.com 열기">imgBB</button>'
++ '</div>'
 + '<div id="ssp-progress-wrap" class="ssp-progress-wrap"><div class="ssp-progress-bar"><div id="ssp-progress-fill" class="ssp-progress-fill"></div></div><div class="ssp-progress-row"><span id="ssp-progress-pct" style="font-size:10px;color:#94a3b8">0%</span><button type="button" class="sa-btn ghost" style="font-size:10px" onclick="viewerSSPAbort()">⏹ 생성중지</button></div></div>'
 + '<div id="ssp-status" class="ssp-status"></div>'
 + '<img id="ssp-result-img" class="ssp-result" style="display:none" alt="생성 결과" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="클릭하면 크게 보기">'
@@ -1949,10 +1952,6 @@ function _savePenToolUIToSettings() {
   if (!s) return;
   const sizeEl = document.getElementById('pen-size');
   if (sizeEl) s.size = Math.max(1, Math.min(40, parseInt(sizeEl.value) || 3));
-  if (_penTool === 'pen' || _penTool === 'highlight') {
-    const opacityEl = document.getElementById('pen-opacity');
-    if (opacityEl) s.opacity = Math.max(0.01, Math.min(1, parseInt(opacityEl.value) / 100));
-  }
 }
 
 function _loadPenToolSettingsToUI(tool) {
@@ -1960,17 +1959,30 @@ function _loadPenToolSettingsToUI(tool) {
   if (!s) return;
   const sizeEl = document.getElementById('pen-size');
   if (sizeEl) { sizeEl.value = s.size; }
-  const opacityEl = document.getElementById('pen-opacity');
   const opacityVal = document.getElementById('pen-opacity-val');
   if (tool === 'eraser') {
-    if (opacityEl) { opacityEl.value = 100; opacityEl.disabled = true; }
     if (opacityVal) opacityVal.textContent = '100%';
     _penOpacity = 1;
   } else {
-    if (opacityEl) { opacityEl.value = Math.round(s.opacity * 100); opacityEl.disabled = false; }
-    if (opacityVal) opacityVal.textContent = Math.round(s.opacity * 100) + '%';
+    const pct = Math.round(s.opacity * 100);
+    if (opacityVal) opacityVal.textContent = pct + '%';
     _penOpacity = s.opacity;
   }
+}
+
+function adjustPenOpacity(delta) {
+  if (_penTool !== 'pen' && _penTool !== 'highlight') return;
+  const s = _penToolSettings[_penTool];
+  if (!s) return;
+  const step = _penTool === 'pen' ? 0.1 : 0.01;
+  let v = s.opacity + delta * step;
+  v = Math.max(0.01, Math.min(1, v));
+  if (_penTool === 'pen') v = Math.round(v * 10) / 10;
+  else v = Math.round(v * 100) / 100;
+  s.opacity = v;
+  _penOpacity = v;
+  const lbl = document.getElementById('pen-opacity-val');
+  if (lbl) lbl.textContent = Math.round(v * 100) + '%';
 }
 
 function setPenTool(tool) {
@@ -2067,6 +2079,74 @@ function penMove(e) {
 function clearPresCanvas() {
   const canvas = document.getElementById('pres-canvas');
   if (canvas && _presCtx) _presCtx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+let _presCaptureHistory = [];
+
+async function capturePresWithPen() {
+  const container = document.getElementById('pres-slide-container');
+  if (!container || typeof html2canvas !== 'function') {
+    if (typeof showToast === 'function') showToast('⚠️ 캡쳐를 사용할 수 없습니다');
+    return;
+  }
+  try {
+    const canvas = await html2canvas(container, { useCORS: true, allowTaint: true, backgroundColor: null, scale: window.devicePixelRatio || 1 });
+    const dataUrl = canvas.toDataURL('image/png');
+    const filename = 'pres_capture_' + (presIndex + 1) + '_' + Date.now() + '.png';
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    a.click();
+    _presCaptureHistory.push({ dataUrl: dataUrl, filename: filename });
+    renderPresCaptureHistory();
+    if (typeof showToast === 'function') showToast('캡쳐되었습니다');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('❌ 캡쳐 실패: ' + (e && e.message ? e.message : '알 수 없는 오류'));
+  }
+}
+
+function togglePresCaptureHistory() {
+  const panel = document.getElementById('pres-capture-history-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  if (!visible) renderPresCaptureHistory();
+}
+
+function renderPresCaptureHistory() {
+  const list = document.getElementById('pres-capture-history-list');
+  if (!list) return;
+  list.innerHTML = _presCaptureHistory.map(function (item, i) {
+    return '<div class="pres-capture-history-item"><img src="' + item.dataUrl + '" alt=""/><div class="pres-capture-filename">' + (item.filename || '') + '</div></div>';
+  }).join('');
+}
+
+async function downloadPresCaptureZip() {
+  if (!_presCaptureHistory.length) {
+    if (typeof showToast === 'function') showToast('⚠️ 저장할 캡쳐가 없습니다');
+    return;
+  }
+  if (typeof JSZip !== 'function') {
+    if (typeof showToast === 'function') showToast('⚠️ ZIP 저장을 사용할 수 없습니다');
+    return;
+  }
+  try {
+    const zip = new JSZip();
+    _presCaptureHistory.forEach(function (item, i) {
+      const base64 = (item.dataUrl || '').replace(/^data:image\/\w+;base64,/, '');
+      if (base64) zip.file(item.filename || 'capture_' + (i + 1) + '.png', base64, { base64: true });
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'pres_captures_' + new Date().toISOString().slice(0, 10) + '.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    if (typeof showToast === 'function') showToast('✅ ZIP 일괄저장 완료');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('❌ ZIP 저장 실패: ' + (e && e.message ? e.message : '알 수 없는 오류'));
+  }
 }
 
 /* =========================================================

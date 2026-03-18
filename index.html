@@ -12,6 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -48,6 +49,14 @@
 <!-- ── PRESENTATION MODE ── -->
 <div id="presentation-mode">
   <div class="pres-main-row">
+    <div id="pres-capture-history-panel" class="pres-capture-history-panel" style="display:none">
+      <div class="pres-history-header">
+        <span>캡쳐 히스토리</span>
+        <button type="button" class="pen-tool-btn" onclick="togglePresCaptureHistory()" title="닫기">✕</button>
+      </div>
+      <button type="button" class="pres-history-zip-btn" onclick="downloadPresCaptureZip()">📦 ZIP 일괄저장</button>
+      <div id="pres-capture-history-list" class="pres-capture-history-list"></div>
+    </div>
     <div id="pres-left-label" class="pres-left-label">현재발표</div>
     <div class="pres-slide" id="pres-slide-container">
     <canvas id="pres-canvas"></canvas>
@@ -99,11 +108,14 @@
     <div class="pen-tool-sep"></div>
     <div style="font-size:9px;color:rgba(255,255,255,0.5);font-weight:700">농도</div>
     <div class="pen-opacity-row">
-      <input type="range" class="pen-opacity-slider" id="pen-opacity" min="1" max="100" value="5" title="농도" oninput="setPenOpacity(this.value)"/>
-      <span id="pen-opacity-val" style="font-size:9px;color:rgba(255,255,255,0.55)">5%</span>
+      <button type="button" class="pen-opacity-btn" onclick="adjustPenOpacity(-1)" title="농도 감소">−</button>
+      <span id="pen-opacity-val" style="font-size:9px;color:rgba(255,255,255,0.55);min-width:28px;text-align:center;cursor:default">80%</span>
+      <button type="button" class="pen-opacity-btn" onclick="adjustPenOpacity(1)" title="농도 증가">+</button>
     </div>
     <div class="pen-tool-sep"></div>
     <button class="pen-tool-btn" onclick="clearPresCanvas()" title="모두 지우기">🗑️</button>
+    <button class="pen-tool-btn" onclick="capturePresWithPen()" title="캡쳐 후 다운로드">📷 캡쳐</button>
+    <button class="pen-tool-btn" onclick="togglePresCaptureHistory()" title="캡쳐 히스토리">📋 히스토리</button>
   </div>
 </div>
 
