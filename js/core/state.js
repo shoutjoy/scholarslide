@@ -33,7 +33,7 @@ let _penTool = 'pointer', _penColor = '#f87171', _penDrawing = false, _penOpacit
 /** 도구별 굵기·농도 (펜/형광펜/지우개 각각 적용) */
 let _penToolSettings = {
   pen: { size: 3, opacity: 0.05 },
-  highlight: { size: 5, opacity: 0.2 },
+  highlight: { size: 5, opacity: 0.01 },
   eraser: { size: 20 }
 };
 let _activeApiKey = '';

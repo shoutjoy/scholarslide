@@ -59,10 +59,15 @@
     <button class="pres-btn pres-zoom-btn" onclick="changePresZoom(+10)" title="확대 (+)">+</button>
     <button class="pres-btn" onclick="fitPresZoom()" title="화면에 맞추기 (F)">⊡ 맞추기</button>
     <div class="pres-sep"></div>
-    <span style="font-size:9px;color:rgba(255,255,255,0.6);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">폰트</span>
-    <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(-10)" title="폰트 축소">−</button>
+    <span style="font-size:9px;color:rgba(255,255,255,0.6);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">제목</span>
+    <button class="pres-btn pres-zoom-btn" onclick="changePresTitleFontScale(-10)" title="제목 폰트 축소">−</button>
+    <span class="pres-zoom-val" id="pres-title-font-val">100%</span>
+    <button class="pres-btn pres-zoom-btn" onclick="changePresTitleFontScale(10)" title="제목 폰트 확대">+</button>
+    <div class="pres-sep"></div>
+    <span style="font-size:9px;color:rgba(255,255,255,0.6);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">본문</span>
+    <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(-10)" title="본문 폰트 축소">−</button>
     <span class="pres-zoom-val" id="pres-font-val">100%</span>
-    <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(10)" title="폰트 확대">+</button>
+    <button class="pres-btn pres-zoom-btn" onclick="changePresFontScale(10)" title="본문 폰트 확대">+</button>
     <div class="pres-sep"></div>
     <button class="pres-btn" onclick="presNav(-1)">◀ 이전</button>
     <span class="pres-counter" id="pres-counter" onclick="promptPresJump()" title="페이지 번호 입력하여 이동">1 / 1</span>
@@ -657,11 +662,17 @@
           <button onclick="changeSlideZoom(10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="확대">+</button>
         </div>
         <!-- 슬라이드 내부 폰트 확대/축소 -->
-        <div style="display:flex;align-items:center;gap:4px;margin-left:8px" title="슬라이드 내용(제목·불릿) 폰트 크기">
-          <span style="font-size:10px;color:var(--text3);white-space:nowrap">폰트</span>
-          <button onclick="changeSlideFontScale(-10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="폰트 축소">−</button>
+        <div style="display:flex;align-items:center;gap:4px;margin-left:8px" title="제목 폰트 크기">
+          <span style="font-size:10px;color:var(--text3);white-space:nowrap">제목</span>
+          <button onclick="changeSlideTitleFontScale(-10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="제목 폰트 축소">−</button>
+          <span id="slide-title-font-val" style="font-size:10px;color:var(--text3);min-width:34px;text-align:center">100%</span>
+          <button onclick="changeSlideTitleFontScale(10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="제목 폰트 확대">+</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-left:8px" title="본문 폰트 크기">
+          <span style="font-size:10px;color:var(--text3);white-space:nowrap">본문</span>
+          <button onclick="changeSlideFontScale(-10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="본문 폰트 축소">−</button>
           <span id="slide-font-val" style="font-size:10px;color:var(--text3);min-width:34px;text-align:center">100%</span>
-          <button onclick="changeSlideFontScale(10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="폰트 확대">+</button>
+          <button onclick="changeSlideFontScale(10)" style="font-size:12px;width:22px;height:22px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center" title="본문 폰트 확대">+</button>
         </div>
       </div>
       <div class="center-toolbar-actions" style="display:flex;gap:4px;flex-wrap:wrap">

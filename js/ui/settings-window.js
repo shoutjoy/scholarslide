@@ -73,6 +73,10 @@
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-slide-gen-type-manuscript"> 슬라이드생성유형 보이기</label>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-manuscript"> 커스텀 프롬프트 보이기</label></div>' +
       '</div></div>' +
+      '<div style="margin-top:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px">' +
+      '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px">발표</div>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-ext-pres"> 외부발표 보이기</label>' +
+      '<p style="font-size:10px;color:var(--text3);margin:6px 0 0 0">체크 시 푸터에 🖥 외부 발표 버튼이 표시됩니다.</p></div>' +
       '<label style="margin-top:12px">페이지 범위 기본값 (All Slide 등)</label>' +
       '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;margin-bottom:12px">' +
       '<input type="number" id="sw-misc-range-min" min="1" max="999" placeholder="최소" style="width:72px">' +
@@ -238,6 +242,7 @@
     var miscShowCustomSummary = $('sw-misc-show-custom-summary');
     var miscShowSlideGenTypeManuscript = $('sw-misc-show-slide-gen-type-manuscript');
     var miscShowCustomManuscript = $('sw-misc-show-custom-manuscript');
+    var miscShowExtPres = $('sw-misc-show-ext-pres');
     var miscType = $('sw-misc-default-slide-gen-type');
     var miscSummaryLimit = $('sw-misc-summary-char-limit');
     var miscRangeMin = $('sw-misc-range-min');
@@ -260,6 +265,7 @@
     if (miscShowCustomSummary) miscShowCustomSummary.checked = _cSum === '1';
     if (miscShowCustomManuscript) miscShowCustomManuscript.checked = _cMan === '1';
     if (miscShowSlideGenTypeManuscript) miscShowSlideGenTypeManuscript.checked = _slideGenMan === '1';
+    if (miscShowExtPres) miscShowExtPres.checked = localStorage.getItem('ss_show_ext_pres') === '1';
     if (miscType) miscType.value = localStorage.getItem('ss_slide_gen_type') || 'precision';
     if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '1500000';
     if (miscRangeMin) miscRangeMin.value = localStorage.getItem('ss_slide_range_default_min') || '1';
@@ -309,6 +315,7 @@
       if (miscShowCustomSummary) localStorage.setItem('ss_show_custom_instruction_summary', miscShowCustomSummary.checked ? '1' : '0');
       if (miscShowCustomManuscript) localStorage.setItem('ss_show_custom_instruction_manuscript', miscShowCustomManuscript.checked ? '1' : '0');
       if (miscShowSlideGenTypeManuscript) localStorage.setItem('ss_show_slide_gen_type_manuscript', miscShowSlideGenTypeManuscript.checked ? '1' : '0');
+      if (miscShowExtPres) localStorage.setItem('ss_show_ext_pres', miscShowExtPres.checked ? '1' : '0');
       if (miscType) localStorage.setItem('ss_slide_gen_type', miscType.value || 'precision');
       if (miscRangeMin) localStorage.setItem('ss_slide_range_default_min', String(miscRangeMin.value || '1').trim() || '1');
       if (miscRangeMax) localStorage.setItem('ss_slide_range_default_max', String(miscRangeMax.value || '30').trim() || '30');
@@ -323,6 +330,7 @@
         localStorage.setItem('ss_imgsave_url', url || 'https://imgbb.com/');
       }
       if (typeof win.renderLeftPanel === 'function') win.renderLeftPanel();
+      if (typeof win.updateExtPresButtonVisibility === 'function') win.updateExtPresButtonVisibility();
       if (typeof win.showToast === 'function') win.showToast('적용되었습니다');
     });
 

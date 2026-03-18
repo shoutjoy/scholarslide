@@ -127,8 +127,9 @@ function buildWorkspaceSnapshot() {
     fileName: fn, rawText: rt, summaryText,
     _translatedSummary: window._translatedSummary, _translatedRaw: window._translatedRaw,
     slideStyle, writingStyle, activeSlideIndex,
-    _slideZoom: typeof _slideZoom !== 'undefined' ? _slideZoom : 100,
-    _slideFontScale: typeof _slideFontScale !== 'undefined' ? _slideFontScale : 100,
+    _slideZoom: (typeof getSlideZoom === 'function' ? getSlideZoom() : 100),
+    _slideFontScale: (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100),
+    _slideTitleFontScale: (typeof getSlideTitleFontScale === 'function' ? getSlideTitleFontScale() : 100),
     slides: slides.map(s => ({ ...s })),
     sources, presentationScript,
     references: ReferenceStore.getAll(),
@@ -254,6 +255,7 @@ function applyWorkspaceSnapshot(snap) {
   if (typeof slideRedoStack !== 'undefined') slideRedoStack = [];
   if (snap._slideZoom != null && typeof window._setSlideZoom === 'function') window._setSlideZoom(snap._slideZoom);
   if (snap._slideFontScale != null && typeof window._setSlideFontScale === 'function') window._setSlideFontScale(snap._slideFontScale);
+  if (snap._slideTitleFontScale != null && typeof window._setSlideTitleFontScale === 'function') window._setSlideTitleFontScale(snap._slideTitleFontScale);
   sources = snap.sources || [];
   presentationScript = snap.presentationScript || [];
   if (snap.references && snap.references.length) {

@@ -279,6 +279,14 @@ function updateSlidesCountLabel() {
   if (slides.length && typeof updateSlideSyncButton === 'function') updateSlideSyncButton();
 }
 
+function updateExtPresButtonVisibility() {
+  const extBtn = document.getElementById('ext-present-btn');
+  if (!extBtn) return;
+  const show = slides.length > 0 && localStorage.getItem('ss_show_ext_pres') === '1';
+  extBtn.style.display = show ? '' : 'none';
+}
+window.updateExtPresButtonVisibility = updateExtPresButtonVisibility;
+
 function updateSlideSyncButton() {
   var w = window._extPresWindow;
   if (w && !w.closed) {
@@ -1007,8 +1015,7 @@ function afterSlidesCreated() {
   ['export-btn', 'pptx-preview-btn', 'visualize-btn', 'slide-reset-btn', 'save-session-btn', 'gen-script-btn', 'present-btn', 'present-from-current-btn', 'apply-layout-all-btn', 'save-slide-history-btn']
     .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
   updateSlideSyncButton();
-  const extBtn = document.getElementById('ext-present-btn');
-  if (extBtn) extBtn.style.display = '';
+  updateExtPresButtonVisibility();
   const footer = document.getElementById('slide-footer'); if (footer) footer.style.display = 'flex';
   const es = document.getElementById('empty-state'); if (es) es.style.display = 'none';
 }
@@ -1465,6 +1472,7 @@ function setSlideImages(slide, imgs) {
   slide.slideImage1 = imgs[0] ? imgs[0].slideImage || null : null;
   slide.slideImage2 = imgs[1] ? imgs[1].slideImage || null : null;
 }
+if (typeof window !== 'undefined') window.getSlideImages = getSlideImages;
 
 /** AI 생성 이미지에 완전 채우기 레이아웃 적용 (innerSize 45% 텍스트 / 55% 이미지) */
 function applyFullFillImageLayout(slide) {
@@ -1889,9 +1897,10 @@ function renderPresSlide() {
   } else if (isImageOnly) {
     innerHTML = `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#1a1a2e;color:rgba(255,255,255,0.5);font-size:14px">이미지 없음</div>`;
   } else {
-    const fs = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
-    const tMin = Math.round(20 * fs), tMax = Math.round(44 * fs), tVw = (3.5 * fs).toFixed(1);
-    const bMin = Math.round(11 * fs), bMax = Math.round(21 * fs), bVw = (1.7 * fs).toFixed(1);
+    const fsTitle = (typeof getSlideTitleFontScale === 'function' ? getSlideTitleFontScale() : 100) / 100;
+    const fsBody = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) / 100;
+    const tMin = Math.round(20 * fsTitle), tMax = Math.round(44 * fsTitle), tVw = (3.5 * fsTitle).toFixed(1);
+    const bMin = Math.round(11 * fsBody), bMax = Math.round(21 * fsBody), bVw = (1.7 * fsBody).toFixed(1);
     const titleSizePx = (slide.titleFontSize != null && slide.titleFontSize > 0) ? slide.titleFontSize : null;
     const titleStyle = titleSizePx ? ('font-size:' + titleSizePx + 'px') : ('font-size:clamp(' + tMin + 'px,' + tVw + 'vw,' + tMax + 'px)');
     const titlePosStyle = (slide.titlePosition && (slide.titlePosition.left != null || slide.titlePosition.top != null))
@@ -1924,6 +1933,8 @@ function renderPresSlide() {
   document.getElementById('pres-counter').textContent = `${presIndex + 1} / ${slides.length}`;
   const presFontEl = document.getElementById('pres-font-val');
   if (presFontEl) presFontEl.textContent = (typeof getSlideFontScale === 'function' ? getSlideFontScale() : 100) + '%';
+  const presTitleFontEl = document.getElementById('pres-title-font-val');
+  if (presTitleFontEl) presTitleFontEl.textContent = (typeof getSlideTitleFontScale === 'function' ? getSlideTitleFontScale() : 100) + '%';
   const notesBar = document.getElementById('pres-notes-bar');
   if (notesBar) { notesBar.textContent = presentationScript[presIndex] || slide.notes || ''; if (presNotesVisible) notesBar.classList.add('show'); }
   updatePenToolUI();
@@ -2138,18 +2149,23 @@ function openPptxPreviewWindow() {
             ? { overridesBySlide: e.data.data.overridesBySlide }
             : null;
           window.pptxPreviewOverrides = payload;
+          function notifyPreview(success) {
+            if (window._pptxPreviewWin && !window._pptxPreviewWin.closed) {
+              try { window._pptxPreviewWin.postMessage({ type: 'pptx-export-complete', success: success }, '*'); } catch (err) {}
+            }
+          }
+          var runExport = function () {
+            if (typeof exportPPT !== 'function') return Promise.resolve();
+            return exportPPT().then(function (ok) { notifyPreview(!!ok); }).catch(function () { notifyPreview(false); });
+          };
           if (typeof idbGet === 'function' && typeof idbPut === 'function') {
             idbGet(store, key).then(function (saved) {
               var toSave = saved && typeof saved === 'object' ? Object.assign({}, saved) : {};
               toSave.overridesBySlide = (payload && payload.overridesBySlide) ? payload.overridesBySlide : (toSave.overridesBySlide || {});
               return idbPut(store, key, toSave);
-            }).then(function () {
-              if (typeof exportPPT === 'function') exportPPT();
-            }).catch(function () {
-              if (typeof exportPPT === 'function') exportPPT();
-            });
+            }).then(runExport).catch(function () { runExport(); });
           } else {
-            if (typeof exportPPT === 'function') exportPPT();
+            runExport();
           }
           return;
         }
@@ -2432,9 +2448,11 @@ async function exportPPT() {
     const exportName = `${baseName}_ssp_${dateStr}.pptx`;
     await pptx.writeFile({ fileName: exportName });
     showToast('✅ PPTX 다운로드 완료');
+    return true;
   } catch (e) {
     console.error(e);
     showToast('❌ PPTX 내보내기 실패: ' + e.message);
+    return false;
   } finally {
     hideLoading();
   }

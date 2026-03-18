@@ -63,6 +63,12 @@
     body.theme-light .preview-thumb-inner { background: #f1f5f9; }
     .preview-thumb-slide { transform: scale(0.12); transform-origin: 0 0; width: 833px; height: 469px; pointer-events: none; }
     .theme-btn.active { outline: 2px solid #4f8ef7; outline-offset: 1px; }
+    .pptx-export-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; background: #0f172a; color: #e2e8f0; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); font-size: 14px; cursor: pointer; z-index: 9999; user-select: none; border: 1px solid #334155; }
+    body.theme-light .pptx-export-toast { background: #e2e8f0; color: #1e293b; border-color: #cbd5e1; }
+    .pptx-export-toast:hover { background: #1e293b; }
+    body.theme-light .pptx-export-toast:hover { background: #cbd5e1; }
+    .pptx-export-toast.err { background: #7f1d1d; color: #fecaca; }
+    body.theme-light .pptx-export-toast.err { background: #fecaca; color: #7f1d1d; }
   </style>
 </head>
 <body class="theme-light">
@@ -81,6 +87,14 @@
     <button type="button" class="btn btn-ghost" id="zoom-out-btn">− 축소</button>
     <span id="zoom-val" class="zoom-val">100%</span>
     <button type="button" class="btn btn-ghost" id="zoom-in-btn">+ 확대</button>
+    <span class="toolbar-sep"></span>
+    <button type="button" class="btn btn-ghost" id="title-out-btn" title="제목 폰트 축소 (Ctrl+[)">A− 제목</button>
+    <span id="title-val" class="zoom-val" title="제목 폰트 (pt)">28</span>
+    <button type="button" class="btn btn-ghost" id="title-in-btn" title="제목 폰트 확대 (Ctrl+])">A+ 제목</button>
+    <span class="toolbar-sep"></span>
+    <button type="button" class="btn btn-ghost" id="body-out-btn" title="본문 폰트 축소 (Ctrl+9)">A− 본문</button>
+    <span id="font-val" class="zoom-val" title="본문 폰트 (pt)">14</span>
+    <button type="button" class="btn btn-ghost" id="body-in-btn" title="본문 폰트 확대 (Ctrl+0)">A+ 본문</button>
     <span class="toolbar-sep"></span>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;user-select:none">
       <input type="radio" name="edit-mode" id="mode-each" value="each" checked style="width:14px;height:14px" /> each
@@ -125,6 +139,7 @@
     </div>
   </div>
   <div class="preview-overview" id="preview-overview"></div>
+  <div id="pptx-export-toast" class="pptx-export-toast" style="display:none" title="클릭하면 닫힙니다"></div>
 
   <script>
 (function () {
@@ -214,6 +229,10 @@
     OPTS.textX = v1; OPTS.textY = v2; OPTS.textW = v3; OPTS.textH = v4;
     OPTS.imgX = v5; OPTS.imgY = v6; OPTS.imgW = v7; OPTS.imgH = v8;
     OPTS.titleFs = v9; OPTS.bodyFs = v10;
+    var tv = document.getElementById('title-val');
+    if (tv) tv.textContent = (OPTS.titleFs || 28);
+    var fv = document.getElementById('font-val');
+    if (fv) fv.textContent = (OPTS.bodyFs || 14);
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage({
         type: 'pptx-preview-overrides',
@@ -856,6 +875,15 @@
       data: { overridesBySlide: overridesBySlide }
     }, '*');
   };
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'pptx-export-complete') return;
+    var toast = document.getElementById('pptx-export-toast');
+    if (!toast) return;
+    toast.textContent = e.data.success ? 'pptx가 내보내기가 완료되었습니다 확인하세요' : 'pptx 내보내기에 실패했습니다';
+    toast.classList.toggle('err', !e.data.success);
+    toast.style.display = 'block';
+    toast.onclick = function () { toast.style.display = 'none'; };
+  });
   var closeBtn = document.getElementById('close-btn');
   if (closeBtn) closeBtn.onclick = function () { window.close(); };
   var fsBtn = document.getElementById('fullscreen-btn');
@@ -875,17 +903,29 @@
       if (e.key === '8') { e.preventDefault(); ZOOM = Math.min(200, ZOOM + 10); render(); return; }
       if (e.key === '9') {
         e.preventDefault();
-        var tEl = document.getElementById('opt-titleFs'), bEl = document.getElementById('opt-bodyFs');
-        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.max(12, v - 1); }
+        var bEl = document.getElementById('opt-bodyFs');
         if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.max(8, v - 1); }
         applyOpts(); render();
         return;
       }
       if (e.key === '0') {
         e.preventDefault();
-        var tEl = document.getElementById('opt-titleFs'), bEl = document.getElementById('opt-bodyFs');
-        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.min(72, v + 1); }
+        var bEl = document.getElementById('opt-bodyFs');
         if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.min(24, v + 1); }
+        applyOpts(); render();
+        return;
+      }
+      if (e.key === '[') {
+        e.preventDefault();
+        var tEl = document.getElementById('opt-titleFs');
+        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.max(12, v - 1); }
+        applyOpts(); render();
+        return;
+      }
+      if (e.key === ']') {
+        e.preventDefault();
+        var tEl = document.getElementById('opt-titleFs');
+        if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.min(72, v + 1); }
         applyOpts(); render();
         return;
       }
@@ -908,6 +948,30 @@
   if (nextBtn) nextBtn.onclick = function () { IDX = Math.min(SL.length - 1, IDX + 1); render(); };
   if (zoOut) zoOut.onclick = function () { ZOOM = Math.max(30, ZOOM - 10); render(); };
   if (zoIn) zoIn.onclick = function () { ZOOM = Math.min(200, ZOOM + 10); render(); };
+  var titleOut = document.getElementById('title-out-btn');
+  var titleIn = document.getElementById('title-in-btn');
+  if (titleOut) titleOut.onclick = function () {
+    var tEl = document.getElementById('opt-titleFs');
+    if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.max(12, v - 1); }
+    applyOpts(); render();
+  };
+  if (titleIn) titleIn.onclick = function () {
+    var tEl = document.getElementById('opt-titleFs');
+    if (tEl) { var v = parseInt(tEl.value, 10) || 28; tEl.value = Math.min(72, v + 1); }
+    applyOpts(); render();
+  };
+  var bodyOut = document.getElementById('body-out-btn');
+  var bodyIn = document.getElementById('body-in-btn');
+  if (bodyOut) bodyOut.onclick = function () {
+    var bEl = document.getElementById('opt-bodyFs');
+    if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.max(8, v - 1); }
+    applyOpts(); render();
+  };
+  if (bodyIn) bodyIn.onclick = function () {
+    var bEl = document.getElementById('opt-bodyFs');
+    if (bEl) { var v = parseInt(bEl.value, 10) || 14; bEl.value = Math.min(24, v + 1); }
+    applyOpts(); render();
+  };
   var imgZoOut = document.getElementById('img-zoom-out');
   var imgZoIn = document.getElementById('img-zoom-in');
   if (imgZoOut) imgZoOut.onclick = function () {

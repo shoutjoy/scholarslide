@@ -2242,13 +2242,14 @@ footer {
   transform-origin: top center;
   transition: transform 0.2s ease;
   --slide-font-scale: 1;
+  --slide-title-font-scale: 1;
 }
 
 /* 슬라이드 내부 폰트 확대/축소 (제목·불릿·추가텍스트만). 인라인 font-size(A+/A−)가 우선되도록 !important 제거 */
 #slides-canvas .slide-card .slide-inner { font-size: calc(16px * var(--slide-font-scale, 1)); }
-#slides-canvas .slide-card .slide-title-input { font-size: calc(24px * var(--slide-font-scale, 1)); }
-#slides-canvas .slide-card.style-dark .slide-title-input { font-size: calc(28px * var(--slide-font-scale, 1)); }
-#slides-canvas .slide-card.style-cover .slide-title-input { font-size: calc(26px * var(--slide-font-scale, 1)); }
+#slides-canvas .slide-card .slide-title-input { font-size: calc(24px * var(--slide-title-font-scale, 1)); }
+#slides-canvas .slide-card.style-dark .slide-title-input { font-size: calc(28px * var(--slide-title-font-scale, 1)); }
+#slides-canvas .slide-card.style-cover .slide-title-input { font-size: calc(26px * var(--slide-title-font-scale, 1)); }
 #slides-canvas .slide-card .bullet-text { font-size: calc(13px * var(--slide-font-scale, 1)) !important; }
 #slides-canvas .slide-card .bullet-rendered { font-size: calc(12px * var(--slide-font-scale, 1)); }
 #slides-canvas .slide-card .slide-extra-text-rendered { font-size: calc(10px * var(--slide-font-scale, 1)); }
