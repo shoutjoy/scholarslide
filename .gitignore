@@ -6,3 +6,6 @@ Objects/
 
 # sidebarAI 모듈 (로컬/배포용 분리 시)
 sidebarAI/
+
+# 앱소스
+outer_app/

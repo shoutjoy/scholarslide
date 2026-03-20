@@ -14,8 +14,8 @@
     var hasContent = rawText || fileSlots.length;
     if (!hasContent) {
       content.innerHTML = '<div class="upload-zone" id="upload-drop-zone" onclick="document.getElementById(\'file-input\').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave()">'
-        + '<input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/>'
-        + '<span class="upload-icon">📄</span><h3>논문/ 소스파일 업로드</h3><p>PDF, DOCX, TXT · 드래그 앤 드롭</p></div>'
+        + '<input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.txt,.md" onchange="handleFileUpload(event)"/>'
+        + '<span class="upload-icon">📄</span><h3>논문/ 소스파일 업로드</h3><p>PDF, DOCX, TXT, MD · 드래그 앤 드롭</p></div>'
         + '<div class="text-input-zone"><label class="label" style="margin-top:12px">또는 텍스트 직접 붙여넣기</label>'
         + '<textarea id="text-paste-input" placeholder="논문 본문을 여기에 붙여넣으세요..." rows="6"></textarea>'
         + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="loadFromTextInput()">✅ 텍스트 로드</button></div>';
@@ -119,7 +119,7 @@
       }
       fileSlotsHtml += '</div>';
       if (leftTab === 'raw') {
-        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>';
+        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt,.md" onchange="handleFileUpload(event)"/></button>';
       }
     } else {
       var _isPdf = (fileName || '').toLowerCase().endsWith('.pdf');
@@ -130,7 +130,7 @@
         + (_isPdf ? '<button onclick="openPdfPreview()" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid rgba(79,142,247,0.4);background:var(--accent-glow);color:var(--accent);cursor:pointer;font-weight:600;flex-shrink:0">👁 미리보기</button>' : '')
         + '</div>';
       if (leftTab === 'raw') {
-        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt" onchange="handleFileUpload(event)"/></button>';
+        fileSlotsHtml += '<button class="btn btn-ghost w-full mt-2" style="justify-content:center;font-size:11px;margin-bottom:10px" onclick="document.getElementById(\'file-input2\').click()"' + (fileSlots.length >= 10 ? ' disabled title="최대 10개까지 추가 가능"' : '') + '>📂 다른 파일 열기<input type="file" id="file-input2" style="display:none" accept=".pdf,.docx,.txt,.md" onchange="handleFileUpload(event)"/></button>';
       }
     }
     var totalChars = rawText.length;
