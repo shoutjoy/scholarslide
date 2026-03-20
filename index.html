@@ -15,6 +15,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="auth-gate/auth-gate.css" />
+<style id="ss-auth-boot">#app{visibility:hidden!important}</style>
 </head>
 
 
@@ -860,6 +862,7 @@
 </footer>
 
 </div>
+<script src="auth-gate/auth-gate.js"></script>
 <script src="js/core/state.js"></script>
 <script src="js/core/helpers.js"></script>
 <script src="js/ui/app-theme.js"></script>
@@ -1069,7 +1072,9 @@
       </div>
     </div>
   </div>
-  <div class="pdf-preview-resize-handle" id="pdf-preview-resize-handle" title="크기 조절 (끌어서 리사이즈)"></div>
+  <div class="pdf-preview-resize-handle pdf-resize-right" id="pdf-resize-right" title="가로 크기 조절"></div>
+  <div class="pdf-preview-resize-handle pdf-resize-bottom" id="pdf-resize-bottom" title="세로 크기 조절"></div>
+  <div class="pdf-preview-resize-handle pdf-resize-corner" id="pdf-preview-resize-handle" title="크기 조절 (끌어서 리사이즈)"></div>
 </div>
 <button class="pdf-preview-toggle" id="pdf-preview-toggle" onclick="togglePdfPreview()" style="display:none">PDF</button>
 

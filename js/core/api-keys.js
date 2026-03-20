@@ -20,7 +20,7 @@ function updateHeaderKeyStatus() {
 function initApiKey() {
   const saved = localStorage.getItem(LS_ACTIVE_KEY);
   if (saved) { _activeApiKey = saved; updateHeaderKeyStatus(); }
-  else { setTimeout(() => openApiModal(), 500); }
+  /* API 키 모달 자동 오픈 제거: 사용자가 상단 🔑 또는 설정에서 직접 입력 */
 }
 function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; f.type = 'password'; const btn = document.getElementById('key-toggle'); if (btn) btn.innerHTML = '&#128065;'; updateApiKeyStrength(f.value); renderSavedKeysList(); }
 function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'img-modal') setTimeout(setupCropEvents, 100); }
