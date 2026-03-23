@@ -313,6 +313,7 @@
       }, 400);
 
       var docTitle = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '';
+      var sourceFileName = docTitle || '';
       if (docTitle) docTitle = docTitle.replace(/\.[^.]+$/, '');
       var formatDocTitleToAPA = function (s) {
         if (!s || !s.trim()) return s;
@@ -326,6 +327,39 @@
           return authors + ' (' + year + '). ' + (title || '');
         }
         return s;
+      };
+      var buildApaCitationInstruction = function (fileName, apaDocTitle) {
+        if (!fileName || !/\.pdf$/i.test(fileName)) return '';
+        var inferredTitle = (apaDocTitle || '').trim();
+        return [
+          'Additional instruction:',
+          '- If the source document is an academic paper PDF, start the output with a "## APA Citation" section.',
+          '- Under that heading, write one APA 7th edition reference line for the source paper itself.',
+          '- Use only bibliographic details that are explicitly confirmed in the source PDF.',
+          '- Do not invent missing authors, journal details, pages, or DOI.',
+          inferredTitle ? ('- File name hint: ' + inferredTitle) : ''
+        ].filter(Boolean).join('\n');
+      };
+      var hasApaHeading = function (s) {
+        return !!(s && /(^|\n)#{1,6}\s*APA\b|(^|\n)APA Citation\b|(^|\n)APA 인용정보\b/i.test(s));
+      };
+      var extractApaCitationLine = function (s) {
+        if (!s) return '';
+        var lines = String(s).split(/\r?\n/).map(function (line) { return line.trim(); }).filter(Boolean);
+        for (var i = 0; i < Math.min(lines.length, 24); i++) {
+          var line = lines[i];
+          if (line.length < 24) continue;
+          if (!/\(\d{4}[a-z]?\)/i.test(line)) continue;
+          if (!/[.].*[.]/.test(line)) continue;
+          if (/(doi\.org|https?:\/\/doi|journal|review|science|quarterly|proceedings|,\s*\d+\(\d+\)|\bpp?\.)/i.test(line)) return line;
+        }
+        return '';
+      };
+      var promoteApaCitationBlock = function (bodyText, citationLine) {
+        if (!bodyText || !citationLine || hasApaHeading(bodyText)) return bodyText;
+        var escapedLine = citationLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var cleanedBody = bodyText.replace(new RegExp('^\\s*' + escapedLine + '\\s*\\n*', 'i'), '').trim();
+        return '## APA Citation\n' + citationLine + '\n\n' + cleanedBody;
       };
       if (docTitle) docTitle = formatDocTitleToAPA(docTitle);
       var prompt = typeof window.getSummaryPrompt === 'function'
@@ -341,6 +375,8 @@
       var systemInstruction = typeof window.getSummarySystemInstruction === 'function'
         ? window.getSummarySystemInstruction(styleId)
         : '당신은 대학원 수준 연구 조교입니다.';
+      var apaCitationInstruction = buildApaCitationInstruction(sourceFileName, docTitle);
+      if (apaCitationInstruction) prompt += '\n\n' + apaCitationInstruction;
       var isEnglish = /^[a-zA-Z\s\d.,!?;:()\-'"]{50,}/.test(textToSummarize.substring(0, 200));
       var langInstruction = isEnglish ? 'Respond in English (same language as the source text).' : '한국어로 응답하세요.';
       try {
@@ -356,11 +392,11 @@
           var oldIntro = '다음은 원문 문서의 핵심 내용을 논문 구조에 맞춰 요약한 것입니다.';
           if (text.indexOf(intro) === 0) {
             var rest = text.slice(intro.length).replace(/^\s+/, '');
-            text = intro + '\n' + docTitle + userInfoLine + '\n' + rest;
+            text = intro + '\n' + docTitle + userInfoLine + '\n' + promoteApaCitationBlock(rest, extractApaCitationLine(rest));
           } else {
             var body = text.trim();
             if (body.indexOf(oldIntro) === 0) body = body.slice(oldIntro.length).replace(/^\s+/, '');
-            text = intro + '\n' + docTitle + userInfoLine + '\n' + body;
+            text = intro + '\n' + docTitle + userInfoLine + '\n' + promoteApaCitationBlock(body, extractApaCitationLine(body));
           }
         }
         clearInterval(_progTimer);

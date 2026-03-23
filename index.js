@@ -1090,14 +1090,55 @@ window.addEventListener('message', function (event) {
   var data = event && event.data;
   if (!data || typeof data !== 'object') return;
   if (data.type === 'imgViewerReady' && window._imgViewerPending && event.source) {
-    try {
-      event.source.postMessage({
-        type: 'setImage',
-        dataURL: window._imgViewerPending.dataURL,
-        fromImgBank: window._imgViewerPending.fromImgBank
-      }, '*');
-    } catch (e) { }
+    var pending = window._imgViewerPending;
     window._imgViewerPending = null;
+    var sendImgViewerPayload = function (galleryItems) {
+      try {
+        event.source.postMessage({
+          type: 'setImageData',
+          dataURL: pending.dataURL,
+          fromImgBank: pending.fromImgBank,
+          currentId: pending.currentId != null ? pending.currentId : pending.fromImgBank,
+          galleryItems: Array.isArray(galleryItems) ? galleryItems : []
+        }, '*');
+      } catch (e) { }
+    };
+    if (pending.fromImgBank != null && typeof imgBankGetAll === 'function') {
+      imgBankGetAll().then(function (list) {
+        list = Array.isArray(list) ? list.slice() : [];
+        list.sort(function (a, b) {
+          var ta = a && a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          var tb = b && b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (tb !== ta) return tb - ta;
+          return (b && b.id ? b.id : 0) - (a && a.id ? a.id : 0);
+        });
+        var galleryItems = list.map(function (item) {
+          return {
+            id: item.id,
+            dataURL: item.dataURL || '',
+            name: item.name || '',
+            prompt: item.prompt || '',
+            createdAt: item.createdAt || '',
+            fromImgBank: item.id
+          };
+        });
+        if (pending.dataURL && !galleryItems.some(function (item) { return item.dataURL === pending.dataURL; })) {
+          galleryItems.unshift({
+            id: pending.currentId != null ? pending.currentId : null,
+            dataURL: pending.dataURL,
+            name: 'image_' + Date.now(),
+            prompt: '',
+            createdAt: '',
+            fromImgBank: pending.fromImgBank
+          });
+        }
+        sendImgViewerPayload(galleryItems);
+      }).catch(function () {
+        sendImgViewerPayload([]);
+      });
+    } else {
+      sendImgViewerPayload(Array.isArray(pending.galleryItems) ? pending.galleryItems : []);
+    }
     return;
   }
   if (data.type === 'imgViewerInsert' && data.dataURL) {
@@ -2611,11 +2652,29 @@ let _pdfPendingPage = null;
 let _pdfThumbsRendered = false;
 let _pdfFileName = '';
 let _pdfPan = { x: 0, y: 0, active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 };
+const PDF_RENDER_QUALITY_BOOST = 2;
+const PDF_RENDER_MAX_SCALE = 6;
+const PDF_RENDER_MAX_PIXELS = 16000000;
 
 // ── Open / Close (팝업: 오른쪽 하단, 헤더 드래그로 이동, 코너에서 크기 조절) ──
 let _pdfPanelDragInited = false;
 let _pdfPanelDrag = { active: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 };
 let _pdfPanelResize = { active: false, startX: 0, startY: 0, startW: 0, startH: 0, startLeft: 0, startTop: 0 };
+
+function getPdfRenderViewports(page, displayScale, qualityBoost) {
+  const boost = Math.max(1, qualityBoost || 1);
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const displayViewport = page.getViewport({ scale: displayScale });
+  let renderScale = Math.max(displayScale, Math.min(displayScale * dpr * boost, PDF_RENDER_MAX_SCALE));
+  let renderViewport = page.getViewport({ scale: renderScale });
+  const pixelCount = renderViewport.width * renderViewport.height;
+  if (pixelCount > PDF_RENDER_MAX_PIXELS) {
+    const shrink = Math.sqrt(PDF_RENDER_MAX_PIXELS / pixelCount);
+    renderScale = Math.max(displayScale, renderScale * shrink);
+    renderViewport = page.getViewport({ scale: renderScale });
+  }
+  return { displayViewport, renderViewport };
+}
 
 function ensurePdfPanelPositionForResize(panel) {
   var rect = panel.getBoundingClientRect();
@@ -2852,14 +2911,20 @@ async function pdfRenderPage(pageNum) {
 
   try {
     const page = await _pdfDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: _pdfScale });
+    const viewports = getPdfRenderViewports(page, _pdfScale, PDF_RENDER_QUALITY_BOOST);
+    const viewport = viewports.displayViewport;
+    const renderViewport = viewports.renderViewport;
     const canvas = document.getElementById('pdf-main-canvas');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    canvas.width = Math.ceil(renderViewport.width);
+    canvas.height = Math.ceil(renderViewport.height);
+    canvas.style.width = Math.ceil(viewport.width) + 'px';
+    canvas.style.height = Math.ceil(viewport.height) + 'px';
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
 
     // Update page counter
     const curEl = document.getElementById('pdf-cur-page');
@@ -3841,7 +3906,12 @@ function insertImgBankImageToSlide(dataURL, targetIdx) {
 function openImageFullscreen(dataURL, opts) {
   opts = opts || {};
   const fromImgBank = opts.fromImgBank != null ? opts.fromImgBank : null;
-  window._imgViewerPending = { dataURL: dataURL, fromImgBank: fromImgBank };
+  window._imgViewerPending = {
+    dataURL: dataURL,
+    fromImgBank: fromImgBank,
+    currentId: opts.currentId != null ? opts.currentId : fromImgBank,
+    galleryItems: Array.isArray(opts.galleryItems) ? opts.galleryItems : null
+  };
   const w = window.open('', '_blank');
   if (!w) return;
   if (typeof registerChildWindow === 'function') registerChildWindow(w);
@@ -3854,45 +3924,188 @@ function buildImageViewerHtml() {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>이미지 크게 보기</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#383838;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh;overflow:hidden}
-.fs-toolbar{position:fixed;top:12px;right:12px;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#323234;padding:8px 12px;border-radius:10px;border:1px solid #555}
+html,body{width:100%;height:100%}
+body{background:#383838;color:#e0e0e0;font-family:'Segoe UI',sans-serif;overflow:hidden;display:flex}
+.fs-sidebar{width:312px;flex:0 0 312px;background:#1f2128;border-right:1px solid #4b5563;display:none;flex-direction:column;min-width:0}
+.fs-sidebar.show{display:flex}
+.fs-side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 12px;border-bottom:1px solid #374151;background:#17191f}
+.fs-side-title{font-size:12px;font-weight:700;color:#f3f4f6}
+.fs-side-count{font-size:11px;color:#94a3b8}
+.fs-side-save{padding:6px 10px;border-radius:8px;border:1px solid #4f8ef7;background:#283548;color:#dbeafe;cursor:pointer;font-size:12px}
+.fs-side-save:hover{background:#31445d;border-color:#60a5fa}
+.fs-thumbs{flex:1;overflow-y:auto;padding:10px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-content:start}
+.fs-thumb{border:1px solid #374151;border-radius:8px;background:#111827;cursor:pointer;padding:4px;transition:border-color .15s,transform .15s,box-shadow .15s}
+.fs-thumb:hover{border-color:#60a5fa;transform:translateY(-1px)}
+.fs-thumb.active{border-color:#4f8ef7;box-shadow:0 0 0 2px rgba(79,142,247,.28)}
+.fs-thumb img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:6px;display:block;background:#0f172a}
+.fs-thumb-label{margin-top:4px;font-size:9px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fs-main{flex:1;min-width:0;position:relative;background:#383838}
+.fs-toolbar{position:absolute;top:12px;right:12px;z-index:100;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:#323234;padding:8px 12px;border-radius:10px;border:1px solid #555;max-width:calc(100% - 24px)}
 .fs-toolbar button{padding:6px 10px;border-radius:6px;border:1px solid #555;background:#454545;color:#ddd;cursor:pointer;font-size:12px}
 .fs-toolbar button:hover{background:#555;color:#fff;border-color:#4f8ef7}
 .fs-toolbar .fs-zoom-val{min-width:40px;text-align:center;font-size:12px}
-.fs-area{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab;background:#383838;padding:60px 16px 16px}
+.fs-area{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;cursor:grab;background:#383838;padding:72px 20px 20px;overflow:hidden}
 .fs-area:active{cursor:grabbing}
 .fs-wrap{transform-origin:center center;transition:transform 0.08s ease-out;line-height:0;display:flex;align-items:center;justify-content:center}
-.fs-wrap img{max-width:min(95vw,calc(100vw - 32px));max-height:min(95vh,calc(100vh - 80px));width:auto;height:auto;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.4);background:#fff}
+.fs-wrap img{max-width:min(95vw,calc(100vw - 40px));max-height:min(95vh,calc(100vh - 96px));width:auto;height:auto;object-fit:contain;display:block;pointer-events:none;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.4);background:#fff}
+.fs-status{position:absolute;left:18px;bottom:18px;z-index:80;padding:8px 10px;border-radius:8px;background:rgba(17,24,39,.72);border:1px solid rgba(148,163,184,.25);font-size:11px;color:#cbd5e1;max-width:calc(100% - 36px);backdrop-filter:blur(10px)}
+.fs-status strong{color:#f8fafc}
+@media (max-width: 900px){
+  .fs-sidebar{width:228px;flex-basis:228px}
+  .fs-thumbs{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 </style></head><body>
-<div class="fs-toolbar">
-  <button type="button" onclick="fsZoom(-0.25)" title="축소">−</button>
-  <span class="fs-zoom-val" id="fs-zoom-val">100%</span>
-  <button type="button" onclick="fsZoom(0.25)" title="확대">+</button>
-  <button type="button" onclick="fsDownload()" title="다운로드">⬇ 다운로드</button>
-  <button type="button" onclick="fsInsert()" title="문서에 삽입">문서에 삽입</button>
-  <button type="button" onclick="fsCrop()" title="자르기">✂ 자르기</button>
-  <button type="button" id="fs-btn-delete" style="display:none;color:#f87171" onclick="fsDelete()" title="imgBank에서 삭제">지우기</button>
-  <button type="button" onclick="window.close()" title="닫기">닫기</button>
-</div>
-<div class="fs-area" id="fs-area">
-  <div class="fs-wrap" id="fs-wrap"><img id="fs-img" alt=""/></div>
+<aside class="fs-sidebar" id="fs-sidebar">
+  <div class="fs-side-head">
+    <div>
+      <div class="fs-side-title">이미지 갤러리</div>
+      <div class="fs-side-count" id="fs-side-count">0장</div>
+    </div>
+    <button type="button" class="fs-side-save" onclick="fsSaveCurrent()" title="현재 선택 이미지 저장">개별 저장</button>
+  </div>
+  <div class="fs-thumbs" id="fs-thumbs"></div>
+</aside>
+<div class="fs-main">
+  <div class="fs-toolbar">
+    <button type="button" onclick="fsZoom(-0.25)" title="축소">−</button>
+    <span class="fs-zoom-val" id="fs-zoom-val">100%</span>
+    <button type="button" onclick="fsZoom(0.25)" title="확대">+</button>
+    <button type="button" onclick="fsSaveCurrent()" title="현재 이미지 저장">⬇ 개별 저장</button>
+    <button type="button" onclick="fsInsert()" title="문서에 삽입">문서에 삽입</button>
+    <button type="button" onclick="fsCrop()" title="자르기">✂ 자르기</button>
+    <button type="button" id="fs-btn-delete" style="display:none;color:#f87171" onclick="fsDelete()" title="imgBank에서 삭제">지우기</button>
+    <button type="button" onclick="window.close()" title="닫기">닫기</button>
+  </div>
+  <div class="fs-area" id="fs-area">
+    <div class="fs-wrap" id="fs-wrap"><img id="fs-img" alt=""/></div>
+  </div>
+  <div class="fs-status" id="fs-status" style="display:none"></div>
 </div>
 <script>
 (function(){
   var scale=1,tx=0,ty=0,startX=0,startY=0,startTx=0,startTy=0,dragging=false;
   var wrap=document.getElementById('fs-wrap');
   var img=document.getElementById('fs-img');
+  var sidebar=document.getElementById('fs-sidebar');
+  var thumbsEl=document.getElementById('fs-thumbs');
+  var sideCountEl=document.getElementById('fs-side-count');
+  var statusEl=document.getElementById('fs-status');
+  var gallery=[];
+  var currentIndex=-1;
   var fromImgBank=null;
+  function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function apply(){if(wrap){wrap.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')';} var v=document.getElementById('fs-zoom-val'); if(v) v.textContent=Math.round(scale*100)+'%';}
+  function buildFileName(item){
+    var src=(item&&item.name?String(item.name):'image_'+Date.now()).replace(/\\.(png|jpe?g|gif|webp)$/i,'');
+    var clean=src.replace(/[^\\w\\uac00-\\ud7a3\\-.]/g,'_')||('image_'+Date.now());
+    var data=(item&&item.dataURL)||img.src||'';
+    var ext=/image\\/jpeg|image\\/jpg/i.test(data)?'jpg':/image\\/webp/i.test(data)?'webp':/image\\/gif/i.test(data)?'gif':'png';
+    return clean+'.'+ext;
+  }
+  function currentItem(){return currentIndex>=0&&currentIndex<gallery.length?gallery[currentIndex]:null;}
+  function updateStatus(){
+    var item=currentItem();
+    if(!statusEl) return;
+    if(!item){statusEl.style.display='none';statusEl.textContent='';return;}
+    var name=item.name||buildFileName(item);
+    var meta=(currentIndex>=0&&gallery.length)?('이미지 '+(currentIndex+1)+' / '+gallery.length):'현재 이미지';
+    statusEl.style.display='block';
+    statusEl.innerHTML='<strong>'+esc(name)+'</strong><br>'+esc(meta);
+  }
+  function renderGallery(){
+    if(sideCountEl) sideCountEl.textContent=gallery.length+'장';
+    if(!sidebar||!thumbsEl) return;
+    if(gallery.length){
+      sidebar.classList.add('show');
+      thumbsEl.innerHTML=gallery.map(function(item,idx){
+        var active=idx===currentIndex?' active':'';
+        var label=esc((item.name||('image_'+(idx+1))).replace(/\\.(png|jpe?g|gif|webp)$/i,''));
+        return '<button type="button" class="fs-thumb'+active+'" data-idx="'+idx+'" onclick="fsSelect('+idx+')" title="'+label+'">'
+          + '<img src="'+esc(item.dataURL||'')+'" alt="">'
+          + '<div class="fs-thumb-label">'+label+'</div></button>';
+      }).join('');
+      var activeEl=thumbsEl.querySelector('.fs-thumb.active');
+      if(activeEl&&activeEl.scrollIntoView) activeEl.scrollIntoView({block:'nearest',inline:'nearest'});
+    } else {
+      sidebar.classList.remove('show');
+      thumbsEl.innerHTML='';
+    }
+  }
+  function setActiveImage(item, resetView){
+    if(!item) return;
+    img.src=item.dataURL||'';
+    fromImgBank=item.fromImgBank!=null?item.fromImgBank:null;
+    var btn=document.getElementById('fs-btn-delete');
+    if(btn) btn.style.display=fromImgBank!=null?'inline-block':'none';
+    if(resetView!==false){scale=1;tx=0;ty=0;apply();}
+    updateStatus();
+    renderGallery();
+  }
+  function selectIndex(idx, resetView){
+    if(idx<0||idx>=gallery.length) return;
+    currentIndex=idx;
+    setActiveImage(gallery[idx], resetView);
+  }
+  window.fsSelect=function(idx){selectIndex(idx,true);};
   window.fsZoom=function(d){scale=Math.max(0.25,Math.min(4,scale+d)); apply();};
-  window.fsDownload=function(){if(!img.src) return; var a=document.createElement('a'); a.href=img.src; a.download='image_'+Date.now()+'.png'; a.click();};
+  window.fsSaveCurrent=function(){
+    var item=currentItem()||{dataURL:img.src,name:''};
+    if(!item.dataURL) return;
+    var a=document.createElement('a');
+    a.href=item.dataURL;
+    a.download=buildFileName(item);
+    a.click();
+  };
+  window.fsDownload=window.fsSaveCurrent;
   window.fsInsert=function(){if(!img.src||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerInsert',dataURL:img.src},'*'); }catch(e){}};
   window.fsCrop=function(){if(!img.src||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerCrop',dataURL:img.src},'*'); window.close(); }catch(e){}};
-  window.fsDelete=function(){if(fromImgBank==null||!window.opener) return; try{ window.opener.postMessage({type:'imgViewerDelete',id:fromImgBank},'*'); window.close(); }catch(e){}};
+  window.fsDelete=function(){
+    var item=currentItem();
+    if(!item||item.fromImgBank==null||!window.opener) return;
+    if(!confirm('선택한 이미지를 imgBank에서 삭제할까요?')) return;
+    try{ window.opener.postMessage({type:'imgViewerDelete',id:item.fromImgBank},'*'); }catch(e){}
+    gallery.splice(currentIndex,1);
+    if(!gallery.length){ window.close(); return; }
+    currentIndex=Math.max(0,Math.min(currentIndex,gallery.length-1));
+    setActiveImage(gallery[currentIndex], true);
+  };
   document.getElementById('fs-area').addEventListener('mousedown',function(e){if(e.button!==0) return; dragging=true; startX=e.clientX; startY=e.clientY; startTx=tx; startTy=ty;});
   document.addEventListener('mousemove',function(e){if(!dragging) return; tx=startTx+e.clientX-startX; ty=startTy+e.clientY-startY; apply();});
   document.addEventListener('mouseup',function(){dragging=false;});
-  window.addEventListener('message',function(e){if(!e.data||e.data.type!=='setImage') return; img.src=e.data.dataURL||''; fromImgBank=e.data.fromImgBank!= null?e.data.fromImgBank:null; var btn=document.getElementById('fs-btn-delete'); if(btn) btn.style.display=fromImgBank!=null?'inline-block':'none'; scale=1; tx=0; ty=0; apply();});
+  window.addEventListener('message',function(e){
+    if(!e.data) return;
+    if(e.data.type!=='setImageData'&&e.data.type!=='setImage') return;
+    var items=Array.isArray(e.data.galleryItems)?e.data.galleryItems.slice():[];
+    gallery=items.map(function(item,idx){
+      return {
+        id:item&&item.id!=null?item.id:idx,
+        dataURL:item&&item.dataURL?item.dataURL:'',
+        name:item&&item.name?item.name:'',
+        prompt:item&&item.prompt?item.prompt:'',
+        createdAt:item&&item.createdAt?item.createdAt:'',
+        fromImgBank:item&&item.fromImgBank!=null?item.fromImgBank:(item&&item.id!=null?item.id:null)
+      };
+    }).filter(function(item){return !!item.dataURL;});
+    if(!gallery.length&&e.data.dataURL){
+      gallery=[{id:e.data.currentId!=null?e.data.currentId:0,dataURL:e.data.dataURL,name:'image_'+Date.now(),prompt:'',createdAt:'',fromImgBank:e.data.fromImgBank!=null?e.data.fromImgBank:null}];
+    }
+    var targetIndex=-1;
+    if(e.data.currentId!=null){
+      targetIndex=gallery.findIndex(function(item){return item.id===e.data.currentId||item.fromImgBank===e.data.currentId;});
+    }
+    if(targetIndex<0&&e.data.dataURL){
+      targetIndex=gallery.findIndex(function(item){return item.dataURL===e.data.dataURL;});
+    }
+    if(targetIndex<0) targetIndex=0;
+    if(gallery.length) selectIndex(targetIndex,true);
+    else {
+      img.src=e.data.dataURL||'';
+      fromImgBank=e.data.fromImgBank!=null?e.data.fromImgBank:null;
+      var btn=document.getElementById('fs-btn-delete');
+      if(btn) btn.style.display=fromImgBank!=null?'inline-block':'none';
+      scale=1; tx=0; ty=0; apply(); updateStatus(); renderGallery();
+    }
+  });
   if(window.opener) window.opener.postMessage({type:'imgViewerReady'},'*');
 })();
 <\/script>
@@ -6295,16 +6508,21 @@ function openPdfNewWindow() {
     + '</div>'
     + '<script>'
     + 'pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";'
-    + 'var _curPage=' + curPage + ',_scale=1,_doc=null,_total=1,_dpr=window.devicePixelRatio||1;'
+    + 'var _curPage=' + curPage + ',_scale=1,_doc=null,_total=1,_dpr=Math.max(1,window.devicePixelRatio||1),_quality=2,_maxRenderScale=6,_maxPixels=16000000;'
     + 'var url="' + blobUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '";'
     + 'function up(){var p=document.getElementById("pdf-nw-prev"),n=document.getElementById("pdf-nw-next");'
     + 'p.disabled=_curPage<=1;n.disabled=_curPage>=_total;'
     + 'document.getElementById("pdf-nw-cur").textContent=_curPage;'
     + 'document.getElementById("pdf-nw-zoom-val").textContent=Math.round(_scale*100)+"%";}'
+    + 'function getVps(pg){var displayVp=pg.getViewport({scale:_scale});var renderScale=Math.max(_scale,Math.min(_scale*_dpr*_quality,_maxRenderScale));'
+    + 'var renderVp=pg.getViewport({scale:renderScale});var pixels=renderVp.width*renderVp.height;'
+    + 'if(pixels>_maxPixels){var shrink=Math.sqrt(_maxPixels/pixels);renderScale=Math.max(_scale,renderScale*shrink);renderVp=pg.getViewport({scale:renderScale});}'
+    + 'return{displayVp:displayVp,renderVp:renderVp};}'
     + 'function render(){if(!_doc)return;_doc.getPage(_curPage).then(function(pg){'
-    + 'var rs=_scale*_dpr;var vp=pg.getViewport({scale:rs});var c=document.getElementById("pdf-nw-canvas");'
-    + 'c.width=vp.width;c.height=vp.height;c.style.width=(vp.width/_dpr)+"px";c.style.height=(vp.height/_dpr)+"px";'
-    + 'pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise.then(function(){'
+    + 'var vps=getVps(pg);var displayVp=vps.displayVp,renderVp=vps.renderVp;var c=document.getElementById("pdf-nw-canvas"),ctx=c.getContext("2d");'
+    + 'c.width=Math.ceil(renderVp.width);c.height=Math.ceil(renderVp.height);c.style.width=Math.ceil(displayVp.width)+"px";c.style.height=Math.ceil(displayVp.height)+"px";'
+    + 'ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,c.width,c.height);'
+    + 'pg.render({canvasContext:ctx,viewport:renderVp}).promise.then(function(){'
     + 'document.querySelectorAll(".pdf-nw-thumb").forEach(function(t){t.classList.toggle("active",parseInt(t.dataset.page,10)===_curPage);});});});}'
     + 'function fitPage(){if(!_doc)return;_doc.getPage(_curPage).then(function(pg){'
     + 'var wrap=document.getElementById("pdf-nw-wrap");var avW=(wrap?wrap.clientWidth:800)-32;var avH=(wrap?wrap.clientHeight:600)-32;'

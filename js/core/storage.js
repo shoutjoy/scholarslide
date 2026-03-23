@@ -117,6 +117,61 @@ async function imgBankDelete(id) {
   });
 }
 
+async function getImgBankSnapshotData() {
+  if (typeof imgBankGetAll !== 'function') return [];
+  try {
+    const list = await imgBankGetAll();
+    return (Array.isArray(list) ? list : []).map(function (item, idx) {
+      return {
+        dataURL: item && item.dataURL ? item.dataURL : '',
+        name: item && item.name ? item.name : ('img_' + Date.now() + '_' + idx),
+        createdAt: item && item.createdAt ? item.createdAt : new Date().toISOString(),
+        prompt: item && item.prompt != null ? String(item.prompt) : ''
+      };
+    }).filter(function (item) { return !!item.dataURL; });
+  } catch (e) {
+    console.warn('[imgBank snapshot]', e);
+    return [];
+  }
+}
+
+function refreshImgBankPanels() {
+  try {
+    if (typeof window.renderImgBankPanel !== 'function') return;
+    var panel = document.getElementById('imgbank-panel');
+    if (panel && panel.style.display !== 'none') window.renderImgBankPanel();
+    var modal = document.getElementById('imgbank-modal');
+    var content = document.getElementById('imgbank-modal-content');
+    if (modal && modal.classList.contains('open') && content) window.renderImgBankPanel(content);
+  } catch (e) {
+    console.warn('[refresh imgBank panel]', e);
+  }
+}
+
+async function replaceImgBankFromSnapshot(entries) {
+  if (typeof imgBankGetAll !== 'function' || typeof imgBankAdd !== 'function' || typeof imgBankDelete !== 'function') return;
+  try {
+    const current = await imgBankGetAll();
+    for (let i = 0; i < current.length; i++) {
+      if (current[i] && current[i].id != null) await imgBankDelete(current[i].id);
+    }
+    const list = Array.isArray(entries) ? entries : [];
+    for (let j = 0; j < list.length; j++) {
+      const item = list[j];
+      if (!item || !item.dataURL) continue;
+      await imgBankAdd({
+        dataURL: item.dataURL,
+        name: item.name || ('img_' + Date.now() + '_' + j),
+        createdAt: item.createdAt,
+        prompt: item.prompt
+      });
+    }
+    refreshImgBankPanels();
+  } catch (e) {
+    console.warn('[restore imgBank]', e);
+  }
+}
+
 function buildWorkspaceSnapshot() {
   var slots = (typeof window.getFileSlots === 'function' && window.getFileSlots()) || [];
   var rt = (typeof window.getRawText === 'function' ? window.getRawText() : rawText) || '';
@@ -178,6 +233,8 @@ async function autoSaveNow(quiet = false) {
   if (!rawText && !slides.length) return;
   try {
     const snap = buildWorkspaceSnapshot();
+    const imgBankData = await getImgBankSnapshotData();
+    if (imgBankData.length) snap.imgBankData = imgBankData;
     await idbPut(IDB_STORE, IDB_KEY, snap);
     _autosaveLastAt = new Date();
     _autosaveDirty = false;
@@ -218,7 +275,7 @@ async function restoreAutosave() {
   try {
     const snap = await idbGet(IDB_STORE, IDB_KEY);
     if (!snap) return false;
-    applyWorkspaceSnapshot(snap);
+    await applyWorkspaceSnapshot(snap);
     _autosaveLastAt = new Date(snap.savedAt);
     updateAutosaveIndicator('saved');
     showToast(`✅ 자동저장 복구: ${new Date(snap.savedAt).toLocaleString('ko-KR')}`);
@@ -229,7 +286,7 @@ async function restoreAutosave() {
   }
 }
 
-function applyWorkspaceSnapshot(snap) {
+async function applyWorkspaceSnapshot(snap) {
   if (snap.fileSlots && snap.fileSlots.length) {
     if (typeof window.setFileSlots === 'function') window.setFileSlots(snap.fileSlots);
   } else if (snap.rawText) {
@@ -305,6 +362,9 @@ function applyWorkspaceSnapshot(snap) {
       window.pptxPreviewOverrides = snap.pptxPreviewOverrides;
     } catch (e) { console.warn('[restore] pptxPreviewOverrides', e); }
   }
+  if (Object.prototype.hasOwnProperty.call(snap, 'imgBankData')) {
+    await replaceImgBankFromSnapshot(snap.imgBankData);
+  }
 }
 
 function _markDirty() { if (rawText || slides.length) scheduleAutosave(); }
@@ -326,9 +386,11 @@ async function exportProjectFile() {
   const nameInput = document.getElementById('project-save-name');
   const projectName = nameInput?.value?.trim() || fileName || 'ScholarSlide_Project';
   const statusEl = document.getElementById('project-save-status');
-  if (statusEl) statusEl.textContent = '⏳ 파일 생성 중...';
+  if (statusEl) statusEl.textContent = '프로젝트 파일 생성 중...';
   try {
     const snap = buildWorkspaceSnapshot();
+    const imgBankData = await getImgBankSnapshotData();
+    if (imgBankData.length) snap.imgBankData = imgBankData;
     snap.projectName = projectName;
     const json = JSON.stringify(snap);
     const blob = new Blob([json], { type: 'application/json' });
@@ -339,12 +401,12 @@ async function exportProjectFile() {
     a.click();
     URL.revokeObjectURL(url);
     const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
-    if (statusEl) statusEl.textContent = `✅ 저장됨 (${sizeMB} MB) — 이미지 ${slides.filter(s => s.imageUrl).length}장 포함`;
+    if (statusEl) statusEl.textContent = `저장됨 (${sizeMB} MB) / 슬라이드 이미지 ${slides.filter(s => s.imageUrl).length}개 + imgBank ${imgBankData.length}개 포함`;
     await idbPut(IDB_SNAPSHOTS, 'proj_' + Date.now(), { ...snap, projectName });
     showToast(`📦 "${projectName}.ssp" 파일 저장 완료 (${sizeMB}MB)`);
   } catch (e) {
-    if (statusEl) statusEl.textContent = '❌ 실패: ' + e.message;
-    showToast('❌ 프로젝트 파일 저장 실패: ' + e.message);
+    if (statusEl) statusEl.textContent = '저장 실패: ' + e.message;
+    showToast('프로젝트 파일 저장 실패: ' + e.message);
   }
 }
 
@@ -354,19 +416,20 @@ async function importProjectFile(e) {
     showLoading('프로젝트 파일 불러오는 중...', file.name, 30);
     const text = await file.text();
     const snap = JSON.parse(text);
-    if (!snap.version || !snap.savedAt) throw new Error('유효하지 않은 프로젝트 파일입니다');
+    if (!snap.version || !snap.savedAt) throw new Error('유효하지 않은 프로젝트 파일입니다.');
     window._translatedSummary = ''; window._translatedRaw = '';
-    applyWorkspaceSnapshot(snap);
+    await applyWorkspaceSnapshot(snap);
     await idbPut(IDB_STORE, IDB_KEY, snap);
     _autosaveLastAt = new Date();
     updateAutosaveIndicator('saved');
     closeModal('load-modal');
     hideLoading();
     const imgCount = snap.slides?.filter(s => s.imageUrl).length || 0;
-    showToast(`✅ "${snap.projectName || file.name}" 불러오기 완료 (이미지 ${imgCount}장)`);
+    const imgBankCount = Array.isArray(snap.imgBankData) ? snap.imgBankData.length : 0;
+    showToast(`✅ "${snap.projectName || file.name}" 불러오기 완료 (슬라이드 이미지 ${imgCount}개, imgBank ${imgBankCount}개)`);
   } catch (err) {
     hideLoading();
-    showToast('❌ 파일 불러오기 실패: ' + err.message);
+    showToast('프로젝트 파일 불러오기 실패: ' + err.message);
   }
   e.target.value = '';
 }
