@@ -57,7 +57,11 @@ function askThenSummary(type) {
     { v: 'workshop', l: 'H. 워크숍형 (Practical Action)' },
     { v: 'auto_visual', l: 'I. AII 자동 시각화형 (Auto Visualizer)' }
   ];
-  const slideGenTypeSelectHtml = '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 생성 유형</label>'
+  const slideGenTypeSelectHtml = isAllSlide
+    ? '<div style="font-size:12px;color:var(--text2);line-height:1.5;padding:8px 10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border)">'
+    + '<span style="color:var(--text3)">슬라이드 생성 유형</span><br><strong>I. AII 자동 시각화형 (Auto Visualizer)</strong> — All Slide 전용 고정'
+    + '</div>'
+    : '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 생성 유형</label>'
     + '<select id="slide-gen-modal-type" class="control" style="font-size:12px;width:100%;padding:8px 10px">'
     + slideGenTypeOptions.map(function (o) { return '<option value="' + o.v + '"' + (slideGenType === o.v ? ' selected' : '') + '>' + o.l + '</option>'; }).join('')
     + '</select></div>';
@@ -129,7 +133,7 @@ function askThenSummary(type) {
     const ratioSel = document.getElementById('slide-gen-modal-ratio');
     const slideVal = ratioSel ? ratioSel.value : '16:9';
     const typeSel = document.getElementById('slide-gen-modal-type');
-    const slideTypeVal = (typeSel && typeSel.value) || (isAllSlide ? 'auto_visual' : 'precision');
+    const slideTypeVal = isAllSlide ? 'auto_visual' : ((typeSel && typeSel.value) || 'precision');
     const customTa = document.getElementById('slide-gen-modal-custom');
     const customVal = (customTa && customTa.value) ? customTa.value.trim() : '';
     const writingStyleSel = document.getElementById('slide-gen-modal-writing-style');
@@ -142,7 +146,7 @@ function askThenSummary(type) {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('ss_slide_aspect_ratio', slideVal);
       localStorage.setItem('ss_slide_gen_use_summary', useSummary ? '1' : '0');
-      localStorage.setItem('ss_slide_gen_type', slideTypeVal);
+      if (!isAllSlide) localStorage.setItem('ss_slide_gen_type', slideTypeVal);
       localStorage.setItem('ss_custom_instruction_manuscript', customVal);
       if (isAllSlide) {
         const imgBtn = m.querySelector('.img-ratio-modal-btn.active');
@@ -153,7 +157,7 @@ function askThenSummary(type) {
     var elMan = document.getElementById('custom-instruction-manuscript');
     if (elMan) elMan.value = customVal;
     var elType = document.getElementById('slide-gen-type');
-    if (elType) elType.value = slideTypeVal;
+    if (elType && !isAllSlide) elType.value = slideTypeVal;
     if (typeof window.applySlideAspectRatio === 'function') window.applySlideAspectRatio();
     m.remove();
     generateSummary(type, { useSummaryForSlides: useSummary, customInstruction: customVal, slideGenType: slideTypeVal, writingStyle: writingStyleModalVal });
@@ -165,11 +169,28 @@ function askThenFetchSources() {
   if (!query) { showToast('⚠️ 출처 검색창에 검색어를 입력하세요'); switchRightTab('sources'); return; }
   showConfirm('출처 검색 실행', `"${query}" 에 대한 학술 출처를 AI로 검색하시겠습니까?`, () => fetchSources());
 }
+function askThenUpSlideGenerate() {
+  var text = typeof window._slideManuscriptText === 'string' ? window._slideManuscriptText : '';
+  if (!String(text).trim()) { showToast('⚠️ 먼저 SLIDE 원고를 업로드하세요'); return; }
+  showConfirm('UP Slide 생성', '업로드한 슬라이드 원고만 사용해 슬라이드를 생성합니다. API 호출이 여러 번 이어질 수 있습니다. 진행할까요?', function () {
+    var maxEl = document.getElementById('up-slide-max-pages');
+    var maxP = maxEl && maxEl.value ? parseInt(maxEl.value, 10) : 0;
+    if (typeof window.generateSlidesFromUploadedManuscript === 'function') {
+      window.generateSlidesFromUploadedManuscript({ maxManuscriptPages: maxP > 0 ? maxP : null });
+    }
+  });
+}
 function askThenGenerateScript() {
   if (!slides.length) { showToast('⚠️ 슬라이드가 없습니다'); return; }
   var old = document.getElementById('script-gen-confirm-modal');
   if (old) old.remove();
   var savedMemo = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_manuscript_script_memo')) || '';
+  var inlineRg = document.getElementById('script-slide-range-val');
+  var savedRange = (inlineRg && inlineRg.value && String(inlineRg.value).trim())
+    ? String(inlineRg.value).trim()
+    : ((typeof localStorage !== 'undefined' && localStorage.getItem('ss_script_gen_slide_range')) || '');
+  var n = slides.length;
+  var defaultRangeHint = n ? ('1-' + n + ' (비우면 전체)') : '';
   var m = document.createElement('div');
   m.id = 'script-gen-confirm-modal';
   m.className = 'modal-backdrop open';
@@ -177,7 +198,10 @@ function askThenGenerateScript() {
   m.innerHTML = '<div class="modal-box" onclick="event.stopPropagation()" style="max-width:420px">'
     + '<div class="modal-header"><div class="modal-title">발표 원고 생성</div><button class="modal-close" onclick="document.getElementById(\'script-gen-confirm-modal\').remove()">&#x2715;</button></div>'
     + '<div class="modal-body" style="display:flex;flex-direction:column;gap:12px">'
-    + '<p style="font-size:13px;color:var(--text2);line-height:1.6">' + slides.length + '개 슬라이드의 발표 원고를 생성하시겠습니까? 슬라이드 수에 따라 시간이 걸릴 수 있습니다.</p>'
+    + '<p style="font-size:13px;color:var(--text2);line-height:1.6">현재 ' + n + '개 슬라이드가 있습니다. 범위를 지정하면 해당 슬라이드만 발표 원고를 생성·갱신합니다. 비우면 전체 슬라이드에 대해 생성합니다.</p>'
+    + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">슬라이드 범위 (선택)</label>'
+    + '<input type="text" class="control" id="script-gen-range-input" placeholder="' + defaultRangeHint + '" style="width:100%;font-size:12px" title="예: 1-10 또는 15 (1번~15번 슬라이드)"/>'
+    + '<p style="font-size:11px;color:var(--text3);margin-top:4px">기본값은 전체입니다. 숫자만 입력 시 1번부터 해당 번호까지입니다.</p></div>'
     + '<div><label class="label" style="font-size:12px;display:block;margin-bottom:6px">메모 또는 추가 지시사항</label>'
     + '<textarea class="control" id="script-gen-memo-input" rows="3" placeholder="메모 또는 추가 지시사항..." style="width:100%;resize:vertical;min-height:3.5em"></textarea></div>'
     + '</div>'
@@ -187,12 +211,22 @@ function askThenGenerateScript() {
     + '</div></div>';
   document.body.appendChild(m);
   var ta = m.querySelector('#script-gen-memo-input');
+  var rangeInp = m.querySelector('#script-gen-range-input');
   if (ta) ta.value = savedMemo;
+  if (rangeInp) rangeInp.value = savedRange;
   document.getElementById('script-gen-modal-exec').onclick = function () {
     var memo = (ta && ta.value) ? ta.value.trim() : '';
-    try { if (typeof localStorage !== 'undefined') localStorage.setItem('ss_manuscript_script_memo', memo); } catch (e) {}
+    var rangeVal = (rangeInp && rangeInp.value) ? rangeInp.value.trim() : '';
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('ss_manuscript_script_memo', memo);
+        localStorage.setItem('ss_script_gen_slide_range', rangeVal);
+      }
+    } catch (e) {}
+    var inlineRg2 = document.getElementById('script-slide-range-val');
+    if (inlineRg2) inlineRg2.value = rangeVal;
     m.remove();
-    generatePresentationScript(memo);
+    generatePresentationScript(memo, { slideRange: rangeVal });
   };
 }
 function askThenGenerateImages() { askThenVisualizeAll(); }
@@ -204,7 +238,7 @@ function askThenRewrite(index) {
    UI HELPERS — 전역 진행률 (다중 작업), 로딩, 토스트, 탭
    ========================================================= */
 let _globalProgressTimer = null;
-/** 작업별 진행 상태. id -> { label, pct, icon } */
+/** 작업별 진행 상태. id -> { label, pct, icon, onCancel? } */
 let _globalProgressJobs = {};
 
 function renderGlobalProgress() {
@@ -232,13 +266,39 @@ function renderGlobalProgress() {
       '<div style="width:100%;height:8px;background:var(--border2);border-radius:4px;overflow:hidden">' +
       '<div class="global-progress-fill" style="width:' + pct + '%"></div></div></div>' +
       '<span class="global-progress-pct">' + pct + '%</span>' +
+      (typeof j.onCancel === 'function'
+        ? '<button type="button" class="global-progress-stop-btn" title="이 작업만 중지" onclick="cancelGlobalProgressJobRow(\'' + safeId + '\')">중지</button>'
+        : '') +
       '</div>';
   }).join('');
 }
 
-/** 작업 ID별 진행 표시 (요약/번역 등 동시에 여러 개 표시) */
-function showJobProgress(id, label, pct, icon) {
-  _globalProgressJobs[id] = { label: label || '처리 중...', pct: pct == null ? 0 : pct, icon: icon || '⏳' };
+/** 행의 「중지」: onCancel 호출 (원문 AI 정리 등) */
+function cancelGlobalProgressJobRow(jobId) {
+  if (!jobId) return;
+  var j = _globalProgressJobs[jobId];
+  if (j && typeof j.onCancel === 'function') {
+    try { j.onCancel(); } catch (e) { console.warn(e); }
+  }
+}
+
+/** 진행 중인 Gemini fetch만 끊기 (UI 전체 초기화 없음) */
+function requestAbortInFlightAiFetch() {
+  if (typeof window !== 'undefined') window._aiTaskCancelled = true;
+  try {
+    if (typeof _abortController !== 'undefined' && _abortController) _abortController.abort();
+  } catch (e) { /* noop */ }
+}
+
+/** 작업 ID별 진행 표시 (요약/번역 등 동시에 여러 개 표시). onCancel: 행 「중지」 버튼 */
+function showJobProgress(id, label, pct, icon, onCancel) {
+  var prev = _globalProgressJobs[id];
+  _globalProgressJobs[id] = {
+    label: label || '처리 중...',
+    pct: pct == null ? 0 : pct,
+    icon: icon || '⏳',
+    onCancel: typeof onCancel === 'function' ? onCancel : (prev && typeof prev.onCancel === 'function' ? prev.onCancel : null)
+  };
   var abortBtn1 = document.getElementById('global-progress-abort-btn');
   if (abortBtn1) abortBtn1.style.display = 'inline-block';
   renderGlobalProgress();
@@ -293,6 +353,8 @@ if (typeof window !== 'undefined') {
   window.showJobProgress = showJobProgress;
   window.updateJobProgress = updateJobProgress;
   window.hideJobProgress = hideJobProgress;
+  window.cancelGlobalProgressJobRow = cancelGlobalProgressJobRow;
+  window.requestAbortInFlightAiFetch = requestAbortInFlightAiFetch;
 }
 
 /** 백그라운드 진행: 전체화면 오버레이 없이 상단 global-progress-bar만 표시 */
@@ -311,7 +373,10 @@ function hideLoading() {
   hideGlobalProgress(1000);
 }
 function abortCurrentTask() {
-  if (typeof window !== 'undefined') window._aiTaskCancelled = true;
+  if (typeof window !== 'undefined') {
+    window._aiTaskCancelled = true;
+    window._rawReflowStopSource = 'global';
+  }
   if (_abortController) _abortController.abort();
   if (typeof window._cancelBgJob === 'function' && window._bgJob && window._bgJob.running) window._cancelBgJob();
   Object.keys(_globalProgressJobs).forEach(function (id) { delete _globalProgressJobs[id]; });

@@ -1,5 +1,5 @@
 /**
- * ScholarSlide — 왼쪽 패널 렌더 (원문/요약/원고 탭, 파일 뱃지, 슬라이드 생성 유형 등)
+ * ScholarSlide — 왼쪽 패널 렌더 (원문/요약/슬라이드 탭, 파일 뱃지, 슬라이드 생성 유형 등)
  * 전역 의존: getRawText, getLeftTab, getSummaryText, getPresentationScript, getSlides, getFileName, getWritingStyle, getSlideStyle,
  *   getSummarySubTab, setSummarySubTab, getSummaryHistory, escapeHtml, setWritingStyle, openSummaryWindow, openRefExpWindow,
  *   askThenTranslate, viewTranslation, saveContent, openSummaryOptionsModal, askThenSummary, handleFileUpload, loadSummaryFromHistory, removeSummaryFromHistory, clearSummaryHistory
@@ -11,14 +11,20 @@
     var content = document.getElementById('left-content');
     var rawText = typeof window.getRawText === 'function' ? window.getRawText() : '';
     var fileSlots = (typeof window.getFileSlots === 'function' ? window.getFileSlots() : []) || [];
-    var hasContent = rawText || fileSlots.length;
+    var slideMsOnly = typeof window._slideManuscriptText === 'string' && String(window._slideManuscriptText).trim();
+    var hasContent = rawText || fileSlots.length || slideMsOnly;
     if (!hasContent) {
       content.innerHTML = '<div class="upload-zone" id="upload-drop-zone" onclick="document.getElementById(\'file-input\').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave()">'
         + '<input type="file" id="file-input" style="display:none" accept=".pdf,.docx,.txt,.md" onchange="handleFileUpload(event)"/>'
         + '<span class="upload-icon">📄</span><h3>논문/ 소스파일 업로드</h3><p>PDF, DOCX, TXT, MD · 드래그 앤 드롭</p></div>'
         + '<div class="text-input-zone"><label class="label" style="margin-top:12px">또는 텍스트 직접 붙여넣기</label>'
         + '<textarea id="text-paste-input" placeholder="논문 본문을 여기에 붙여넣으세요..." rows="6"></textarea>'
-        + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="loadFromTextInput()">✅ 텍스트 로드</button></div>';
+        + '<button class="btn btn-ghost w-full mt-2" style="justify-content:center" onclick="loadFromTextInput()">✅ 텍스트 로드</button></div>'
+        + '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">'
+        + '<p style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.45">메인 논문 없이 <strong>슬라이드 원고</strong>만 올려도 전체 메뉴가 열리고, <b>슬라이드</b> 탭에서 UP Slide 생성을 사용할 수 있습니다.</p>'
+        + '<input type="file" id="slide-manuscript-input-landing" accept=".txt,.md,.pdf" style="display:none" onchange="handleSlideManuscriptUpload(event)"/>'
+        + '<button type="button" class="btn btn-ghost w-full" style="justify-content:center;font-size:12px;padding:10px 12px;border:1px dashed var(--border2);border-radius:8px" onclick="document.getElementById(\'slide-manuscript-input-landing\').click()">📤 SLIDE 원고 UP <span style="opacity:0.85">(.txt · .md · .pdf)</span></button>'
+        + '</div>';
       return;
     }
     var elSum = document.getElementById('custom-instruction-summary');
@@ -81,13 +87,17 @@
           + '</div><div style="max-height:340px;overflow-y:auto;font-size:12px;line-height:1.7;color:var(--text2);white-space:pre-wrap;margin-top:6px">' + (summaryText ? escapeHtml(summaryText) : '<span style="color:var(--text3)">요약 버튼을 클릭하세요.</span>') + '</div>';
       }
     } else if (leftTab === 'raw') {
+      var aiReflowDisabled = !!window._rawAiReflowRunning;
+      var aiBtnTitle = window._rawAiReflowRunning
+        ? '원문 AI 정리가 진행 중입니다.'
+        : '원문 탭에 보이는 텍스트에 AI 가독성 정리(백그라운드). 조건 미충족 시 안내합니다.';
       displayContent = '<div class="translate-row">'
         + '<button class="btn btn-ghost btn-xs" onclick="askThenTranslate(\'raw\')">🌐 한국어 번역</button>'
         + (window._translatedRaw ? '<button class="btn btn-xs" style="background:var(--accent);color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer;border:none" onclick="viewTranslation(\'raw\')">📖 번역보기</button>' : '')
-        + '<button class="btn btn-ghost btn-xs" onclick="saveContent(\'raw\')">💾 저장</button>'
+        + '<button type="button" class="btn btn-ghost btn-xs" title="' + escapeHtml(aiBtnTitle) + '" onclick="runRawTextAiReflowBackground()" ' + (aiReflowDisabled ? 'disabled' : '') + '>AI 정리</button>'
         + (rawText.length > 5000 ? '<button class="btn btn-ghost btn-xs" onclick="openFullTextWindow()">🔲 새창보기</button>' : '')
         + '<button class="btn btn-ghost btn-xs" onclick="openRefExpWindow()" title="참고문헌만 추출하여 새 창에 보기">📚 REF EXP</button>'
-        + '</div><div style="font-size:10px;line-height:1.6;color:var(--text2);white-space:pre-wrap;font-family:var(--font-mono);max-height:340px;overflow-y:auto;margin-top:6px">' + escapeHtml(rawText) + '</div>';
+        + '</div><div class="left-panel-raw-text">' + escapeHtml(rawText) + '</div>';
     } else if (leftTab === 'script') {
       if (!presentationScript.length) {
         displayContent = '<div style="text-align:center;padding:24px 0"><p style="font-size:12px;color:var(--text2);margin-bottom:12px">슬라이드 원고를 생성하세요.</p><button class="btn btn-primary btn-sm" onclick="askThenGenerateScript()">📝 발표 원고 생성</button></div>';
@@ -98,7 +108,7 @@
           var slideTitle = slides[i] && slides[i].title ? slides[i].title : '';
           scriptParts.push('<div class="script-slide-section"><div class="script-slide-label">슬라이드 ' + (i + 1) + '</div><div class="script-slide-title">' + escapeHtml(slideTitle) + '</div><div class="script-slide-content">' + escapeHtml(st) + '</div></div>');
         }
-        displayContent = '<div class="translate-row"><button class="btn btn-ghost btn-xs" onclick="saveContent(\'script\')">💾 원고 저장</button></div>' + scriptParts.join('');
+        displayContent = '<div class="translate-row"><button class="btn btn-ghost btn-xs" onclick="saveContent(\'script\')">💾 발표 저장</button></div>' + scriptParts.join('');
       }
     }
     var fileSlotsHtml = '';

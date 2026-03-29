@@ -49,6 +49,275 @@
       .trim();
   }
 
+  /**
+   * PDF/추출 텍스트 즉시 가독성 개선 (동기): 붙은 문단 분리, 머리말·제목 후보 줄바꿈
+   */
+  function heuristicReflowExtractedText(text) {
+    if (!text || typeof text !== 'string') return text;
+    var t = text.replace(/\r\n/g, '\n');
+    t = t.replace(/[ \t]+/g, ' ');
+    t = t.replace(/([^\n#])(#{1,6}\s*[^\n]+)/g, '$1\n\n$2');
+    t = t.replace(/([a-z가-힣.!?…])\s+(Chapter\s+\d+[\s•·∙][^\n]{4,220})/gi, '$1\n\n────────\n$2\n────────\n');
+    t = t.replace(/\b(\d{1,3})\s+(Chapter\s+\d+)/gi, '$1\n\n$2');
+    t = t.replace(/\n(Chapter\s+\d+[\s•·∙][^\n]{3,200}\s+\d{1,3})\s*(?=\S)/gi, '\n\n$1\n\n');
+    t = t.replace(/([a-z가-힣.!?…])\s+(\d+\.\s+[A-Z][A-Z][A-Z0-9,\s\-]{4,72})(?=\s+[A-Za-z가-힣(])/g, '$1\n\n## $2');
+    t = t.replace(/([a-z가-힣.!?…])\s+(\d+(?:\.\d+)+\s+[A-Z][^\n]{4,100})/g, '$1\n\n## $2');
+    t = t.replace(/\n{4,}/g, '\n\n\n');
+    return t.trim();
+  }
+
+  function parsePdfPageBlocks(text) {
+    var blocks = [];
+    if (!text) return blocks;
+    var s = String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    var re = /---\s*(\d+)페이지\s*---\s*\n([\s\S]*?)(?=\n---\s*\d+페이지\s*---|$)/g;
+    var m;
+    while ((m = re.exec(s)) !== null) {
+      blocks.push({ num: parseInt(m[1], 10), body: m[2] });
+    }
+    return blocks;
+  }
+
+  function joinPdfPageBlocks(blocks) {
+    if (!blocks || !blocks.length) return '';
+    return blocks.map(function (b) {
+      return '--- ' + b.num + '페이지 ---\n\n' + String(b.body || '').trim();
+    }).join('\n\n');
+  }
+
+  function parseAiPageBatchResponse(raw, batchNums) {
+    var map = {};
+    if (!raw) return map;
+    var t = String(raw).replace(/^\s*```[\w]*\s*\n?/m, '').replace(/\n?\s*```\s*$/m, '').trim();
+    var re = /<<<PAGE\s+(\d+)>>>\s*([\s\S]*?)(?=<<<PAGE\s+\d+>>>|$)/gi;
+    var m;
+    while ((m = re.exec(t)) !== null) {
+      map[parseInt(m[1], 10)] = m[2].trim();
+    }
+    if (Object.keys(map).length === 0 && batchNums.length === 1) {
+      map[batchNums[0]] = t;
+    }
+    return map;
+  }
+
+  /** AI 정리 엔진 사용 가능 여부 (키·토글·길이·페이지 마커) */
+  function canUseAiReflowEngine(text) {
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('ss_ai_pdf_reflow') === '0') return false;
+    } catch (e) {}
+    if (typeof window.callGemini !== 'function') return false;
+    if (!text || text.length < 500) return false;
+    return /\d+페이지\s*---/.test(text);
+  }
+
+  function shouldRunAiOnUpload() {
+    try {
+      var mode = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_upload_pdf_reflow_mode')) || 'extract_and_ai';
+      return mode === 'extract_and_ai';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  /**
+   * 페이지 마커를 유지한 채 AI로 머리말 제거·제목 줄바꿈 (배치 호출)
+   */
+  function getCallGemini() {
+    if (typeof window !== 'undefined' && typeof window.callGemini === 'function') return window.callGemini;
+    return null;
+  }
+
+  async function refineExtractedTextWithAi(fullText, setProgressFn) {
+    var blocks = parsePdfPageBlocks(fullText);
+    if (!blocks.length) {
+      blocks = parsePdfPageBlocks(String(fullText || '').replace(/\r\n/g, '\n'));
+    }
+    if (!blocks.length) return fullText;
+    var systemInstr = [
+      'You improve PDF-extracted academic text layout ONLY. The user sends sections marked <<<PAGE N>>>.',
+      'For each section, reply with the exact same delimiter line <<<PAGE N>>> then the cleaned text.',
+      'Rules:',
+      '1) Remove or line-break obvious RUNNING HEADERS/FOOTERS (e.g. "Chapter 2 • Long Book Title 11" or the same short title + page number appearing between body paragraphs).',
+      '2) Put real section headings on their own paragraph (blank line before): numbered headings like "2.1 The Paradigm", "1. OVERVIEW", or markdown ## lines.',
+      '3) Do NOT summarize, translate, or delete substantive sentences. Do not invent content.',
+      '4) Preserve bullet-like lists with line breaks where helpful.',
+      '5) Output MUST include one <<<PAGE N>>> block for every N that appeared in the input, in the same order.',
+      '6) No commentary before or after the blocks.'
+    ].join('\n');
+
+    var batchSize = 3;
+    var maxChars = 12000;
+    var out = [];
+    var idx = 0;
+    while (idx < blocks.length) {
+      if (typeof window !== 'undefined' && window._aiTaskCancelled) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      var batch = [];
+      var chars = 0;
+      while (idx < blocks.length && batch.length < batchSize && chars < maxChars) {
+        chars += (blocks[idx].body || '').length;
+        batch.push(blocks[idx]);
+        idx++;
+      }
+      var nums = batch.map(function (b) { return b.num; });
+      var userPack = batch.map(function (b) {
+        return '<<<PAGE ' + b.num + '>>>\n' + String(b.body || '').trim();
+      }).join('\n\n');
+      var cg = getCallGemini();
+      if (!cg) throw new Error('callGemini을 사용할 수 없습니다. index.js 로드 순서를 확인하세요.');
+      var res = await cg(userPack, systemInstr);
+      if (typeof window !== 'undefined' && window._aiTaskCancelled) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      var outText = (res && res.text) ? res.text : '';
+      var parsed = parseAiPageBatchResponse(outText, nums);
+      for (var j = 0; j < batch.length; j++) {
+        var n = batch[j].num;
+        var cleaned = parsed[n];
+        out.push({ num: n, body: cleaned != null && cleaned.length ? cleaned : batch[j].body });
+      }
+      if (typeof setProgressFn === 'function') {
+        setProgressFn(55 + Math.round((idx / blocks.length) * 40));
+      }
+      await new Promise(function (r) { setTimeout(r, 150); });
+    }
+    return joinPdfPageBlocks(out);
+  }
+
+  /**
+   * 백그라운드 AI 가독성 정리 — 원문 탭에 올라오는 텍스트와 동일(getRawText).
+   */
+  async function runRawTextAiReflowBackground() {
+    if (window._rawAiReflowRunning) {
+      if (typeof showToast === 'function') showToast('⏳ 이미 원문 정리가 진행 중입니다.');
+      return;
+    }
+    var current = (typeof window.getRawText === 'function' ? window.getRawText() : '') || '';
+    if (!current.trim() || current.length < 500) {
+      if (typeof showToast === 'function') showToast('⚠️ 원문이 없거나 너무 짧습니다.');
+      return;
+    }
+    if (!/\d+페이지\s*---/.test(current)) {
+      if (typeof showToast === 'function') showToast('⚠️ PDF 페이지 구분(--- N페이지 ---)이 있을 때만 AI 정리를 사용할 수 있습니다.');
+      return;
+    }
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('ss_ai_pdf_reflow') === '0') {
+        if (typeof showToast === 'function') {
+          showToast('⚠️ 설정에서 AI 원문 정리 사용을 끄셨습니다. 사용하시려면 설정 → 「PDF 업로드 후 원문 처리」에서 AI 정리 기능을 켜 주세요.');
+        }
+        return;
+      }
+    } catch (e) {}
+    if (typeof window.callGemini !== 'function') {
+      if (typeof showToast === 'function') showToast('⚠️ API 연결을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.');
+      return;
+    }
+    var slots = (typeof window.getFileSlots === 'function' ? window.getFileSlots() : []) || [];
+    var checked = slots.filter(function (s) { return s.checked !== false; });
+    if (slots.length > 1 && checked.length !== 1) {
+      if (typeof showToast === 'function') showToast('⚠️ 파일이 여러 개일 때는 정리할 파일 하나만 체크한 뒤 실행하세요.');
+      return;
+    }
+    if (!window.confirm('AI로 원문을 tidy하게 수정할까요?')) return;
+    var mainOnly = (typeof rawText !== 'undefined' ? rawText : (typeof window.rawText === 'string' ? window.rawText : '')) || '';
+    var slideMsOnly = !slots.length && !String(mainOnly).trim() && String(window._slideManuscriptText || '').trim();
+    window._rawAiReflowRunning = true;
+    if (typeof window !== 'undefined') {
+      window._aiTaskCancelled = false;
+      window._rawReflowStopSource = '';
+    }
+    if (typeof renderLeftPanel === 'function') renderLeftPanel();
+    var jobId = 'rawTextReflow';
+    if (typeof window.showJobProgress === 'function') {
+      window.showJobProgress(jobId, '원문 AI 가독성 정리 (백그라운드)...', 2, '📄', function () {
+        if (typeof window !== 'undefined') window._rawReflowStopSource = 'row';
+        if (typeof window.requestAbortInFlightAiFetch === 'function') window.requestAbortInFlightAiFetch();
+      });
+    }
+    if (typeof showToast === 'function') showToast('📄 백그라운드에서 원문 AI 정리를 시작했습니다.');
+    try {
+      var t = heuristicReflowExtractedText(current);
+      var _bp = parsePdfPageBlocks(t);
+      if (!_bp.length) {
+        t = current;
+        _bp = parsePdfPageBlocks(t);
+      }
+      if (!_bp.length) {
+        if (typeof showToast === 'function') showToast('⚠️ 페이지 블록을 읽지 못했습니다. --- N페이지 --- 형식이 유지되는지 확인하세요.');
+        if (typeof window.hideJobProgress === 'function') window.hideJobProgress(jobId, 0);
+        if (typeof renderLeftPanel === 'function') renderLeftPanel();
+        return;
+      }
+      if (_bp.length > 40 && typeof showToast === 'function') {
+        showToast('📄 ' + _bp.length + '페이지 처리 중…');
+      }
+      t = await refineExtractedTextWithAi(t, function (pct) {
+        if (typeof window.updateJobProgress === 'function') window.updateJobProgress(jobId, pct, '원문 AI 정리 중...');
+      });
+      if (slots.length >= 1 && checked.length === 1) {
+        var tid = checked[0].id;
+        for (var i = 0; i < slots.length; i++) {
+          if (slots[i].id === tid) {
+            slots[i].rawText = t;
+            break;
+          }
+        }
+        if (typeof window.setFileSlots === 'function') window.setFileSlots(slots);
+      } else if (slots.length === 0) {
+        if (slideMsOnly) {
+          window._slideManuscriptText = t;
+        } else {
+          if (typeof window.setRawText === 'function') window.setRawText(t);
+          if (typeof rawText !== 'undefined') rawText = t;
+          window.rawText = t;
+        }
+      }
+      if (typeof window.hideJobProgress === 'function') window.hideJobProgress(jobId, 1200);
+      if (typeof showToast === 'function') showToast('✅ 원문 AI 가독성 정리 완료');
+      if (typeof renderLeftPanel === 'function') renderLeftPanel();
+      if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        if (typeof window.hideJobProgress === 'function') window.hideJobProgress(jobId, 0);
+        var src = (typeof window !== 'undefined' && window._rawReflowStopSource);
+        if (typeof window !== 'undefined') window._rawReflowStopSource = '';
+        if (src === 'row' && typeof showToast === 'function') showToast('⏹ 원문 AI 가독성 정리를 중지했습니다.');
+        if (typeof renderLeftPanel === 'function') renderLeftPanel();
+      } else {
+        console.error(err);
+        if (typeof window.hideJobProgress === 'function') window.hideJobProgress(jobId, 600);
+        if (typeof showToast === 'function') showToast('❌ 원문 정리 실패: ' + (err.message || String(err)));
+      }
+    } finally {
+      window._rawAiReflowRunning = false;
+    }
+  }
+
+  async function applyExtractReflowPipeline(text, fileLabel, isPdf, runAiNow) {
+    var t = heuristicReflowExtractedText(text);
+    if (!isPdf || !runAiNow || !canUseAiReflowEngine(t)) return t;
+    var _bp = parsePdfPageBlocks(t);
+    if (_bp.length > 40 && typeof showToast === 'function') {
+      showToast('📄 ' + _bp.length + '페이지·약 ' + (t.length / 1000000).toFixed(1) + 'M자 — AI 정리에 시간이 걸릴 수 있습니다.');
+    }
+    try {
+      if (typeof window !== 'undefined') window._aiTaskCancelled = false;
+      if (typeof showLoading === 'function') showLoading('AI로 원문 가독성 정리 중...', fileLabel || '', 75, true);
+      t = await refineExtractedTextWithAi(t, typeof setProgress === 'function' ? setProgress : null);
+      if (typeof showToast === 'function') showToast('✅ AI 원문 정리 완료 (머리말·제목 줄바꿈)');
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        if (typeof hideLoading === 'function') hideLoading();
+        return t;
+      }
+      console.warn('refineExtractedTextWithAi', err);
+      if (typeof showToast === 'function') showToast('⚠️ AI 정리 생략: ' + (err.message || String(err)) + ' (휴리스틱만 적용)');
+    }
+    return t;
+  }
+
   async function handleFileUpload(e) {
     var file = e.target.files[0];
     if (!file) return;
@@ -69,16 +338,19 @@
           setProgress(Math.round(20 + (i / pdf.numPages) * 50));
         }
         text = text.replace(/^\n+/, '').trim();
+        text = await applyExtractReflowPipeline(text, file.name, true, shouldRunAiOnUpload());
       } else if (file.name.endsWith('.docx')) {
         var bufDoc = await file.arrayBuffer();
         var result = await window.mammoth.extractRawText({ arrayBuffer: bufDoc });
         text = result.value || '';
         if (text && !text.includes('\n\n')) text = normalizeSentenceLineBreaks(text);
         text = '--- 1페이지 ---\n\n' + text.trim();
+        text = heuristicReflowExtractedText(text);
       } else {
         text = await file.text();
         if (text && !text.trim().includes('\n') && text.length > 80) text = normalizeSentenceLineBreaks(text);
         if (text) text = '--- 1페이지 ---\n\n' + text.trim();
+        if (text) text = heuristicReflowExtractedText(text);
       }
       if (typeof window.addFileToSlot === 'function') {
         window.addFileToSlot({ fileName: file.name, rawText: text, checked: true });
@@ -108,6 +380,7 @@
     var inp = document.getElementById('text-paste-input');
     var val = inp && inp.value ? inp.value.trim() : '';
     if (!val) { showToast('⚠️ 텍스트를 입력하세요'); return; }
+    if (/\d+페이지\s*---/.test(val)) val = heuristicReflowExtractedText(val);
     if (typeof window.addFileToSlot === 'function') {
       window.addFileToSlot({ fileName: '직접입력.txt', rawText: val, checked: true });
     } else {
@@ -256,10 +529,64 @@
     win.document.close();
   }
 
+  /**
+   * 슬라이드 탭 전용: 메인 논문과 별도로 SLIDE 원고만 로드 (txt/md/pdf). 메인 PDF 버퍼·미리보기는 건드리지 않음.
+   */
+  async function handleSlideManuscriptUpload(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var name = (file.name || '').toLowerCase();
+    if (!name.endsWith('.txt') && !name.endsWith('.md') && !name.endsWith('.pdf')) {
+      if (typeof showToast === 'function') showToast('⚠️ .txt, .md, .pdf 만 업로드할 수 있습니다.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+    if (typeof showLoading === 'function') showLoading('슬라이드 원고 추출 중...', file.name, 20);
+    try {
+      ensurePDFWorker();
+      var text = '';
+      if (file.type === 'application/pdf' || name.endsWith('.pdf')) {
+        var buf = await file.arrayBuffer();
+        var pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        for (var i = 1; i <= pdf.numPages; i++) {
+          var page = await pdf.getPage(i);
+          var content = await page.getTextContent();
+          var pageText = getPageTextWithLineBreaks(content);
+          text += '\n\n--- ' + i + '페이지 ---\n\n' + pageText;
+          if (typeof setProgress === 'function') setProgress(Math.round(20 + (i / pdf.numPages) * 50));
+        }
+        text = text.replace(/^\n+/, '').trim();
+        text = await applyExtractReflowPipeline(text, file.name, true, shouldRunAiOnUpload());
+      } else {
+        text = await file.text();
+        if (text && !text.trim().includes('\n') && text.length > 80) text = normalizeSentenceLineBreaks(text);
+        if (text) text = '--- 1페이지 ---\n\n' + text.trim();
+        if (text) text = heuristicReflowExtractedText(text);
+      }
+      window._slideManuscriptText = text;
+      window._slideManuscriptFileName = file.name;
+      if (typeof showToast === 'function') showToast('✅ 슬라이드 원고 로드됨 (' + (text.length / 1000).toFixed(1) + 'k 글자)');
+      if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
+      enableMainBtns();
+      if (typeof renderLeftPanel === 'function') renderLeftPanel();
+    } catch (err) {
+      console.error(err);
+      if (typeof showToast === 'function') showToast('❌ 슬라이드 원고 처리 실패: ' + err.message);
+    } finally {
+      if (typeof hideLoading === 'function') hideLoading();
+      if (e.target) e.target.value = '';
+    }
+  }
+
   window.ensurePDFWorker = ensurePDFWorker;
   window.getPageTextWithLineBreaks = getPageTextWithLineBreaks;
   window.normalizeSentenceLineBreaks = normalizeSentenceLineBreaks;
   window.handleFileUpload = handleFileUpload;
+  window.handleSlideManuscriptUpload = handleSlideManuscriptUpload;
+  window.heuristicReflowExtractedText = heuristicReflowExtractedText;
+  window.runRawTextAiReflowBackground = runRawTextAiReflowBackground;
+  window.canUseAiReflowEngine = canUseAiReflowEngine;
+  window._rawAiReflowRunning = false;
   window.loadFromTextInput = loadFromTextInput;
   window.enableMainBtns = enableMainBtns;
   window.extractReferencesSectionFromRawText = extractReferencesSectionFromRawText;

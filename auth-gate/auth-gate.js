@@ -7,7 +7,7 @@
   'use strict';
 
   var STORAGE_KEY = 'ss_scholar_slide_auth_v1';
-  /** UTF-8 "a123456!a82820909" 의 SHA-256 (hex). 평문 비밀번호는 이 파일에 없습니다. */
+  /** UTF-8 "a12ds345adf6xx!adf8as2dccx82c909"의 SHA-256 (hex). 평문 비밀번호는 이 파일에 없습니다. */
   var HASH_HEX_PARTS = [
     '8414ba50', '89ef373d', 'b02a339b', '2331b19b',
     '3514a550', 'f640952e', 'ced0f188', 'ce8dc5b1'

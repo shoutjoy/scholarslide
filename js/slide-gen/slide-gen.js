@@ -220,6 +220,40 @@
     return null;
   }
   function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+  /** 업로드 슬라이드 원고 → 논리적 페이지 배열 (PDF 페이지 구분선 또는 --- 구분) */
+  function splitSlideManuscriptIntoPages(text) {
+    var t = String(text || '').trim();
+    if (!t) return [];
+    var parts = t.split(/\n---\s*\d+페이지\s*---\s*\r?\n/i);
+    parts = parts.map(function (s) { return s.trim(); }).filter(Boolean);
+    if (parts.length >= 2 || /---\s*\d+페이지\s*---/i.test(t)) {
+      return parts.length ? parts : [t];
+    }
+    var byHr = t.split(/\r?\n-{4,}\s*\r?\n/);
+    if (byHr.length > 1) {
+      return byHr.map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+    return [t];
+  }
+  /** 발표 원고 생성 범위: 비우면 전체, "5-10" 또는 단일 숫자 n → 1~n번 슬라이드 */
+  function parseScriptGenRange(rangeStr, total) {
+    total = Math.max(0, parseInt(total, 10) || 0);
+    if (total === 0) return { start: 0, end: -1 };
+    var raw = String(rangeStr || '').trim();
+    if (!raw) return { start: 0, end: total - 1 };
+    var m = raw.match(/^(\d+)\s*[-~]\s*(\d+)$/);
+    if (m) {
+      var lo = parseInt(m[1], 10);
+      var hi = parseInt(m[2], 10);
+      if (lo > hi) { var tmp = lo; lo = hi; hi = tmp; }
+      return { start: Math.max(0, lo - 1), end: Math.min(total - 1, hi - 1) };
+    }
+    var n = parseInt(raw, 10);
+    if (isFinite(n) && n > 0) {
+      return { start: 0, end: Math.min(total - 1, n - 1) };
+    }
+    return { start: 0, end: total - 1 };
+  }
   function cloneSlidesForHistory(arr) {
     try {
       return JSON.parse(JSON.stringify(Array.isArray(arr) ? arr : []));
@@ -446,6 +480,7 @@
     var slideGenType = (opts.slideGenType !== undefined && opts.slideGenType !== null)
       ? String(opts.slideGenType) : ((g('slide-gen-type') && g('slide-gen-type').value) || (typeof localStorage !== 'undefined' && localStorage.getItem('ss_slide_gen_type')) || 'precision');
     var isAutoSlideMode = type === 'slides_auto';
+    if (isAutoSlideMode) slideGenType = 'auto_visual';
     var targetSlideCount = slideCount;
     if (isAutoSlideMode || slideGenType === 'auto_visual') {
       var estimated = estimateAutoSlideCount(slideSourceText.length, includeCover);
@@ -594,14 +629,133 @@
     if (window.hideJobProgress) window.hideJobProgress('slideGen', 0);
   }
 
-  async function generatePresentationScript(extraMemo) {
+  async function generateSlidesFromUploadedManuscript(options) {
     if (typeof window !== 'undefined') window._aiTaskCancelled = false;
+    var opts = options || {};
+    var text = String(typeof window._slideManuscriptText === 'string' ? window._slideManuscriptText : '').trim();
+    if (!text) {
+      if (window.showToast) window.showToast('⚠️ 먼저 SLIDE 원고를 업로드하세요.');
+      return;
+    }
+    var pages = splitSlideManuscriptIntoPages(text);
+    var maxP = opts.maxManuscriptPages;
+    if (maxP != null && maxP > 0 && pages.length > maxP) pages = pages.slice(0, maxP);
+    var srcLabel = window._slideManuscriptFileName || '슬라이드원고';
+    var numbered = pages.map(function (p, i) {
+      return '### 원고 페이지 ' + (i + 1) + ' (이 구간만 해당 슬라이드에 반영)\n' + p;
+    }).join('\n\n________PAGE_BREAK________\n\n');
+    var customInstruction = (g('custom-instruction-manuscript') && g('custom-instruction-manuscript').value) ? String(g('custom-instruction-manuscript').value).trim() : '';
+    if (window.showJobProgress) window.showJobProgress('slideGen', 'UP Slide: 원고 기반 슬라이드 생성 중...', 5, '📄');
+    try {
+      var body = numbered.length > 120000 ? numbered.substring(0, 120000) + '\n\n[...원고 일부 생략...]' : numbered;
+      var prompt = [
+        '[중요] 아래는 업로드된 슬라이드 원고입니다. 논문 본문이 아닙니다. 이 텍스트만 사용하고 외부 지식·추가 요약을 넣지 마세요.',
+        '',
+        '[규칙]',
+        '1. 각 "원고 페이지" 블록을 1개 이상의 슬라이드로 옮기고, 원문 표현을 최대한 유지합니다.',
+        '2. 한 블록이 길면(불릿·본문 합쳐 약 350자 이상) 논리적으로 나누어 연속 슬라이드 2개 이상으로 분할합니다.',
+        '3. 그림·표·도표·차트 설명이 있으면 visPrompt에 영어로 구체적 묘사(축, 범례, 레이아웃)를 넣습니다. imageUrl은 항상 null.',
+        '4. 표지 성격의 첫 내용이 있으면 첫 슬라이드에 isCover:true.',
+        '5. title에 "Slide 1:" 같은 번호를 붙이지 않습니다.',
+        '',
+        '[출력] JSON 배열만 (코드블록·마크다운 없이):',
+        '[{"title":"...","bullets":["..."],"notes":"...","visPrompt":"English or empty","isCover":false}]',
+        '',
+        '[업로드 원고]',
+        body
+      ].join('\n');
+      if (customInstruction) prompt += '\n\n[추가 지시]\n' + customInstruction;
+      var slideSystem = 'You convert a slide manuscript into a JSON slide deck. Preserve source Korean text; English only in visPrompt. Output JSON array only.';
+      var res = await window.callGemini(prompt, slideSystem);
+      var resText = res && res.text ? res.text : res;
+      var clean = String(resText).replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+      var match = clean.match(/\[[\s\S]*\]/);
+      if (!match) throw new Error('응답에서 JSON을 찾을 수 없음');
+      var parsed = JSON.parse(match[0]);
+      var newSlides = parsed.map(function (s, i) {
+        return {
+          id: i,
+          imageUrl: null,
+          title: s.title,
+          bullets: (s.bullets || []).map(function (b) { return String(b).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'); }),
+          notes: s.notes || '',
+          visPrompt: s.visPrompt || '',
+          isCover: !!s.isCover
+        };
+      });
+      if (newSlides.length && newSlides[0].isCover && typeof window.getUserInfoForSummary === 'function') {
+        var userInfo = window.getUserInfoForSummary();
+        if (userInfo && userInfo.trim()) {
+          newSlides[0].bullets = (newSlides[0].bullets || []).concat('발표자: ' + userInfo.trim());
+        }
+      }
+      var prevSlidesSnapshot = getSlidesArr();
+      if (prevSlidesSnapshot && prevSlidesSnapshot.length && window.addToUpSlideHistory) {
+        var prevCloned = cloneSlidesForHistory(prevSlidesSnapshot);
+        window.addToUpSlideHistory({
+          fileName: ((window.getFileName ? window.getFileName() : '') || '슬라이드') + ' (생성 전)',
+          slides: prevCloned,
+          manuscriptContent: (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(prevCloned) : '',
+          isBackupBeforeRegeneration: true
+        });
+        if (window.showToast) window.showToast('🗂 기존 슬라이드를 UP Slide 히스토리에 백업했습니다.');
+      }
+      if (window.updateJobProgress) window.updateJobProgress('slideGen', 35, 'UP Slide 반영 중...');
+      newSlides = await renderSlidesProgressively(newSlides);
+      setActiveSlideIndex(0);
+      setPresentationScript([]);
+      if (window.afterSlidesCreated) window.afterSlidesCreated();
+      var autoImgResult = await autoGenerateImagesForSlides(newSlides);
+      if (window.addToUpSlideHistory && window.getFileName) {
+        var manuscriptContent = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(newSlides) : '';
+        var entry = { fileName: srcLabel, slides: cloneSlidesForHistory(newSlides), manuscriptContent: manuscriptContent };
+        window.addToUpSlideHistory(entry);
+        if (typeof window._selectedManuscriptHistoryId !== 'undefined') window._selectedManuscriptHistoryId = entry.id || null;
+        if (typeof window.setManuscriptView === 'function') window.setManuscriptView('upslides');
+        if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
+      }
+      if (window.showToast) {
+        var msg = '✅ UP Slide ' + newSlides.length + '장 생성 완료';
+        if (autoImgResult && !autoImgResult.unavailable) {
+          msg += ' / 이미지 ' + autoImgResult.generated + '개';
+          if (autoImgResult.failed) msg += ' (실패 ' + autoImgResult.failed + '개)';
+        }
+        window.showToast(msg);
+      }
+      if (window.showJobCompleteBadge) window.showJobCompleteBadge('UP Slide 생성 완료');
+      if (window.renderLeftPanel) window.renderLeftPanel();
+    } catch (e) {
+      if (e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED')) {
+        if (window.showToast) window.showToast('⏹ UP Slide 생성이 중단되었습니다.');
+      } else {
+        console.error(e);
+        if (window.showToast) window.showToast('❌ UP Slide 생성 실패: ' + (e.message || e));
+      }
+    }
+    if (window.hideJobProgress) window.hideJobProgress('slideGen', 0);
+  }
+
+  async function generatePresentationScript(extraMemo, options) {
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
+    var opts = options || {};
+    var rangeStr = opts.slideRange != null ? String(opts.slideRange) : '';
     var s = getSlidesArr();
     if (!s.length) return;
-    if (window.showLoading) window.showLoading('발표 원고 생성 중...', '슬라이드별 스크립트 작성', 20, true);
+    var total = s.length;
+    var r = parseScriptGenRange(rangeStr, total);
+    if (r.end < r.start) {
+      if (window.showToast) window.showToast('⚠️ 슬라이드 범위가 올바르지 않습니다.');
+      return;
+    }
+    var indices = [];
+    for (var i = r.start; i <= r.end; i++) indices.push(i);
+    if (window.showLoading) window.showLoading('발표 원고 생성 중...', '슬라이드 ' + (r.start + 1) + '~' + (r.end + 1), 20, true);
     try {
-      var slideSummary = s.map(function (slide, i) { return '슬라이드 ' + (i + 1) + ' [' + slide.title + ']:\n- ' + (slide.bullets || []).join('\n- '); }).join('\n\n');
-      var prompt = '다음 슬라이드 구조를 기반으로 각 슬라이드의 발표 원고를 작성하세요.\n- 각 슬라이드별 2-4분 분량의 자연스러운 발표 언어\n- 슬라이드 수와 동일한 수의 원고를 JSON 배열로만 응답: ["스크립트1","스크립트2",...]\n\n' + slideSummary;
+      var slideSummary = indices.map(function (idx) {
+        var slide = s[idx];
+        return '슬라이드 ' + (idx + 1) + ' [' + slide.title + ']:\n- ' + (slide.bullets || []).join('\n- ');
+      }).join('\n\n');
+      var prompt = '다음 슬라이드 구조를 기반으로 지정된 슬라이드의 발표 원고를 작성하세요.\n- 각 슬라이드별 2-4분 분량의 자연스러운 발표 언어\n- 슬라이드 번호 ' + (indices[0] + 1) + '번부터 ' + (indices[indices.length - 1] + 1) + '번까지, 총 ' + indices.length + '개에 대해 순서대로 JSON 배열로만 응답: ["스크립트1","스크립트2",...]\n\n' + slideSummary;
       if (extraMemo && String(extraMemo).trim()) prompt += '\n\n추가 지시: ' + String(extraMemo).trim();
       var scriptSystem = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('slide_gen_script_system')) || '학술 발표 전문가입니다. 자연스러운 발표 원고를 한국어로 작성합니다.';
       var res = await window.callGemini(prompt, scriptSystem);
@@ -610,7 +764,14 @@
       var match = clean.match(/\[[\s\S]*\]/);
       if (!match) throw new Error('JSON 파싱 실패');
       var script = JSON.parse(match[0]);
-      setPresentationScript(script);
+      if (script.length !== indices.length) throw new Error('원고 개수(' + script.length + ')가 범위 슬라이드 수(' + indices.length + ')와 일치하지 않습니다.');
+      var prevScript = (window.getPresentationScript ? window.getPresentationScript() : []) || [];
+      var fullScript = prevScript.slice();
+      while (fullScript.length < total) fullScript.push('');
+      for (var j = 0; j < indices.length; j++) {
+        fullScript[indices[j]] = script[j];
+      }
+      setPresentationScript(fullScript);
       setLeftTab('script');
       if (window.addToManuscriptHistory && window.getFileName) {
         var s = getSlidesArr();
@@ -799,6 +960,7 @@
   }
 
   window.generateSummary = generateSummary;
+  window.generateSlidesFromUploadedManuscript = generateSlidesFromUploadedManuscript;
   window.generatePresentationScript = generatePresentationScript;
   window.aiRewriteSlide = aiRewriteSlide;
   window.aiExpandSlide = aiExpandSlide;

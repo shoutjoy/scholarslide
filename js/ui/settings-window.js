@@ -25,7 +25,12 @@
       '.sw-prompt-filter-btn.active{background:var(--surface3);color:var(--accent);border-color:var(--accent)}' +
       '.sw-panel{display:none}.sw-panel.active{display:block}' +
       '.sw-panel label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px}' +
+      '.sw-panel label.sw-row{display:flex!important;align-items:flex-start;gap:10px;width:100%;margin-bottom:10px;font-weight:400;line-height:1.45;cursor:pointer}' +
+      '.sw-panel label.sw-row--center{align-items:center}' +
+      '.sw-panel label.sw-row .sw-row-text{flex:1;min-width:0}' +
       '.sw-panel input,.sw-panel select,.sw-panel textarea{width:100%;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;font-family:JetBrains Mono,Noto Sans KR,monospace}' +
+      '.sw-panel input[type=radio],.sw-panel input[type=checkbox]{width:auto!important;max-width:none;flex:0 0 auto;padding:0;margin:2px 0 0 0;background:transparent;border:none;border-radius:0;font-family:inherit;accent-color:var(--accent)}' +
+      '.sw-panel label.sw-row input[type=checkbox]{margin-top:1px}' +
       '.sw-panel textarea{min-height:80px;resize:vertical}' +
       '.sw-panel .btn{padding:6px 12px;border-radius:6px;font-size:12px;cursor:pointer;border:none}' +
       '.sw-panel .btn-primary{background:var(--accent);color:#fff}.sw-panel .btn-primary:hover{opacity:0.9}' +
@@ -69,7 +74,7 @@
       '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">요약</div>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-writing-style-summary"> 문체설정 보이기</label>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-summary"> 커스텀 지시사항 보이기</label></div>' +
-      '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">원고</div>' +
+      '<div style="min-width:100px"><div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px">슬라이드</div>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="sw-misc-show-slide-gen-type-manuscript"> 슬라이드생성유형 보이기</label>' +
       '<label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer"><input type="checkbox" id="sw-misc-show-custom-manuscript"> 커스텀 프롬프트 보이기</label></div>' +
       '</div></div>' +
@@ -91,6 +96,15 @@
       '<label style="margin-top:16px">원문 요약 글자 수</label>' +
       '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="2000000" step="1000" value="1500000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
       '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
+      '<div class="sw-pdf-reflow-box" style="margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">' +
+      '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">PDF 업로드 후 원문 처리</div>' +
+      '<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.5">추출 직후 AI 가독성 정리(머리말·제목 줄바꿈)를 할지 선택합니다. 원문 탭의 ✨ 버튼으로 나중에 백그라운드 실행도 가능합니다.</p>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<label class="sw-row" style="font-size:11px;margin-bottom:0"><input type="radio" name="sw-upload-pdf-reflow" value="extract_only"><span class="sw-row-text"><b>원문 추출만</b> — 휴리스틱 줄바꿈만, 빠름</span></label>' +
+      '<label class="sw-row" style="font-size:11px;margin-bottom:0"><input type="radio" name="sw-upload-pdf-reflow" value="extract_and_ai"><span class="sw-row-text"><b>추출 후 바로 AI 정리</b> — API·시간 소요</span></label>' +
+      '</div>' +
+      '<label class="sw-row sw-row--center" style="font-size:11px;margin:12px 0 0 0;padding-top:12px;border-top:1px solid var(--border);margin-bottom:0"><input type="checkbox" id="sw-misc-ai-reflow-off"><span class="sw-row-text">PDF 업로드 직후 자동 AI 정리 끄기 (원문 탭 「AI 정리」버튼은 별도로 동작)</span></label>' +
+      '</div>' +
       '<label style="margin-top:16px">IMGSAVE URL (프로젝트 저장 모달의 IMGSAVE 링크 주소)</label>' +
       '<input type="url" id="sw-misc-imgsave-url" placeholder="https://imgbb.com/" style="width:100%;max-width:400px;margin-top:4px;margin-bottom:4px">' +
       '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">이미지 업로드 사이트 주소. 기본: imgbb.com</p>' +
@@ -270,6 +284,12 @@
     if (miscSummaryLimit) miscSummaryLimit.value = localStorage.getItem('ss_summary_char_limit') || '1500000';
     if (miscRangeMin) miscRangeMin.value = localStorage.getItem('ss_slide_range_default_min') || '1';
     if (miscRangeMax) miscRangeMax.value = localStorage.getItem('ss_slide_range_default_max') || '30';
+    var _uploadReflowMode = localStorage.getItem('ss_upload_pdf_reflow_mode') || 'extract_and_ai';
+    document.querySelectorAll('#settings-panel-root input[name="sw-upload-pdf-reflow"]').forEach(function (r) {
+      r.checked = r.value === _uploadReflowMode;
+    });
+    var miscAiReflowOff = $('sw-misc-ai-reflow-off');
+    if (miscAiReflowOff) miscAiReflowOff.checked = localStorage.getItem('ss_ai_pdf_reflow') === '0';
 
     var loadUserInfo = function () {
       var data = {};
@@ -329,6 +349,10 @@
         var url = (miscImgSaveUrl.value || '').trim();
         localStorage.setItem('ss_imgsave_url', url || 'https://imgbb.com/');
       }
+      var reflowRad = document.querySelector('#settings-panel-root input[name="sw-upload-pdf-reflow"]:checked');
+      if (reflowRad) localStorage.setItem('ss_upload_pdf_reflow_mode', reflowRad.value);
+      var miscAiReflowOffApply = $('sw-misc-ai-reflow-off');
+      if (miscAiReflowOffApply) localStorage.setItem('ss_ai_pdf_reflow', miscAiReflowOffApply.checked ? '0' : '1');
       if (typeof win.renderLeftPanel === 'function') win.renderLeftPanel();
       if (typeof win.updateExtPresButtonVisibility === 'function') win.updateExtPresButtonVisibility();
       if (typeof win.showToast === 'function') win.showToast('적용되었습니다');

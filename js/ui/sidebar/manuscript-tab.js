@@ -1,12 +1,12 @@
 /**
- * ScholarSlide — 원고 탭 전용 UI (좌측 사이드바)
- * 원고 탭 선택 시에만 사용되는 레이아웃: 발표원고생성/슬라이드 생성, 커스텀 프롬프트, 발표원고 생성/파일선택, 텍스트입력창, 발표원고|슬라이드생성 뷰, 생성내용/생성히스토리/새창보기
+ * ScholarSlide — 슬라이드 탭 전용 UI (좌측 사이드바)
+ * 슬라이드 탭 선택 시에만 사용되는 레이아웃: 발표/슬라이드 생성, 커스텀 프롬프트, SLIDE 원고 UP, 발표|슬라이드 뷰, 생성내용/히스토리/새창보기
  * 전역 의존: askThenGenerateScript, askThenSummary, handleFileUpload, saveContent, renderLeftPanel, openSummaryWindow, getPresentationScript, getSlides, getFileName, escapeHtml, showToast
  */
 (function () {
   'use strict';
 
-  window._manuscriptView = window._manuscriptView || 'script'; // 'script' | 'slides'
+  window._manuscriptView = window._manuscriptView || 'script'; // 'script' | 'slides' | 'allslides' | 'upslides'
   window._manuscriptSubView = window._manuscriptSubView || 'content'; // 'content' | 'history'
   window._selectedManuscriptHistoryId = window._selectedManuscriptHistoryId || null;
 
@@ -75,6 +75,9 @@
     if (!item && typeof window.getAllSlideHistory === 'function') {
       item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && typeof window.getUpSlideHistory === 'function') {
+      item = (window.getUpSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (!item) return;
     window._selectedManuscriptHistoryId = id;
     if (typeof window.setManuscriptSubView === 'function') window.setManuscriptSubView('content');
@@ -97,6 +100,9 @@
     }
     if (!item && typeof window.getAllSlideHistory === 'function') {
       item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && typeof window.getUpSlideHistory === 'function') {
+      item = (window.getUpSlideHistory() || []).find(function (h) { return h.id === id; });
     }
     if (!item || !item.slides || !item.slides.length) {
       if (typeof showToast === 'function') showToast('⚠️ 저장된 슬라이드가 없습니다.');
@@ -141,21 +147,31 @@
     if (!item && id && typeof window.getSlideHistory === 'function') {
       item = (window.getSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && id && typeof window.getAllSlideHistory === 'function') {
+      item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
+    if (!item && id && typeof window.getUpSlideHistory === 'function') {
+      item = (window.getUpSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (item) {
       var fileName = item.fileName || '원고';
-      if (item.type === 'slides' && item.manuscriptContent) {
-        return { text: item.manuscriptContent, title: '슬라이드 생성', subtitle: '📋 슬라이드생성', fileName: fileName };
+      if ((item.type === 'slides' || item.type === 'all_slides' || item.type === 'up_slides') && item.manuscriptContent) {
+        var subTit = item.type === 'all_slides' ? '🧠 All Slide생성' : (item.type === 'up_slides' ? '⬆ UP Slide생성' : '📋 슬라이드생성');
+        var titShort = item.type === 'all_slides' ? 'All Slide' : (item.type === 'up_slides' ? 'UP Slide' : '슬라이드 생성');
+        return { text: item.manuscriptContent, title: titShort, subtitle: subTit, fileName: fileName };
       }
       if ((item.type === 'script' || !item.type) && item.presentationScript && item.presentationScript.length) {
         return { text: scriptToMarkdown(item.presentationScript, item.slides), title: '발표 원고', subtitle: '📝 발표원고', fileName: fileName };
       }
     }
-    if (currentView === 'slides') {
+    if (currentView === 'slides' || currentView === 'allslides' || currentView === 'upslides') {
       var slides = (typeof window.getSlides === 'function' ? window.getSlides() : []) || [];
       if (slides.length) {
         var md = (typeof window.slidesToMarkdown === 'function') ? window.slidesToMarkdown(slides) : '';
         var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '슬라이드';
-        return { text: md, title: '슬라이드 생성', subtitle: '📋 슬라이드생성', fileName: fileName };
+        var sub = currentView === 'upslides' ? '⬆ UP Slide생성' : (currentView === 'allslides' ? '🧠 All Slide생성' : '📋 슬라이드생성');
+        var tit = currentView === 'upslides' ? 'UP Slide' : (currentView === 'allslides' ? 'All Slide' : '슬라이드 생성');
+        return { text: md, title: tit, subtitle: sub, fileName: fileName };
       }
     } else {
       var script = (typeof window.getPresentationScript === 'function' ? window.getPresentationScript() : []) || [];
@@ -174,7 +190,10 @@
   window.openManuscriptFullscreen = function () {
     var opts = getManuscriptContentForViewer();
     if (!opts || !opts.text || !String(opts.text).trim()) {
-      if (typeof showToast === 'function') showToast(window._manuscriptView === 'slides' ? '⚠️ 슬라이드를 먼저 생성하세요.' : '⚠️ 발표 원고를 먼저 생성하세요.');
+      if (typeof showToast === 'function') {
+        var mv = window._manuscriptView;
+        showToast(mv === 'slides' || mv === 'allslides' || mv === 'upslides' ? '⚠️ 슬라이드를 먼저 생성하세요.' : '⚠️ 발표 원고를 먼저 생성하세요.');
+      }
       return;
     }
     var buildViewer = typeof window.buildViewerContentWithPages === 'function' ? window.buildViewerContentWithPages : null;
@@ -306,12 +325,15 @@
     if (!item && id && typeof window.getAllSlideHistory === 'function') {
       item = (window.getAllSlideHistory() || []).find(function (h) { return h.id === id; });
     }
+    if (!item && id && typeof window.getUpSlideHistory === 'function') {
+      item = (window.getUpSlideHistory() || []).find(function (h) { return h.id === id; });
+    }
     if (item) {
       fileName = item.fileName || '원고';
-      if ((item.type === 'slides' || item.type === 'all_slides') && item.manuscriptContent) {
+      if ((item.type === 'slides' || item.type === 'all_slides' || item.type === 'up_slides') && item.manuscriptContent) {
         text = item.manuscriptContent;
-        title = item.type === 'all_slides' ? 'All Slide 생성' : '슬라이드 생성';
-        subtitle = item.type === 'all_slides' ? '🧠 All Slide생성' : '📋 슬라이드생성';
+        title = item.type === 'all_slides' ? 'All Slide 생성' : (item.type === 'up_slides' ? 'UP Slide 생성' : '슬라이드 생성');
+        subtitle = item.type === 'all_slides' ? '🧠 All Slide생성' : (item.type === 'up_slides' ? '⬆ UP Slide생성' : '📋 슬라이드생성');
       } else if ((item.type === 'script' || !item.type) && item.presentationScript && item.presentationScript.length) {
         text = scriptToMarkdown(item.presentationScript, item.slides);
         title = '발표 원고';
@@ -319,7 +341,7 @@
       }
     }
     if (!text || !text.trim()) {
-      if (currentView === 'slides' || currentView === 'allslides') {
+      if (currentView === 'slides' || currentView === 'allslides' || currentView === 'upslides') {
         window.openSlidesInNewWindow();
         return;
       }
@@ -343,6 +365,27 @@
     var fileName = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '발표 원고';
     var text = scriptToMarkdown(script, slides);
     openManuscriptViewerWindow({ text: text, title: '발표 원고', subtitle: '📝 발표원고', fileName: fileName });
+  };
+
+  /** 업로드한 슬라이드 원고(txt/md/pdf)를 요약 탭과 동일한 텍스트 뷰어 새창으로 표시 */
+  window.openSlideManuscriptInNewWindow = function () {
+    var t = typeof window._slideManuscriptText === 'string' ? window._slideManuscriptText : '';
+    if (!String(t).trim()) {
+      if (typeof showToast === 'function') showToast('⚠️ 먼저 SLIDE 원고를 업로드하세요.');
+      return;
+    }
+    var fn = window._slideManuscriptFileName || '슬라이드 원고';
+    openManuscriptViewerWindow({ text: t, title: '슬라이드 원고', subtitle: '📄 SLIDE 원고', fileName: fn });
+  };
+
+  /** 슬라이드 원고만 제거 (메인 논문·파일 슬롯은 유지) */
+  window.clearSlideManuscript = function () {
+    window._slideManuscriptText = '';
+    window._slideManuscriptFileName = '';
+    if (typeof window.resetTranslationCache === 'function') window.resetTranslationCache();
+    if (typeof renderLeftPanel === 'function') renderLeftPanel();
+    if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
+    if (typeof showToast === 'function') showToast('슬라이드 원고를 제거했습니다.');
   };
 
   /**
@@ -399,23 +442,52 @@
       + '<button type="button" class="btn btn-sm btn-slide-gen-auto" style="' + btnGenStyle + '" onclick="askThenSummary(\'slides_auto\')">🧠 All Slide생성</button>'
       + '</div>';
 
+    var smText = typeof window._slideManuscriptText === 'string' ? window._slideManuscriptText : '';
+    var smName = window._slideManuscriptFileName || '';
+    var smLen = smText.length;
+    var smK = (smLen / 1000).toFixed(1) + 'k';
+    var slideMsBadge = smText.trim()
+      ? '<div class="file-badge" style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span>📋</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;max-width:130px">' + esc(smName || '슬라이드 원고') + '</span><span class="file-size">' + esc(smK) + '</span>'
+        + '<button type="button" onclick="clearSlideManuscript()" style="flex-shrink:0;padding:2px 8px;background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1" title="슬라이드 원고 제거">&#10005;</button></div>'
+      : '<p style="font-size:11px;color:var(--text3);margin:0 0 8px;line-height:1.45">슬라이드 원고 없음 · 아래 <b>SLIDE 원고UP</b>으로 .txt / .md / .pdf 업로드</p>';
+
+    var upSlideRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+      + '<label class="label" style="margin:0;white-space:nowrap">RANGE</label>'
+      + '<input type="number" class="control" id="up-slide-max-pages" placeholder="전체" min="1" style="width:56px;font-size:11px" title="앞에서부터 사용할 SLIDE 원고 페이지 수(논리 페이지). 비우면 전체"/>'
+      + '<button type="button" class="btn btn-sm btn-slide-gen-up" style="' + btnGenStyle + '" onclick="askThenUpSlideGenerate()">⬆ UP Slide생성</button>'
+      + '</div>';
+
+    var slideMsUploadRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+      + '<input type="file" id="slide-manuscript-input" accept=".txt,.md,.pdf" style="display:none" onchange="handleSlideManuscriptUpload(event)"/>'
+      + (smText.trim()
+        ? '<button type="button" class="btn btn-ghost btn-sm" onclick="openSlideManuscriptInNewWindow()">🔲 SLIDE 새창보기</button>'
+        : '<button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById(\'slide-manuscript-input\').click()">📤 SLIDE 원고UP</button>'
+          + '<button type="button" class="btn btn-ghost btn-sm" onclick="openSlideManuscriptInNewWindow()">🔲 SLIDE 새창보기</button>')
+      + '</div>';
+
+    var scriptRangePh = slides.length ? ('1-' + slides.length) : '1-15';
+    var scriptRangeSaved = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_script_gen_slide_range')) || '';
+    var scriptGenRow = '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+      + '<label class="label" style="margin:0;white-space:nowrap">Range</label>'
+      + '<input type="text" class="control" id="script-slide-range-val" placeholder="' + esc(scriptRangePh) + '" value="' + esc(scriptRangeSaved) + '" style="width:76px;font-size:11px" title="발표 원고 생성 슬라이드 범위(모달에서도 수정). 비우면 전체"/>'
+      + '<button type="button" class="btn btn-sm btn-slide-gen-script" style="' + btnGenStyle + '" onclick="askThenGenerateScript()">📝 발표원고 생성</button>'
+      + '</div>';
+
     var showCustomManuscript = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_show_custom_instruction_manuscript') === '1');
     var row2 = showCustomManuscript
       ? '<label class="label" style="margin-bottom:4px">커스텀 프롬프트</label>'
         + '<textarea class="control" id="custom-instruction-manuscript" rows="2" placeholder="예: 통계 방법론 집중, 영어로 출력..." style="width:100%;margin-bottom:10px;resize:vertical">' + esc(customVal) + '</textarea>'
       : '<textarea class="control" id="custom-instruction-manuscript" rows="2" placeholder="" style="display:none">' + esc(customVal) + '</textarea>';
 
-    var row3 = '<div class="manuscript-row" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">'
-      + '<button type="button" class="btn btn-ghost btn-sm" onclick="askThenGenerateScript()">📄 발표원고 생성</button>'
-      + '</div>';
-
     var toggleActiveScript = view === 'script' ? ' active' : '';
     var toggleActiveSlides = view === 'slides' ? ' active' : '';
     var toggleActiveAllSlides = view === 'allslides' ? ' active' : '';
-    var row5 = '<div class="manuscript-tab-menu">'
-      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveScript + '" onclick="setManuscriptView(\'script\')">발표원고</button>'
-      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveSlides + '" onclick="setManuscriptView(\'slides\')">슬라이드생성</button>'
-      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveAllSlides + '" onclick="setManuscriptView(\'allslides\')">All Slide생성</button>'
+    var toggleActiveUpSlides = view === 'upslides' ? ' active' : '';
+    var row5 = '<div class="manuscript-tab-menu manuscript-tab-menu-four">'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveScript + '" onclick="setManuscriptView(\'script\')">발표</button>'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveSlides + '" onclick="setManuscriptView(\'slides\')">슬라이드</button>'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveAllSlides + '" onclick="setManuscriptView(\'allslides\')">All Slide</button>'
+      + '<button type="button" class="manuscript-tab-menu-btn' + toggleActiveUpSlides + '" onclick="setManuscriptView(\'upslides\')">UP Slide</button>'
       + '</div>';
 
     var selectedId = window._selectedManuscriptHistoryId || null;
@@ -430,6 +502,9 @@
       if (!selectedItem && typeof window.getAllSlideHistory === 'function') {
         selectedItem = (window.getAllSlideHistory() || []).find(function (h) { return h.id === selectedId; });
       }
+      if (!selectedItem && typeof window.getUpSlideHistory === 'function') {
+        selectedItem = (window.getUpSlideHistory() || []).find(function (h) { return h.id === selectedId; });
+      }
     }
 
     var contentScript = '';
@@ -440,7 +515,7 @@
         var slideTitle = (slides[i] && slides[i].title) ? slides[i].title : '';
         scriptParts.push('<div class="script-slide-section"><div class="script-slide-label">슬라이드 ' + (i + 1) + '</div><div class="script-slide-title">' + esc(slideTitle) + '</div><div class="script-slide-content">' + esc(st) + '</div></div>');
       }
-      contentScript = '<div class="translate-row" style="margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="saveContent(\'script\')">💾 원고 저장</button></div>' + scriptParts.join('');
+      contentScript = '<div class="translate-row" style="margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="saveContent(\'script\')">💾 발표 저장</button></div>' + scriptParts.join('');
     } else {
       contentScript = '<p style="font-size:12px;color:var(--text3);padding:12px 0">발표 원고를 생성하면 여기에 표시됩니다.</p>';
     }
@@ -455,7 +530,7 @@
 
     var contentFromSelected = '';
     if (selectedItem && subView === 'content') {
-      if ((selectedItem.type === 'slides' || selectedItem.type === 'all_slides') && selectedItem.manuscriptContent) {
+      if ((selectedItem.type === 'slides' || selectedItem.type === 'all_slides' || selectedItem.type === 'up_slides') && selectedItem.manuscriptContent) {
         contentFromSelected = '<div style="white-space:pre-wrap;font-size:12px;line-height:1.6">' + esc(selectedItem.manuscriptContent) + '</div>';
       } else if ((selectedItem.type === 'script' || selectedItem.type === undefined) && selectedItem.presentationScript && selectedItem.presentationScript.length) {
         var scriptPartsSel = [];
@@ -470,9 +545,9 @@
       }
     }
 
-    /* 생성내용: 현재 탭(발표원고/슬라이드생성/All Slide생성)에 맞는 것만 표시 */
+    /* 생성내용: 현재 탭에 맞는 히스토리 항목만 표시 */
     var useSelectedForContent = selectedItem && subView === 'content' &&
-      (view === 'script' ? (selectedItem.type === 'script' || selectedItem.type === undefined) : (selectedItem.type === 'slides' || selectedItem.type === 'all_slides'));
+      (view === 'script' ? (selectedItem.type === 'script' || selectedItem.type === undefined) : (selectedItem.type === 'slides' || selectedItem.type === 'all_slides' || selectedItem.type === 'up_slides'));
 
     var contentHistory = '';
     if (subView === 'history') {
@@ -491,20 +566,24 @@
         historyList = window.getAllSlideHistory() || [];
         clearFn = 'clearAllSlideHistory';
         removeFn = 'removeFromAllSlideHistory';
+      } else if (view === 'upslides' && typeof window.getUpSlideHistory === 'function') {
+        historyList = window.getUpSlideHistory() || [];
+        clearFn = 'clearUpSlideHistory';
+        removeFn = 'removeFromUpSlideHistory';
       }
       if (historyList.length) {
         contentHistory = '<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><button type="button" class="btn btn-ghost btn-xs" onclick="' + clearFn + '(); _selectedManuscriptHistoryId=null; renderLeftPanel();">일괄 지우기</button></div><div style="display:flex;flex-direction:column;gap:6px">';
         for (var hi = 0; hi < historyList.length; hi++) {
           var h = historyList[hi];
           var created = h.createdAt ? new Date(h.createdAt).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '';
-          var displayTitle = h.displayTitle || ((h.fileName || '제목 없음') + (h.type === 'all_slides' ? ' All Slide' : (h.type === 'slides' ? ' 슬라이드' : ' 발표 원고')));
+          var displayTitle = h.displayTitle || ((h.fileName || '제목 없음') + (h.type === 'all_slides' ? ' All Slide' : (h.type === 'up_slides' ? ' UP Slide' : (h.type === 'slides' ? ' 슬라이드' : ' 발표 원고'))));
           var badges = '';
           if (h && h.isBackupBeforeRegeneration) badges += '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;font-size:9px;background:rgba(148,163,184,.25);color:var(--text2)">생성 전 백업</span>';
           if (h && h.isManualSnapshot) badges += '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:10px;font-size:9px;background:rgba(79,142,247,.2);color:var(--accent)">수동 저장</span>';
           var isSelected = h.id === selectedId;
           var itemStyle = 'padding:8px 10px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:8px' + (isSelected ? ';border-color:var(--accent);background:var(--accent-glow)' : '');
           var safeId = String(h.id || '').replace(/'/g, "\\'");
-          var onClickExpr = (view === 'slides' || view === 'allslides')
+          var onClickExpr = (view === 'slides' || view === 'allslides' || view === 'upslides')
             ? "restoreManuscriptToSlides('" + safeId + "')"
             : "selectManuscriptHistoryItem('" + safeId + "')";
           contentHistory += '<div class="manuscript-history-item" data-id="' + esc(h.id) + '" style="' + itemStyle + '" onclick="' + onClickExpr + '"><div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--text2)">' + esc(displayTitle) + badges + '</div><div style="font-size:10px;color:var(--text3);margin-top:2px">' + esc(created) + '</div></div><button type="button" class="btn btn-ghost btn-xs" style="flex-shrink:0;padding:2px 6px" onclick="event.stopPropagation(); ' + removeFn + '(\'' + safeId + '\'); if(_selectedManuscriptHistoryId===\'' + safeId + '\')_selectedManuscriptHistoryId=null; renderLeftPanel();" title="삭제">&#10005;</button></div>';
@@ -519,16 +598,16 @@
           + '<button type="button" class="btn btn-ghost btn-xs"' + (canView ? '' : ' disabled') + ' onclick="openManuscriptInNewWindow(_selectedManuscriptHistoryId)" title="새창보기에 띄워서 보기">새창보기</button>'
           + '</div>';
       } else {
-        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">' + (view === 'script' ? '발표 생성' : (view === 'allslides' ? 'All Slide 생성' : '슬라이드 생성')) + ' 히스토리가 없습니다.</p>';
+        contentHistory = '<p style="font-size:12px;color:var(--text3);padding:12px 0">' + (view === 'script' ? '발표 생성' : (view === 'allslides' ? 'All Slide 생성' : (view === 'upslides' ? 'UP Slide 생성' : '슬라이드 생성'))) + ' 히스토리가 없습니다.</p>';
       }
     }
 
     var mainContent = subView === 'history' ? contentHistory : (useSelectedForContent ? contentFromSelected : (view === 'script' ? contentScript : contentSlides));
 
-    var labelContent = view === 'script' ? '발표 상세 내용' : (view === 'allslides' ? 'All Slide 생성 내용' : '슬라이드 생성 내용');
-    var labelHistory = view === 'script' ? '발표 생성 히스토리' : (view === 'allslides' ? 'All Slide 생성히스토리' : '슬라이드 생성히스토리');
-    var labelNewWindow = view === 'script' ? '발표 새창보기' : (view === 'allslides' ? 'All Slide 새창보기' : '슬라이드 새창보기');
-    var labelFullscreen = view === 'script' ? '발표 전체화면' : (view === 'allslides' ? 'All Slide 전체화면' : '슬라이드 전체화면');
+    var labelContent = view === 'script' ? '발표 상세 내용' : (view === 'allslides' ? 'All Slide 생성 내용' : (view === 'upslides' ? 'UP Slide 생성 내용' : '슬라이드 생성 내용'));
+    var labelHistory = view === 'script' ? '발표 생성 히스토리' : (view === 'allslides' ? 'All Slide 생성히스토리' : (view === 'upslides' ? 'UP Slide 생성히스토리' : '슬라이드 생성히스토리'));
+    var labelNewWindow = view === 'script' ? '발표 새창보기' : (view === 'allslides' ? 'All Slide 새창보기' : (view === 'upslides' ? 'UP Slide 새창보기' : '슬라이드 새창보기'));
+    var labelFullscreen = view === 'script' ? '발표 전체화면' : (view === 'allslides' ? 'All Slide 전체화면' : (view === 'upslides' ? 'UP Slide 전체화면' : '슬라이드 전체화면'));
 
     var row6 = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
       + '<button type="button" class="btn btn-ghost btn-xs' + (subView === 'content' ? ' active' : '') + '" onclick="setManuscriptSubView(\'content\')">' + labelContent + '</button>'
@@ -545,8 +624,11 @@
       + slideGenTypeRow
       + slideCountRow
       + slideRangeRow
+      + upSlideRow
+      + slideMsBadge
+      + slideMsUploadRow
+      + scriptGenRow
       + row2
-      + row3
       + row5
       + row6
       + resultArea;

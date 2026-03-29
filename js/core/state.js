@@ -6,7 +6,7 @@
 /* =========================================================
    STATE
    ========================================================= */
-const LS_ACTIVE_KEY = 'ss_active_key', LS_KEYS_LIST = 'ss_keys', LS_SESSIONS = 'ss_sessions_v3', LS_SAVED_REF_LIST = 'ss_saved_ref_list', LS_SUMMARY_HISTORY = 'ss_summary_history', LS_MANUSCRIPT_HISTORY = 'ss_manuscript_history', LS_SLIDE_HISTORY = 'ss_slide_history', LS_ALL_SLIDE_HISTORY = 'ss_all_slide_history';
+const LS_ACTIVE_KEY = 'ss_active_key', LS_KEYS_LIST = 'ss_keys', LS_SESSIONS = 'ss_sessions_v3', LS_SAVED_REF_LIST = 'ss_saved_ref_list', LS_SUMMARY_HISTORY = 'ss_summary_history', LS_MANUSCRIPT_HISTORY = 'ss_manuscript_history', LS_SLIDE_HISTORY = 'ss_slide_history', LS_ALL_SLIDE_HISTORY = 'ss_all_slide_history', LS_UP_SLIDE_HISTORY = 'ss_up_slide_history';
 let rawText = '', fileName = '', slides = [], sources = [], activeSlideIndex = 0;
 let fileSlots = []; // [{ id, fileName, rawText, checked }] — 다중 파일 슬롯
 const FILE_SLOTS_MAX = 10;
@@ -19,10 +19,12 @@ let summaryHistory = [];
 let manuscriptHistory = []; // 발표 원고 전용 (script 타입만)
 let slideHistory = []; // 슬라이드 생성 전용 (slides 타입)
 let allSlideHistory = []; // All Slide 생성 전용 (한번에 전체 생성)
+let upSlideHistory = []; // UP Slide 생성 전용 (업로드 원고 기반)
 const SUMMARY_HISTORY_MAX = 100;
 const MANUSCRIPT_HISTORY_MAX = 50;
 const SLIDE_HISTORY_MAX = 50;
 const ALL_SLIDE_HISTORY_MAX = 50;
+const UP_SLIDE_HISTORY_MAX = 50;
 let _abortController = null;
 if (typeof window !== 'undefined') {
   window._translatedSummary = '';
@@ -62,7 +64,10 @@ function _exposeSlideGenGlobals() {
       if (!checked.length) return '';
       return checked.map(function (s) { return s.rawText || ''; }).join('\n\n---\n\n');
     }
-    return rawText;
+    var main = rawText || '';
+    if (String(main).trim()) return main;
+    var sm = (typeof window !== 'undefined' && window._slideManuscriptText) ? String(window._slideManuscriptText) : '';
+    return sm.trim() ? sm : '';
   };
   window.setRawText = function (t) {
     rawText = t || '';
@@ -77,7 +82,8 @@ function _exposeSlideGenGlobals() {
       if (checked.length === 1) return checked[0].fileName || '';
       return '여러 파일 (' + checked.length + '개)';
     }
-    return fileName;
+    if (fileName) return fileName;
+    return (typeof window !== 'undefined' && window._slideManuscriptFileName) ? window._slideManuscriptFileName : '';
   };
   function updateHeaderFileName() {
     var el = document.getElementById('header-current-filename');
@@ -198,6 +204,25 @@ function _exposeSlideGenGlobals() {
     allSlideHistory = [];
     try { localStorage.setItem(LS_ALL_SLIDE_HISTORY, '[]'); } catch (e) {}
   };
+  window.getUpSlideHistory = function () { return upSlideHistory.slice(); };
+  window.addToUpSlideHistory = function (entry) {
+    entry.type = 'up_slides';
+    entry.displayTitle = (entry.fileName || '제목 없음') + ' UP Slide';
+    entry.id = 'ush_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    entry.createdAt = typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString();
+    upSlideHistory.unshift(entry);
+    if (upSlideHistory.length > UP_SLIDE_HISTORY_MAX) upSlideHistory = upSlideHistory.slice(0, UP_SLIDE_HISTORY_MAX);
+    try { localStorage.setItem(LS_UP_SLIDE_HISTORY, JSON.stringify(upSlideHistory)); } catch (e) {}
+    return entry.id;
+  };
+  window.removeFromUpSlideHistory = function (id) {
+    upSlideHistory = upSlideHistory.filter(function (h) { return h.id !== id; });
+    try { localStorage.setItem(LS_UP_SLIDE_HISTORY, JSON.stringify(upSlideHistory)); } catch (e) {}
+  };
+  window.clearUpSlideHistory = function () {
+    upSlideHistory = [];
+    try { localStorage.setItem(LS_UP_SLIDE_HISTORY, '[]'); } catch (e) {}
+  };
 }
 _exposeSlideGenGlobals();
 if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileName();
@@ -235,6 +260,12 @@ if (typeof window.updateHeaderFileName === 'function') window.updateHeaderFileNa
   try {
     var raw = localStorage.getItem(LS_ALL_SLIDE_HISTORY);
     if (raw) allSlideHistory = JSON.parse(raw);
+  } catch (e) {}
+})();
+(function loadUpSlideHistory() {
+  try {
+    var raw = localStorage.getItem(LS_UP_SLIDE_HISTORY);
+    if (raw) upSlideHistory = JSON.parse(raw);
   } catch (e) {}
 })();
 

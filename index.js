@@ -98,6 +98,7 @@ function setScholarAIModelId(id) { if (id && typeof localStorage !== 'undefined'
 
 async function callGemini(prompt, systemInstruction = '', useSearch = false, modelOverride = null) {
   let key; try { key = getApiKey(); } catch { showToast('⚠️ API 키를 먼저 설정하세요'); openApiModal(); throw new Error('No API key'); }
+  if (typeof window !== 'undefined' && window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
   _abortController = new AbortController();
   const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } };
   if (useSearch) payload.tools = [{ "google_search": {} }];
@@ -112,6 +113,7 @@ async function callGemini(prompt, systemInstruction = '', useSearch = false, mod
   const srcs = result.candidates?.[0]?.groundingMetadata?.groundingAttributions?.map(a => ({ uri: a.web?.uri, title: a.web?.title })) || [];
   return { text, sources: srcs };
 }
+if (typeof window !== 'undefined') window.callGemini = callGemini;
 
 function _extractImageFromGeminiResponse(data) {
   const cand = data.candidates?.[0];
@@ -2311,7 +2313,8 @@ function openPptxPreviewWindow() {
 }
 
 function openSummaryOptionsModal() {
-  if (!rawText) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
+  var _rt = (typeof window.getRawText === 'function' ? window.getRawText() : rawText) || '';
+  if (!_rt || !_rt.trim()) { showToast('⚠️ 먼저 텍스트를 로드하세요'); return; }
   var modal = document.getElementById('summary-options-modal');
   var slideCountRow = document.getElementById('summary-slide-count-row');
   var slideCountInput = document.getElementById('summary-options-slide-count');

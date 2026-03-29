@@ -410,8 +410,13 @@ async function exportProjectFile() {
   }
 }
 
-async function importProjectFile(e) {
-  const file = e.target.files[0]; if (!file) return;
+async function importProjectFileFromFile(file) {
+  if (!file) return;
+  const lower = (file.name || '').toLowerCase();
+  if (!lower.endsWith('.ssp') && !lower.endsWith('.json')) {
+    showToast('프로젝트는 .ssp 또는 .json 파일만 불러올 수 있습니다.');
+    return;
+  }
   try {
     showLoading('프로젝트 파일 불러오는 중...', file.name, 30);
     const text = await file.text();
@@ -431,7 +436,35 @@ async function importProjectFile(e) {
     hideLoading();
     showToast('프로젝트 파일 불러오기 실패: ' + err.message);
   }
+}
+
+async function importProjectFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  await importProjectFileFromFile(file);
   e.target.value = '';
+}
+
+function handleProjectFileDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function handleProjectFileDragLeave(e) {
+  const rel = e.relatedTarget;
+  if (rel && e.currentTarget.contains(rel)) return;
+  e.currentTarget.classList.remove('drag-over');
+}
+
+async function handleProjectFileDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.remove('drag-over');
+  const dt = e.dataTransfer;
+  if (!dt || !dt.files || !dt.files.length) return;
+  await importProjectFileFromFile(dt.files[0]);
 }
 
 /* =========================================================
