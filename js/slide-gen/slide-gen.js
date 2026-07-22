@@ -25,6 +25,177 @@
     return !!(typeof window !== 'undefined' && (window._aiTaskCancelled || window._bgJobCancelled));
   }
   function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+  var _summarySplitRenderTimer = null;
+  function estimatedTokensFor(text) {
+    return typeof window.estimateAITokens === 'function'
+      ? window.estimateAITokens(String(text || ''))
+      : Math.ceil(String(text || '').length / 2);
+  }
+  function textFingerprint(text) {
+    text = String(text || '');
+    var sample = text.slice(0, 600) + '|' + text.slice(-600);
+    var hash = 2166136261;
+    for (var i = 0; i < sample.length; i++) {
+      hash ^= sample.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return text.length + ':' + (hash >>> 0).toString(16);
+  }
+  function selectedTextProvider() {
+    return (typeof localStorage !== 'undefined' && localStorage.getItem('ss_scholar_ai_provider')) || 'auto';
+  }
+  function usesAIStudioTextBudget() {
+    return selectedTextProvider() === 'aistudio'
+      && !!(typeof localStorage !== 'undefined' && localStorage.getItem('ss_active_key'));
+  }
+  function scheduleSummarySplitRender() {
+    if (_summarySplitRenderTimer) clearTimeout(_summarySplitRenderTimer);
+    _summarySplitRenderTimer = setTimeout(function () {
+      _summarySplitRenderTimer = null;
+      if (typeof window.renderLeftPanel === 'function'
+          && (!window.getLeftTab || window.getLeftTab() === 'summary')) window.renderLeftPanel();
+    }, 50);
+  }
+  function setSummarySplitState(state) {
+    window._summarySplitProcessing = Object.assign({}, state || {}, { updatedAt: Date.now() });
+    scheduleSummarySplitRender();
+    return window._summarySplitProcessing;
+  }
+  function updateSummarySplitState(patch) {
+    var state = window._summarySplitProcessing || {};
+    Object.keys(patch || {}).forEach(function (key) { state[key] = patch[key]; });
+    state.updatedAt = Date.now();
+    window._summarySplitProcessing = state;
+    scheduleSummarySplitRender();
+    return state;
+  }
+  function largeTextChunks(text) {
+    text = String(text || '');
+    var estimatedTokens = estimatedTokensFor(text);
+    var charsPerToken = estimatedTokens > 0 ? text.length / estimatedTokens : 2;
+    var useAIStudio = usesAIStudioTextBudget();
+    var lmContextLength = Number(typeof localStorage !== 'undefined' && localStorage.getItem('ss_lm_context_length')) || 0;
+    // Reserve roughly 35% of the context for instructions and model output,
+    // then convert the remaining token budget back to characters using the
+    // measured language density of this document.
+    var safeInputTokens = lmContextLength ? Math.max(768, Math.floor(lmContextLength * 0.65)) : 3000;
+    var lmChunkSize = Math.max(1200, Math.min(1500000, Math.floor(safeInputTokens * charsPerToken)));
+    var chunkSize = useAIStudio ? 30000 : lmChunkSize;
+    var splitSetting = typeof localStorage !== 'undefined' ? localStorage.getItem('ss_lm_split_mode') : 'auto';
+    var minimumChunks = splitSetting && splitSetting !== 'auto' ? Math.max(1, Number(splitSetting) || 1) : 1;
+    var requiredChunks = Math.max(minimumChunks, Math.ceil(text.length / chunkSize));
+    if (requiredChunks <= 1) return [text];
+    var chunks = [];
+    var equalChunkSize = Math.ceil(text.length / requiredChunks);
+    for (var pos = 0; pos < text.length; pos += equalChunkSize) chunks.push(text.slice(pos, pos + equalChunkSize));
+    return chunks;
+  }
+  function getSummaryChunkPlan(text) {
+    text = String(text || '');
+    var chunks = largeTextChunks(text);
+    var contextLength = Number(typeof localStorage !== 'undefined' && localStorage.getItem('ss_lm_context_length')) || 0;
+    var provider = selectedTextProvider();
+    var useAIStudio = usesAIStudioTextBudget();
+    return {
+      sourceChars: text.length,
+      sourceTokens: estimatedTokensFor(text),
+      sourceFingerprint: textFingerprint(text),
+      provider: useAIStudio ? 'aistudio' : (provider === 'lmstudio' ? 'lmstudio' : 'auto'),
+      contextLength: useAIStudio ? 0 : contextLength,
+      safeInputTokens: useAIStudio ? estimatedTokensFor(chunks[0] || '') : (contextLength ? Math.max(768, Math.floor(contextLength * 0.65)) : 3000),
+      totalParts: chunks.length,
+      completedParts: 0,
+      stage: 'planned',
+      active: false,
+      parts: chunks.map(function (chunk, index) {
+        return {
+          index: index + 1,
+          chars: chunk.length,
+          tokens: estimatedTokensFor(chunk),
+          status: 'planned',
+          result: ''
+        };
+      })
+    };
+  }
+  async function compactLargeText(text, purpose, progressCallback) {
+    var chunks = largeTextChunks(text);
+    if (purpose === 'summary') {
+      var initialPlan = getSummaryChunkPlan(text);
+      initialPlan.active = true;
+      initialPlan.stage = chunks.length > 1 ? 'splitting' : 'direct';
+      if (chunks.length <= 1 && initialPlan.parts[0]) initialPlan.parts[0].status = 'ready';
+      if (chunks.length > 1 && typeof window.setSummarySubTab === 'function') window.setSummarySubTab('split');
+      setSummarySplitState(initialPlan);
+    }
+    if (chunks.length <= 1) return String(text || '');
+    var partials = [];
+    if (window.showToast) window.showToast('📚 대용량 문서 ' + chunks.length + '개 구간으로 분할 처리합니다.');
+    for (var i = 0; i < chunks.length; i++) {
+      if (isTaskCancelled()) throw new Error('TASK_CANCELLED');
+      if (progressCallback) progressCallback(i, chunks.length);
+      if (purpose === 'summary' && window._summarySplitProcessing && window._summarySplitProcessing.parts[i]) {
+        window._summarySplitProcessing.parts[i].status = 'processing';
+        window._summarySplitProcessing.stage = 'splitting';
+        scheduleSummarySplitRender();
+      }
+      var prompt = [
+        '대용량 문서의 ' + (i + 1) + '/' + chunks.length + ' 구간이다.',
+        purpose === 'slides' ? '슬라이드 설계에 필요한 핵심 주장, 구조, 수치, 사례, 결론을 빠짐없이 추출하라.' : '최종 종합 요약에 필요한 제목 구조, 연구 목적, 이론, 방법, 결과, 수치, 결론과 한계를 추출하라.',
+        '이 구간에 실제로 있는 정보만 사용하고 짧고 밀도 높은 한국어 메모로 작성하라. 없는 사실은 만들지 마라.',
+        '',
+        chunks[i]
+      ].join('\n');
+      var result = await window.callGemini(prompt, 'You extract faithful evidence from one document chunk for later synthesis. Do not invent information.');
+      var partialText = result && result.text ? result.text : result;
+      partials.push('## 문서 구간 ' + (i + 1) + '/' + chunks.length + '\n' + partialText);
+      if (purpose === 'summary' && window._summarySplitProcessing && window._summarySplitProcessing.parts[i]) {
+        window._summarySplitProcessing.parts[i].status = 'complete';
+        window._summarySplitProcessing.parts[i].result = String(partialText || '');
+        window._summarySplitProcessing.completedParts = i + 1;
+        scheduleSummarySplitRender();
+      }
+    }
+    var combined = partials.join('\n\n');
+    if (purpose === 'summary') updateSummarySplitState({ stage: 'merging', combinedTokens: estimatedTokensFor(combined) });
+    var combinedTokens = estimatedTokensFor(combined);
+    var combinedCharsPerToken = combinedTokens > 0 ? combined.length / combinedTokens : 2;
+    var storedContext = Number(localStorage.getItem('ss_lm_context_length')) || 0;
+    var finalInputLimit = usesAIStudioTextBudget()
+      ? 30000
+      : (storedContext
+        ? Math.max(1200, Math.min(1500000, Math.floor(storedContext * 0.65 * combinedCharsPerToken)))
+        : 6000);
+    if (combined.length <= finalInputLimit) {
+      if (purpose === 'summary') updateSummarySplitState({ stage: 'finalizing', mergedEvidenceTokens: combinedTokens });
+      return combined;
+    }
+    if (purpose === 'summary') updateSummarySplitState({ stage: 'reducing' });
+    var reducedText = combined;
+    for (var round = 0; round < 6 && reducedText.length > finalInputLimit; round++) {
+      var reductionChunks = largeTextChunks(reducedText);
+      var reduced = [];
+      var targetChars = Math.max(250, Math.min(1800, Math.floor((finalInputLimit * 0.65) / Math.max(1, reductionChunks.length))));
+      for (var r = 0; r < reductionChunks.length; r++) {
+        if (isTaskCancelled()) throw new Error('TASK_CANCELLED');
+        var reduction = await window.callGemini(
+          '다음 구간별 추출 메모를 중복 없이 ' + targetChars + '자 안팎으로 압축하라. 제목 구조, 핵심 주장, 방법, 수치, 결과, 결론과 한계를 최대한 보존하고 새로운 사실을 추가하지 마라.\n\n' + reductionChunks[r],
+          'You compress document evidence for a final synthesis. Preserve facts and do not invent information.'
+        );
+        reduced.push(reduction && reduction.text ? reduction.text : reduction);
+      }
+      var nextReducedText = reduced.join('\n\n');
+      if (!nextReducedText || nextReducedText.length >= reducedText.length) break;
+      reducedText = nextReducedText;
+      if (purpose === 'summary') updateSummarySplitState({
+        stage: 'reducing',
+        reductionRound: round + 1,
+        mergedEvidenceTokens: estimatedTokensFor(reducedText)
+      });
+    }
+    if (purpose === 'summary') updateSummarySplitState({ stage: 'finalizing', mergedEvidenceTokens: estimatedTokensFor(reducedText) });
+    return reducedText;
+  }
   async function renderSlidesProgressively(allSlides) {
     var staged = [];
     for (var i = 0; i < allSlides.length; i++) {
@@ -346,6 +517,25 @@
         }
       }, 400);
 
+      try {
+        textToSummarize = await compactLargeText(textToSummarize, 'summary', function (done, total) {
+          var value = 5 + Math.round((done / Math.max(1, total)) * 55);
+          if (pct) pct.textContent = String(value);
+          if (window.updateJobProgress) window.updateJobProgress('summary', value, '📚 대용량 문서 분할 요약 중... (' + (done + 1) + '/' + total + ')');
+        });
+      } catch (chunkError) {
+        updateSummarySplitState({
+          active: false,
+          stage: chunkError && chunkError.message === 'TASK_CANCELLED' ? 'cancelled' : 'failed',
+          error: chunkError && chunkError.message ? chunkError.message : String(chunkError || '')
+        });
+        clearInterval(_progTimer);
+        if (box) box.style.display = 'none';
+        if (window.hideJobProgress) window.hideJobProgress('summary', 500);
+        if (window.showToast) window.showToast('❌ 대용량 문서 분할 처리 실패: ' + (chunkError.message || chunkError));
+        return;
+      }
+
       var docTitle = (typeof window.getFileName === 'function' ? window.getFileName() : '') || '';
       var sourceFileName = docTitle || '';
       if (docTitle) docTitle = docTitle.replace(/\.[^.]+$/, '');
@@ -414,6 +604,7 @@
       var isEnglish = /^[a-zA-Z\s\d.,!?;:()\-'"]{50,}/.test(textToSummarize.substring(0, 200));
       var langInstruction = isEnglish ? 'Respond in English (same language as the source text).' : '한국어로 응답하세요.';
       try {
+        updateSummarySplitState({ stage: 'finalizing', active: true });
         var res = await window.callGemini(prompt, systemInstruction + ' ' + langInstruction);
         var text = res && res.text ? res.text : res;
         if (docTitle && text) {
@@ -439,6 +630,14 @@
         setTimeout(function () { if (box) box.style.display = 'none'; }, 1500);
         if (window.hideJobProgress) window.hideJobProgress('summary', 1500);
         setSummaryText(text);
+        updateSummarySplitState({
+          active: false,
+          stage: 'complete',
+          completedParts: window._summarySplitProcessing && window._summarySplitProcessing.totalParts || 1,
+          finalSummaryChars: String(text || '').length,
+          finalSummaryTokens: estimatedTokensFor(text),
+          error: ''
+        });
         if (window.addSummaryToHistory && window.getFileName) {
           window.addSummaryToHistory({
             fileName: window.getFileName(),
@@ -457,6 +656,11 @@
         if (window.showToast) window.showToast('✅ 요약 생성 완료');
         if (window.showJobCompleteBadge) window.showJobCompleteBadge('요약 생성 완료');
       } catch (e) {
+        updateSummarySplitState({
+          active: false,
+          stage: e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED') ? 'cancelled' : 'failed',
+          error: e && e.message ? e.message : String(e || '')
+        });
         clearInterval(_progTimer);
         if (box) box.style.display = 'none';
         if (window.hideJobProgress) window.hideJobProgress('summary', 500);
@@ -471,6 +675,22 @@
 
     if (window.showJobProgress) window.showJobProgress('slideGen', '백그라운드에서 슬라이드 생성 중...', 0, '🗂');
     var slideSourceText = sourceTextForSlideGen(opts);
+    if (slideSourceText.length > 15000) {
+      if (!opts.useSummaryForSlides && summaryText().trim()) {
+        slideSourceText = summaryText().trim();
+        if (window.showToast) window.showToast('📋 대용량 원문 대신 생성된 전체 요약을 슬라이드 자료로 사용합니다.');
+      } else if (slideSourceText.length > 15000) {
+        try {
+          slideSourceText = await compactLargeText(slideSourceText, 'slides', function (done, total) {
+            if (window.updateJobProgress) window.updateJobProgress('slideGen', 5 + Math.round((done / Math.max(1, total)) * 25), '📚 슬라이드용 원문 압축 중... (' + (done + 1) + '/' + total + ')');
+          });
+        } catch (compactError) {
+          if (window.hideJobProgress) window.hideJobProgress('slideGen', 0);
+          if (window.showToast) window.showToast('❌ 슬라이드용 대용량 문서 처리 실패: ' + (compactError.message || compactError));
+          return;
+        }
+      }
+    }
     var isAcademic = slideStyle() === 'light';
     var slideRangeRaw = (g('slide-range-val') && g('slide-range-val').value) || '';
     var parsedRange = parseSlideRange(slideRangeRaw);
@@ -960,6 +1180,8 @@
   }
 
   window.generateSummary = generateSummary;
+  window.getSummaryChunkPlan = getSummaryChunkPlan;
+  window.getSummarySplitProcessing = function () { return window._summarySplitProcessing || null; };
   window.generateSlidesFromUploadedManuscript = generateSlidesFromUploadedManuscript;
   window.generatePresentationScript = generatePresentationScript;
   window.aiRewriteSlide = aiRewriteSlide;

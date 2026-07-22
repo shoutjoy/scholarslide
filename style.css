@@ -1391,6 +1391,17 @@ footer {
   overflow: hidden;
 }
 #pdf-preview-panel.open { transform: translateX(0); }
+#pdf-preview-panel.pdf-preview-fullscreen {
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  border-radius: 0;
+  z-index: 2147483644;
+}
+#pdf-preview-panel.pdf-preview-fullscreen .pdf-preview-header { border-radius: 0; }
+#pdf-preview-panel.pdf-preview-fullscreen .pdf-preview-resize-handle { display: none; }
 #pdf-preview-panel.pdf-dragging { transition: none; }
 #pdf-preview-panel.pdf-resizing { transition: none; }
 .pdf-preview-resize-handle {

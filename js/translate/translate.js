@@ -18,6 +18,182 @@
     else window._translatedRaw = text;
   }
 
+  let translationRenderTimer = null;
+  function estimateTokens(text) {
+    return typeof window.estimateAITokens === 'function'
+      ? window.estimateAITokens(String(text || ''))
+      : Math.ceil(String(text || '').length / 4);
+  }
+  function sourceFingerprint(text) {
+    text = String(text || '');
+    const sample = text.slice(0, 600) + '|' + text.slice(-600);
+    let hash = 2166136261;
+    for (let i = 0; i < sample.length; i++) {
+      hash ^= sample.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return text.length + ':' + (hash >>> 0).toString(16);
+  }
+  function getLmMaxOutputTokens(contextLength) {
+    let configured = 8192;
+    try {
+      if (window.LocalAI && typeof window.LocalAI.loadConfig === 'function') {
+        configured = Number(window.LocalAI.loadConfig(localStorage).maxTokens) || configured;
+      }
+    } catch (e) {}
+    return contextLength
+      ? Math.max(512, Math.min(configured, Math.floor(contextLength * 0.25)))
+      : Math.min(configured, 2048);
+  }
+  function splitAtNaturalBoundaries(text, targetChars, minimumParts) {
+    text = String(text || '');
+    if (!text) return [];
+    const required = Math.max(minimumParts || 1, Math.ceil(text.length / Math.max(1, targetChars)));
+    if (required <= 1) return [text];
+    const chunks = [];
+    let start = 0;
+    for (let index = 0; index < required - 1 && start < text.length; index++) {
+      const remainingParts = required - index;
+      const ideal = start + Math.ceil((text.length - start) / remainingParts);
+      const lower = start + Math.floor((ideal - start) * 0.72);
+      const upper = Math.min(text.length, ideal + Math.min(1800, Math.floor((ideal - start) * 0.15)));
+      let cut = text.lastIndexOf('\n\n', upper);
+      if (cut < lower) cut = text.lastIndexOf('\n', upper);
+      if (cut < lower) cut = text.lastIndexOf(' ', upper);
+      if (cut < lower || cut <= start) cut = ideal;
+      else if (text.slice(cut, cut + 2) === '\n\n') cut += 2;
+      else cut += 1;
+      chunks.push(text.slice(start, cut));
+      start = cut;
+    }
+    if (start < text.length) chunks.push(text.slice(start));
+    return chunks.filter(function (chunk) { return !!chunk; });
+  }
+  function getTranslationChunkPlan(text, target) {
+    text = String(text || '');
+    const providerSetting = (typeof localStorage !== 'undefined' && localStorage.getItem('ss_scholar_ai_provider')) || 'auto';
+    const useAIStudio = providerSetting === 'aistudio'
+      && !!(typeof localStorage !== 'undefined' && localStorage.getItem('ss_active_key'));
+    const contextLength = Number(typeof localStorage !== 'undefined' && localStorage.getItem('ss_lm_context_length')) || 0;
+    const maxOutputTokens = useAIStudio ? 0 : getLmMaxOutputTokens(contextLength);
+    const sample = text.slice(0, Math.min(text.length, 12000));
+    const latinCount = (sample.match(/[A-Za-z]/g) || []).length;
+    const latinRatio = sample.length ? latinCount / sample.length : 0;
+    // English-to-Korean output generally consumes considerably more tokens
+    // than its English input. Keep the input below the available output cap.
+    const outputSafeRatio = latinRatio > 0.45 ? 0.42 : 0.72;
+    const contextInputBudget = contextLength ? Math.floor(contextLength * 0.42) : 2400;
+    const safeInputTokens = useAIStudio
+      ? 7000
+      : Math.max(384, Math.min(contextInputBudget, Math.floor(maxOutputTokens * outputSafeRatio)));
+    const sourceTokens = estimateTokens(text);
+    const charsPerToken = sourceTokens > 0 ? text.length / sourceTokens : 2;
+    const targetChars = Math.max(900, Math.min(1000000, Math.floor(safeInputTokens * charsPerToken)));
+    const splitSetting = typeof localStorage !== 'undefined' ? localStorage.getItem('ss_lm_split_mode') : 'auto';
+    const minimumParts = splitSetting && splitSetting !== 'auto' ? Math.max(1, Number(splitSetting) || 1) : 1;
+    const chunks = splitAtNaturalBoundaries(text, targetChars, minimumParts);
+    return {
+      target: target || 'raw',
+      sourceChars: text.length,
+      sourceTokens: sourceTokens,
+      sourceFingerprint: sourceFingerprint(text),
+      provider: useAIStudio ? 'aistudio' : (providerSetting === 'lmstudio' ? 'lmstudio' : 'auto'),
+      contextLength: useAIStudio ? 0 : contextLength,
+      maxOutputTokens: maxOutputTokens,
+      safeInputTokens: safeInputTokens,
+      totalParts: chunks.length || 1,
+      completedParts: 0,
+      stage: 'planned',
+      active: false,
+      chunks: chunks,
+      parts: chunks.map(function (chunk, index) {
+        return { index: index + 1, chars: chunk.length, tokens: estimateTokens(chunk), status: 'planned', result: '' };
+      })
+    };
+  }
+  function scheduleTranslationRender() {
+    if (translationRenderTimer) clearTimeout(translationRenderTimer);
+    translationRenderTimer = setTimeout(function () {
+      translationRenderTimer = null;
+      if (typeof window.renderLeftPanel === 'function'
+          && (!window.getLeftTab || window.getLeftTab() === 'raw')) window.renderLeftPanel();
+    }, 50);
+  }
+  function setTranslationState(state) {
+    const stored = Object.assign({}, state || {}, { updatedAt: Date.now() });
+    delete stored.chunks;
+    window._translationSplitProcessing = stored;
+    scheduleTranslationRender();
+    return stored;
+  }
+  function updateTranslationState(patch) {
+    const state = window._translationSplitProcessing || {};
+    Object.keys(patch || {}).forEach(function (key) { state[key] = patch[key]; });
+    state.updatedAt = Date.now();
+    window._translationSplitProcessing = state;
+    scheduleTranslationRender();
+    return state;
+  }
+  function isTranslationCancelled() {
+    return !!(window._aiTaskCancelled || window._bgJobCancelled);
+  }
+  async function translateInContextChunks(source, target, onProgress) {
+    const plan = getTranslationChunkPlan(source, target);
+    const chunks = plan.chunks.slice();
+    plan.active = true;
+    plan.stage = 'translating';
+    if (target === 'raw' && typeof window.setRawSubTab === 'function') window.setRawSubTab('translation');
+    setTranslationState(plan);
+    const userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
+    const baseSystem = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
+    const translations = [];
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        if (isTranslationCancelled()) throw new Error('TASK_CANCELLED');
+        const state = window._translationSplitProcessing;
+        if (state && state.parts[i]) state.parts[i].status = 'processing';
+        scheduleTranslationRender();
+        if (onProgress) onProgress(i, chunks.length, 'translating');
+        const prompt = userPrefix
+          + '[전체 문서 중 번역 구간 ' + (i + 1) + '/' + chunks.length + ']\n'
+          + '요약하거나 생략하지 말고 제목, 문단, 목록, 표기와 페이지 구분을 가능한 한 유지하세요. 번역문만 출력하세요.\n\n'
+          + chunks[i];
+        const res = await window.callGemini(
+          prompt,
+          baseSystem + ' 전체 문서의 한 구간을 번역합니다. 내용을 요약·축약·추가하지 말고 원문의 순서와 의미를 보존하세요.'
+        );
+        const translatedPart = String(res && res.text ? res.text : res || '').trim();
+        translations.push(translatedPart);
+        if (state && state.parts[i]) {
+          state.parts[i].status = 'complete';
+          state.parts[i].result = translatedPart;
+          state.completedParts = i + 1;
+        }
+        scheduleTranslationRender();
+        if (onProgress) onProgress(i + 1, chunks.length, 'translating');
+      }
+    } catch (error) {
+      const failedState = window._translationSplitProcessing;
+      if (failedState && failedState.parts) {
+        failedState.parts.forEach(function (part) { if (part.status === 'processing') part.status = 'failed'; });
+      }
+      updateTranslationState({
+        active: false,
+        stage: error && (error.name === 'AbortError' || error.message === 'TASK_CANCELLED') ? 'cancelled' : 'failed',
+        error: error && error.message ? error.message : String(error || '')
+      });
+      throw error;
+    }
+    updateTranslationState({ stage: 'combining', active: true });
+    const combined = translations.join('\n\n');
+    updateTranslationState({
+      stage: 'complete', active: false, completedParts: chunks.length,
+      combinedChars: combined.length, combinedTokens: estimateTokens(combined), error: ''
+    });
+    if (onProgress) onProgress(chunks.length, chunks.length, 'complete');
+    return combined;
+  }
+
   function askThenTranslate(target) {
     const source = getSource(target);
     if (!source) {
@@ -27,10 +203,12 @@
     const label = target === 'summary' ? '요약' : '원문';
     const hasCache = target === 'summary' ? !!getTranslated('summary') : !!getTranslated('raw');
     const cacheNote = hasCache ? '\n\n이미 번역된 결과가 있습니다. 다시 번역하면 덮어씌워집니다.' : '';
+    const plan = getTranslationChunkPlan(source, target);
+    const planNote = '\n\n컨텍스트에 맞춰 ' + plan.totalParts + '개 구간으로 나누어 전부 번역한 후 하나로 합칩니다.';
     if (window.showConfirm) {
       window.showConfirm(
         '🌐 ' + label + ' 한국어 번역',
-        label + ' 내용을 한국어로 번역하시겠습니까?\n원문은 그대로 보존됩니다.' + cacheNote,
+        label + ' 내용을 한국어로 번역하시겠습니까?\n원문은 그대로 보존됩니다.' + planNote + cacheNote,
         function () { translateContent(target); }
       );
     }
@@ -44,21 +222,17 @@
     }
     const label = target === 'summary' ? '요약' : '원문';
 
-    if (window.showJobProgress) window.showJobProgress('translation', '🌐 ' + label + ' 번역 중...', 10, '🌐');
-    let _prog = 10;
-    const _pt = setInterval(function () {
-      if (_prog < 85) {
-        _prog += Math.random() * 4;
-        if (window.updateJobProgress) window.updateJobProgress('translation', _prog);
-      }
-    }, 500);
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
+    if (window.showJobProgress) window.showJobProgress('translation', '🌐 ' + label + ' 분할 번역 준비 중...', 3, '🌐');
 
     try {
-      var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
-      var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
-      const res = await window.callGemini(userPrefix + source, systemInstruction);
-      const text = res && res.text ? res.text : res;
-      clearInterval(_pt);
+      const text = await translateInContextChunks(source, target, function (done, total, stage) {
+        const value = stage === 'complete' ? 100 : 5 + Math.round((done / Math.max(1, total)) * 90);
+        if (window.updateJobProgress) window.updateJobProgress(
+          'translation', value,
+          stage === 'complete' ? '✅ ' + label + ' 번역 결합 완료' : '🌐 ' + label + ' 분할 번역 중... (' + Math.min(done + 1, total) + '/' + total + ')'
+        );
+      });
       if (window.updateJobProgress) window.updateJobProgress('translation', 100, '✅ ' + label + ' 번역 완료');
       if (window.hideJobProgress) window.hideJobProgress('translation', 1500);
 
@@ -71,9 +245,19 @@
       }
       if (window.showToast) window.showToast('✅ 번역 완료 — 번역보기 버튼으로 다시 열 수 있습니다');
     } catch (e) {
-      clearInterval(_pt);
+      const state = window._translationSplitProcessing;
+      if (state && state.parts) {
+        state.parts.forEach(function (part) { if (part.status === 'processing') part.status = 'failed'; });
+      }
+      updateTranslationState({
+        active: false,
+        stage: e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED') ? 'cancelled' : 'failed',
+        error: e && e.message ? e.message : String(e || '')
+      });
       if (window.hideJobProgress) window.hideJobProgress('translation', 500);
-      if (e.name !== 'AbortError' && window.showToast) window.showToast('❌ 번역 실패: ' + e.message);
+      if (e && (e.name === 'AbortError' || e.message === 'TASK_CANCELLED')) {
+        if (window.showToast) window.showToast('⏹ 번역이 중단되었습니다. 완료된 구간 번역은 번역 처리 탭에서 확인할 수 있습니다.');
+      } else if (window.showToast) window.showToast('❌ 번역 실패: ' + e.message);
     }
   }
 
@@ -111,10 +295,12 @@
     const raw = (typeof window.getRawTextWithReferences === 'function' ? window.getRawTextWithReferences() : null) || (typeof window.getRawText === 'function' ? window.getRawText() : window.rawText) || '';
     if (!raw) return '';
     if (window._translatedRaw) return window._translatedRaw;
-    var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
-    var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
-    const res = await window.callGemini(userPrefix + raw, systemInstruction);
-    const text = res && res.text ? res.text : res;
+    const text = await translateInContextChunks(raw, 'raw', function (done, total, stage) {
+      if (window.updateJobProgress) window.updateJobProgress(
+        'translation', stage === 'complete' ? 100 : 5 + Math.round((done / Math.max(1, total)) * 90),
+        stage === 'complete' ? '✅ 원문 분할 번역 결합 완료' : '🌐 원문 분할 번역 중... (' + Math.min(done + 1, total) + '/' + total + ')'
+      );
+    });
     window._translatedRaw = text;
     return text || '';
   }
@@ -125,21 +311,19 @@
     if (cached) return cached;
     const source = getSource(target);
     if (!source) return '';
-    if (window.showJobProgress) window.showJobProgress('translation', '🌐 한국어 번역 중...', 10, '🌐');
-    let _prog = 10;
-    const _pt = setInterval(function () {
-      if (_prog < 85 && window.updateJobProgress) window.updateJobProgress('translation', _prog += Math.random() * 4);
-    }, 500);
+    if (typeof window !== 'undefined') window._aiTaskCancelled = false;
+    if (window.showJobProgress) window.showJobProgress('translation', '🌐 한국어 분할 번역 준비 중...', 3, '🌐');
     try {
-      var userPrefix = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_user_prefix')) || '다음 영문 텍스트를 자연스러운 학술 한국어로 번역하세요:\n\n';
-      var systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('translate_system_instruction')) || '전문 학술 번역가입니다.';
-      const res = await window.callGemini(userPrefix + source, systemInstruction);
-      const text = (res && res.text ? res.text : res) || '';
+      const text = await translateInContextChunks(source, target, function (done, total, stage) {
+        if (window.updateJobProgress) window.updateJobProgress(
+          'translation', stage === 'complete' ? 100 : 5 + Math.round((done / Math.max(1, total)) * 90),
+          stage === 'complete' ? '✅ 한국어 번역 결합 완료' : '🌐 분할 번역 중... (' + Math.min(done + 1, total) + '/' + total + ')'
+        );
+      });
       setTranslated(target, text);
       if (window.renderLeftPanel) window.renderLeftPanel();
       return text;
     } finally {
-      clearInterval(_pt);
       if (window.hideJobProgress) window.hideJobProgress('translation', 0);
     }
   }
@@ -150,4 +334,7 @@
   window.viewTranslation = viewTranslation;
   window.getRawTextForSummary = getRawTextForSummary;
   window.ensureTranslated = ensureTranslated;
+  window.getTranslationSource = getSource;
+  window.getTranslationChunkPlan = getTranslationChunkPlan;
+  window.getTranslationSplitProcessing = function () { return window._translationSplitProcessing || null; };
 })();

@@ -22,6 +22,9 @@
       '.sw-tabs{display:flex;gap:4px;margin-bottom:16px;flex-shrink:0}' +
       '.sw-tab{padding:8px 14px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text2);cursor:pointer;font-size:12px}' +
       '.sw-tab:hover{background:var(--surface3);color:var(--text2)}.sw-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}' +
+      '.sw-ai-tabs{display:flex;gap:8px;margin-bottom:14px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:9px}' +
+      '.sw-ai-tab{flex:1;padding:9px 12px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}' +
+      '.sw-ai-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}.sw-ai-section{display:none}.sw-ai-section.active{display:block}' +
       '.sw-prompt-filter-btn.active{background:var(--surface3);color:var(--accent);border-color:var(--accent)}' +
       '.sw-panel{display:none}.sw-panel.active{display:block}' +
       '.sw-panel label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:6px}' +
@@ -95,7 +98,7 @@
       '<option value="quiz">G. 상호작용형</option><option value="workshop">H. 워크숍형</option><option value="auto_visual">I. AII 자동 시각화형</option></select>' +
       '<label style="margin-top:16px">원문 요약 글자 수</label>' +
       '<input type="number" id="sw-misc-summary-char-limit" min="10000" max="2000000" step="1000" value="1500000" style="width:120px;margin-top:4px;margin-bottom:4px">' +
-      '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">요약 시 원문에서 사용할 최대 글자 수 (기본 1,500,000자)</p>' +
+      '<p style="font-size:10px;color:var(--text2);margin:0 0 12px 0">요약 시 사용할 최대 글자 수입니다. 대용량 문서는 LM Studio 약 1만 자, AI Studio 약 3만 자 단위로 자동 분할·부분 요약한 뒤 최종 통합합니다. 매우 큰 문서는 앞부분만 자르지 않고 전체 구간을 균등 반영합니다.</p>' +
       '<div class="sw-pdf-reflow-box" style="margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">' +
       '<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">PDF 업로드 후 원문 처리</div>' +
       '<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.5">추출 직후 AI 가독성 정리(머리말·제목 줄바꿈)를 할지 선택합니다. 원문 탭의 ✨ 버튼으로 나중에 백그라운드 실행도 가능합니다.</p>' +
@@ -111,7 +114,23 @@
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-misc-apply-btn">적용</button></div>' +
       '</div>' +
       '<div id="sw-panel-api" class="sw-panel">' +
-      '<p style="color:var(--text2);font-size:12px;margin-bottom:12px"><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Google AI Studio</a>에서 발급한 API 키를 입력하세요.</p>' +
+      '<div class="sw-ai-tabs" role="tablist"><button type="button" class="sw-ai-tab active" data-ai-settings-tab="lmstudio">🖥 LM Studio</button><button type="button" class="sw-ai-tab" data-ai-settings-tab="aistudio">✨ AI Studio</button></div>' +
+      '<div id="sw-ai-section-lmstudio" class="sw-ai-section active" style="padding:12px;margin-bottom:16px;background:var(--surface);border:1px solid var(--border);border-radius:8px">' +
+      '<label style="font-weight:700">텍스트 AI 공급자</label>' +
+      '<select id="sw-ai-provider" style="max-width:420px"><option value="auto">자동 (LM Studio 우선 → AI Studio)</option><option value="lmstudio">LM Studio만 사용</option><option value="aistudio">AI Studio만 사용</option></select>' +
+      '<p style="font-size:10px;color:var(--text3);margin:6px 0 12px">ScholarAI와 일반 AI Chat에서 사용할 공급자입니다. AI Studio는 <b>이미지 생성 + AI 텍스트 동작</b>에 사용되며, LM Studio는 로컬 AI 텍스트 동작에 사용됩니다. <b>AI Studio API 키가 없으면 요약·번역·슬라이드 생성 등 텍스트 AI 기능은 현재 로드된 LM Studio 모델로 자동 전환됩니다.</b></p>' +
+      '<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(150px,1fr);gap:10px"><div><label>LM Studio Base URL</label><input id="sw-lm-base-url" type="url" value="http://127.0.0.1:5678/v1" placeholder="http://127.0.0.1:5678/v1"></div><div><label>API Key (선택)</label><input id="sw-lm-api-key" type="password" autocomplete="off" placeholder="인증 사용 시 입력"></div></div>' +
+      '<div id="sw-lm-connection-card" style="margin-top:12px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2)"><div style="display:flex;align-items:center;gap:8px"><span id="sw-lm-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text3);display:inline-block"></span><b id="sw-lm-connection-label" style="font-size:12px">연결 확인 전</b></div><div style="margin-top:10px;font-size:11px;color:var(--text3)">LM Studio 현재 로드 모델</div><div id="sw-lm-model" style="margin-top:5px;padding:10px;border:1px solid var(--border);border-radius:6px;font-weight:700;color:var(--text2)">확인되지 않음</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:9px;padding-top:9px;border-top:1px solid var(--border)"><span style="font-size:11px;color:var(--text3)">최대 컨텍스트 길이</span><b id="sw-lm-context-length" style="font-size:11px;color:var(--accent)">확인되지 않음</b></div><div id="sw-lm-context-guide" style="font-size:10px;color:var(--text3);margin-top:5px">연결 후 문서 분할 크기를 자동 계산합니다.</div><div id="sw-lm-latency" style="font-size:10px;color:var(--text3);margin-top:6px">모델은 LM Studio에서 Load/Eject 합니다.</div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(4,minmax(75px,1fr));gap:8px;margin-top:12px"><div><label>Temperature</label><input id="sw-lm-temperature" type="number" min="0" max="2" step="0.1"></div><div><label>Max tokens</label><input id="sw-lm-max-tokens" type="number" min="1" step="128"></div><div><label>Timeout (초)</label><input id="sw-lm-timeout" type="number" min="1"></div><div><label>Top P</label><input id="sw-lm-top-p" type="number" min="0" max="1" step="0.05" placeholder="기본"></div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px"><button type="button" class="btn btn-primary" id="sw-lm-save">LM 설정 저장</button><button type="button" class="btn btn-ghost" id="sw-lm-model-check">현재 로드 모델 확인</button><button type="button" class="btn btn-ghost" id="sw-lm-test">LM 연결 테스트</button></div>' +
+      '<div id="sw-lm-status" style="font-size:11px;color:var(--text3);margin-top:10px"></div>' +
+      '<div style="margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2)"><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:9px">📚 문서 컨텍스트 처리 계획</div><label>최소 분할 단계</label><select id="sw-lm-split-mode"><option value="auto">자동 — 모델 용량에 맞춤</option><option value="2">최소 2개로 분할</option><option value="3">최소 3개로 분할</option><option value="4">최소 4개로 분할</option><option value="6">최소 6개로 분할</option><option value="8">최소 8개로 분할</option></select><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px;font-size:11px"><div>현재 선택 문서</div><b id="sw-lm-input-size" style="text-align:right">0자</b><div>원문 추정 토큰</div><b id="sw-lm-input-tokens" style="text-align:right">0 tokens</b><div>모델 대비 크기</div><b id="sw-lm-context-ratio" style="text-align:right">확인 필요</b><div>안전 입력량/회</div><b id="sw-lm-safe-input" style="text-align:right">3,000 tokens</b><div>안전 출력 한도</div><b id="sw-lm-safe-output" style="text-align:right">2,048 tokens</b><div>예상 처리 단계</div><b id="sw-lm-estimated-parts" style="text-align:right;color:var(--accent)">1개</b></div><div id="sw-lm-processing-note" style="margin-top:9px;padding:8px;border-radius:6px;background:var(--surface);font-size:10px;color:var(--text3);line-height:1.5">입력 문서를 확인하는 중입니다.</div></div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:11px"><a href="https://lmstudio.ai/download" target="_blank" rel="noopener" style="color:var(--accent)">LM Studio 다운로드</a><a href="https://ollama.com/download" target="_blank" rel="noopener" style="color:var(--accent)">Ollama 다운로드</a><a href="https://ollama.com/search" target="_blank" rel="noopener" style="color:var(--accent)">Ollama 모델 찾기</a></div>' +
+      '<label class="sw-row sw-row--center" style="margin-top:14px;margin-bottom:0"><input type="checkbox" id="ai-chat-enabled"><span class="sw-row-text"><b>AI Chat 사용</b> — 화면 우측 하단에 이동 가능한 플로팅 채팅 버튼 표시</span></label>' +
+      '</div>' +
+      '<div id="sw-ai-section-aistudio" class="sw-ai-section" style="padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">' +
+      '<p style="color:var(--text2);font-size:12px;margin-bottom:10px"><b>AI Studio — 이미지 생성 + AI 동작</b><br><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Google AI Studio</a>에서 발급한 API 키를 입력하세요.</p>' +
+      '<div style="margin-bottom:14px;padding:10px 12px;border:1px solid rgba(245,158,11,.45);border-left:3px solid #f59e0b;border-radius:7px;background:rgba(245,158,11,.08);color:var(--text2);font-size:11px;line-height:1.55"><b style="color:#fbbf24">🖼 sspAI 사용 안내</b><br>상단의 <b>sspAI 이미지 생성 기능을 사용하려면 이곳에 Google AI Studio API 키를 입력하고 적용해야 합니다.</b> 입력한 키는 ScholarAI 텍스트 동작과 sspAI 이미지 생성에 함께 사용됩니다.</div>' +
       '<label>API 키</label>' +
       '<div style="position:relative">' +
       '<input type="password" id="sw-api-key-field" placeholder="AIza..." autocomplete="off" style="padding-right:40px">' +
@@ -139,6 +158,7 @@
       '</select>' +
       '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;cursor:pointer"><input type="checkbox" id="sw-save-key-checkbox" checked> 브라우저에 저장</label>' +
       '<div style="margin-top:16px"><button class="btn btn-primary" id="sw-api-apply-btn">적용</button></div>' +
+      '</div>' +
       '</div>' +
       '<div id="sw-panel-prompts" class="sw-panel">' +
       '<p style="color:var(--text2);font-size:12px;margin-bottom:8px">요약·번역·슬라이드 생성 등에 사용되는 프롬프트를 사전 설정합니다.</p>' +
@@ -247,6 +267,21 @@
         if (panel) panel.classList.add('active');
       });
     });
+    function selectAISettingsTab(name) {
+      name = name === 'aistudio' ? 'aistudio' : 'lmstudio';
+      document.querySelectorAll('#settings-panel-root .sw-ai-tab').forEach(function (button) {
+        button.classList.toggle('active', button.getAttribute('data-ai-settings-tab') === name);
+      });
+      document.querySelectorAll('#settings-panel-root .sw-ai-section').forEach(function (section) {
+        section.classList.toggle('active', section.id === 'sw-ai-section-' + name);
+      });
+      localStorage.setItem('ss_settings_ai_tab', name);
+    }
+    document.querySelectorAll('#settings-panel-root .sw-ai-tab').forEach(function (button) {
+      button.addEventListener('click', function () { selectAISettingsTab(this.getAttribute('data-ai-settings-tab')); });
+    });
+    selectAISettingsTab(window._settingsInitialAITab || localStorage.getItem('ss_settings_ai_tab') || 'lmstudio');
+    window._settingsInitialAITab = '';
 
     var miscCount = $('sw-misc-default-slide-count');
     var miscCover = $('sw-misc-default-include-cover');
@@ -389,6 +424,105 @@
     if (apiField) apiField.value = activeKey;
     updateStrength();
     renderSavedKeys();
+
+    var providerSelect = $('sw-ai-provider');
+    if (providerSelect) providerSelect.value = localStorage.getItem('ss_scholar_ai_provider') || 'auto';
+    var localConfig = { baseUrl: 'http://127.0.0.1:5678/v1', apiKey: '' };
+    try { if (win.LocalAI) localConfig = win.LocalAI.loadConfig(localStorage); } catch (e) {}
+    if ($('sw-lm-base-url')) $('sw-lm-base-url').value = localConfig.baseUrl || 'http://127.0.0.1:5678/v1';
+    if ($('sw-lm-api-key')) $('sw-lm-api-key').value = localConfig.apiKey || '';
+    if ($('sw-lm-temperature')) $('sw-lm-temperature').value = localConfig.temperature == null ? '0.4' : localConfig.temperature;
+    if ($('sw-lm-max-tokens')) $('sw-lm-max-tokens').value = localConfig.maxTokens || 8192;
+    if ($('sw-lm-timeout')) $('sw-lm-timeout').value = Math.round((localConfig.timeoutMs || 90000) / 1000);
+    if ($('sw-lm-top-p')) $('sw-lm-top-p').value = localConfig.topP == null ? '' : localConfig.topP;
+    if ($('sw-lm-split-mode')) $('sw-lm-split-mode').value = localStorage.getItem('ss_lm_split_mode') || 'auto';
+    function updateLmProcessingPlan() {
+      var raw = typeof win.getRawText === 'function' ? String(win.getRawText() || '') : '';
+      var manuscript = typeof win._slideManuscriptText === 'string' ? win._slideManuscriptText : '';
+      var inputLength = Math.max(raw.length, manuscript.length);
+      var sourceText = raw.length >= manuscript.length ? raw : manuscript;
+      var inputTokens = typeof win.estimateAITokens === 'function' ? win.estimateAITokens(sourceText) : Math.ceil(inputLength / 2);
+      var charsPerToken = inputTokens > 0 ? inputLength / inputTokens : 2;
+      var context = Number(localStorage.getItem('ss_lm_context_length')) || 0;
+      var safeInputTokens = context ? Math.max(768, Math.floor(context * 0.65)) : 3000;
+      var safeChars = Math.max(1200, Math.min(30000, Math.floor(safeInputTokens * charsPerToken)));
+      var configuredMax = Number($('sw-lm-max-tokens') && $('sw-lm-max-tokens').value) || 8192;
+      var safeOutput = context ? Math.max(512, Math.min(configuredMax, Math.floor(context * 0.25))) : Math.min(configuredMax, 2048);
+      var forced = $('sw-lm-split-mode') && $('sw-lm-split-mode').value !== 'auto' ? Number($('sw-lm-split-mode').value) : 1;
+      var required = inputTokens ? Math.ceil(inputTokens / safeInputTokens) : 1;
+      var requestedParts = Math.max(1, forced || 1, required);
+      var actual = Math.min(40, requestedParts);
+      if ($('sw-lm-input-size')) $('sw-lm-input-size').textContent = inputLength.toLocaleString('ko-KR') + '자';
+      if ($('sw-lm-input-tokens')) $('sw-lm-input-tokens').textContent = '약 ' + inputTokens.toLocaleString('ko-KR') + ' tokens';
+      if ($('sw-lm-context-ratio')) $('sw-lm-context-ratio').textContent = context ? '약 ' + (inputTokens / context).toFixed(inputTokens / context >= 10 ? 0 : 1) + '배' : '컨텍스트 확인 필요';
+      if ($('sw-lm-safe-input')) $('sw-lm-safe-input').textContent = safeInputTokens.toLocaleString('ko-KR') + ' tokens · 약 ' + safeChars.toLocaleString('ko-KR') + '자';
+      if ($('sw-lm-safe-output')) $('sw-lm-safe-output').textContent = safeOutput.toLocaleString('ko-KR') + ' tokens';
+      if ($('sw-lm-estimated-parts')) $('sw-lm-estimated-parts').textContent = actual + '개 부분 요약 + 최종 통합';
+      if ($('sw-lm-processing-note')) $('sw-lm-processing-note').textContent = inputLength
+        ? '문서 약 ' + inputTokens.toLocaleString('ko-KR') + ' tokens를 안전 입력량 ' + safeInputTokens.toLocaleString('ko-KR') + ' tokens 기준으로 ' + actual + '개 구간 처리 후 하나로 통합합니다.' + (actual > (forced || 1) ? ' 선택한 최소 분할 수보다 모델 안전 한도가 작아 분할 수를 자동으로 늘렸습니다.' : '') + (requestedParts > 40 ? ' 처리 시간이 과도해지지 않도록 최대 40개 구간에서 문서 전체 위치를 균등 반영합니다.' : '')
+        : '현재 선택된 원문 또는 업로드된 슬라이드 원고가 없습니다.';
+    }
+    if ($('sw-lm-split-mode')) $('sw-lm-split-mode').addEventListener('change', function () { localStorage.setItem('ss_lm_split_mode', this.value); updateLmProcessingPlan(); });
+    if ($('sw-lm-max-tokens')) $('sw-lm-max-tokens').addEventListener('input', updateLmProcessingPlan);
+    updateLmProcessingPlan();
+    if ($('ai-chat-enabled')) $('ai-chat-enabled').checked = localStorage.getItem('ss_ai_chat_enabled') === '1';
+    if (providerSelect) providerSelect.addEventListener('change', function () {
+      localStorage.setItem('ss_scholar_ai_provider', providerSelect.value);
+    });
+    if ($('ai-chat-enabled')) $('ai-chat-enabled').addEventListener('change', function () {
+      localStorage.setItem('ss_ai_chat_enabled', this.checked ? '1' : '0');
+      if (win.AIChat) win.AIChat.setEnabled(this.checked);
+    });
+    function lmAdapter() {
+      if (!win.LocalAI || !win.ScholarAIProvider) throw new Error('LM Studio 모듈이 로드되지 않았습니다.');
+      return win.__scholarAIProvider || (win.__scholarAIProvider = win.ScholarAIProvider.create({ callAIStudio: win.callGemini }));
+    }
+    function readLmForm() {
+      return {
+        baseUrl: $('sw-lm-base-url').value.trim(), apiKey: $('sw-lm-api-key').value.trim(),
+        temperature: Number($('sw-lm-temperature').value || 0.4),
+        maxTokens: Number($('sw-lm-max-tokens').value || 8192),
+        timeoutMs: Math.max(1, Number($('sw-lm-timeout').value || 90)) * 1000,
+        topP: $('sw-lm-top-p').value === '' ? null : Number($('sw-lm-top-p').value)
+      };
+    }
+    function setLmState(ok, model, detail, contextLength, maxContextLength) {
+      var status = $('sw-lm-status');
+      var dot = $('sw-lm-dot'); var label = $('sw-lm-connection-label'); var modelEl = $('sw-lm-model'); var latency = $('sw-lm-latency');
+      if (dot) { dot.style.background = ok ? '#34d399' : '#f87171'; dot.style.boxShadow = ok ? '0 0 10px #34d399' : 'none'; }
+      if (label) { label.textContent = ok ? '연결됨: LM Studio' : '연결 안 됨'; label.style.color = ok ? '#34d399' : '#f87171'; }
+      if (modelEl) modelEl.textContent = model || '로드된 모델 없음';
+      var contextEl = $('sw-lm-context-length'); var contextGuide = $('sw-lm-context-guide');
+      var context = Number(contextLength) || (ok ? Number(localStorage.getItem('ss_lm_context_length')) : 0) || 0;
+      var maximum = Number(maxContextLength) || 0;
+      if (contextEl) contextEl.textContent = context
+        ? context.toLocaleString('ko-KR') + ' tokens' + (maximum && maximum !== context ? ' (모델 최대 ' + maximum.toLocaleString('ko-KR') + ')' : '')
+        : (maximum ? maximum.toLocaleString('ko-KR') + ' tokens' : 'LM Studio 응답에 정보 없음');
+      if (contextGuide) {
+        var suggestedChars = context ? Math.max(1800, Math.min(30000, Math.floor(context * 1.1))) : 6000;
+        contextGuide.textContent = context ? '문서 입력 청크 약 ' + suggestedChars.toLocaleString('ko-KR') + '자로 자동 조정됩니다.' : '안전 기본값 6,000자로 문서를 분할합니다.';
+      }
+      updateLmProcessingPlan();
+      if (latency) latency.textContent = detail || '모델은 LM Studio에서 Load/Eject 합니다.';
+      if (status) { status.textContent = ok ? 'LM Studio 연결 성공 · 현재 모델 ' + model : 'LM Studio 연결 실패 · ' + (detail || '설정을 확인하세요.'); status.style.color = ok ? '#34d399' : '#f87171'; }
+    }
+    async function checkLmConnection() {
+      var status = $('sw-lm-status');
+      try {
+        status.textContent = '연결 확인 중…'; status.style.color = 'var(--warning)';
+        var checked = await lmAdapter().testLMStudio(readLmForm());
+        if (!checked.ok) throw new Error(checked.error);
+        setLmState(true, checked.model, '현재 로드 모델 자동 사용 · 응답 ' + checked.latencyMs + 'ms', checked.contextLength, checked.maxContextLength);
+      } catch (error) {
+        setLmState(false, '', error.message || String(error));
+      }
+    }
+    if ($('sw-lm-save')) $('sw-lm-save').addEventListener('click', function () {
+      try { lmAdapter().saveLMStudioConfig(readLmForm()); localStorage.setItem('ss_scholar_ai_provider', providerSelect ? providerSelect.value : 'lmstudio'); $('sw-lm-status').textContent = 'LM Studio 설정을 저장했습니다.'; $('sw-lm-status').style.color = 'var(--success)'; } catch (error) { setLmState(false, '', error.message || String(error)); }
+    });
+    if ($('sw-lm-model-check')) $('sw-lm-model-check').addEventListener('click', checkLmConnection);
+    if ($('sw-lm-test')) $('sw-lm-test').addEventListener('click', checkLmConnection);
+    if (win.LocalAI && localStorage.getItem(win.LocalAI.storageKey)) checkLmConnection();
 
     var textModelSel = $('sw-text-model-select');
     if (textModelSel) textModelSel.value = localStorage.getItem(LS_TEXT_MODEL) || 'gemini-2.5-pro';
@@ -583,14 +717,19 @@
     loadPrompts();
   }
 
-  function openSettingsPanel() {
+  function openSettingsPanel(initialTab, initialAITab) {
     var root = document.getElementById('settings-panel-root');
     var modal = document.getElementById('settings-modal');
     var box = document.getElementById('settings-modal-box');
     if (!root || !modal || !box) return;
+    window._settingsInitialAITab = initialAITab || '';
     root.innerHTML = getSettingsPanelContent();
     box.classList.remove('settings-fullscreen');
     initSettingsPanelScript();
+    if (initialTab) {
+      var tab = root.querySelector('.sw-tab[data-tab="' + initialTab + '"]');
+      if (tab) tab.click();
+    }
     modal.classList.add('open');
   }
 

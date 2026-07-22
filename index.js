@@ -23,7 +23,12 @@ async function searchScholarAI() {
     const promptTemplate = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('scholar_search_prompt')) || `다음 주제와 관련된 실제 학술 논문 5편을 JSON 배열로만 응답하세요 (코드블록, 마크다운 없이 순수 JSON만):\n[{"authors":"Last, F., & Last2, F2.","year":"2023","title":"논문 제목","journal":"저널명","volume":"15","issue":"2","pages":"100-120","doi":""}]\n주제: {{query}}`;
     const prompt = promptTemplate.replace(/\{\{query\}\}/g, query);
     const systemInstruction = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('scholar_search_system')) || 'You are a scholar database. Return ONLY valid JSON array, no markdown.';
-    const { text } = await callGemini(prompt, systemInstruction, false);
+    const selectedProvider = localStorage.getItem('ss_scholar_ai_provider') || 'auto';
+    const adapter = window.__scholarAIProvider || (window.ScholarAIProvider && (window.__scholarAIProvider = window.ScholarAIProvider.create({ callAIStudio: callGemini })));
+    const response = adapter
+      ? await adapter.complete({ provider: selectedProvider, prompt, systemInstruction, model: getScholarAIModelId() })
+      : await callGemini(prompt, systemInstruction, false);
+    const text = response.text || '';
     const clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
     const match = clean.match(/\[[\s\S]*\]/);
     if (!match) throw new Error('응답에서 JSON을 찾을 수 없음');
@@ -96,8 +101,61 @@ const LS_SCHOLARAI_MODEL = 'ss_scholara_i_model';
 function getScholarAIModelId() { return (typeof localStorage !== 'undefined' && localStorage.getItem(LS_SCHOLARAI_MODEL)) || (typeof getTextModelId === 'function' ? getTextModelId() : 'gemini-2.5-pro'); }
 function setScholarAIModelId(id) { if (id && typeof localStorage !== 'undefined') localStorage.setItem(LS_SCHOLARAI_MODEL, id); }
 
+// Fast tokenizer-independent estimate used for capacity planning. CJK text
+// generally consumes more tokens per character than Latin prose, so each
+// Korean/CJK character is counted conservatively while Latin text uses ~4 chars/token.
+function estimateAITokens(text) {
+  const value = String(text || '');
+  if (!value) return 0;
+  const cjk = (value.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) || []).length;
+  const spaces = (value.match(/\s/g) || []).length;
+  const other = Math.max(0, value.length - cjk - spaces);
+  return Math.max(1, Math.ceil(cjk * 1.05 + other / 4 + spaces / 8));
+}
+if (typeof window !== 'undefined') window.estimateAITokens = estimateAITokens;
+
 async function callGemini(prompt, systemInstruction = '', useSearch = false, modelOverride = null) {
-  let key; try { key = getApiKey(); } catch { showToast('⚠️ API 키를 먼저 설정하세요'); openApiModal(); throw new Error('No API key'); }
+  let key = '';
+  try { key = getApiKey(); } catch (keyError) {
+    // Text features (summary, translation, slide generation, ScholarAI, etc.)
+    // may use the currently loaded LM Studio model when no Gemini key exists.
+    // Image generation has a separate path and still requires AI Studio.
+    if (typeof window !== 'undefined' && window.LocalAI) {
+      try {
+        if (window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
+        _abortController = new AbortController();
+        const localConfig = window.LocalAI.loadConfig(localStorage);
+        const discoveryClient = window.LocalAI.createClient(localConfig);
+        const loadedModels = await discoveryClient.listLoadedModels({ timeoutMs: 10000, signal: _abortController.signal });
+        const loadedModel = loadedModels && loadedModels[0] && loadedModels[0].id;
+        if (!loadedModel) throw new Error('LM Studio에 로드된 LLM이 없습니다.');
+        const contextLength = Number(loadedModels[0].instances && loadedModels[0].instances[0] && loadedModels[0].instances[0].contextLength) || 0;
+        if (contextLength > 0) localStorage.setItem('ss_lm_context_length', String(contextLength));
+        window.LocalAI.saveConfig({ ...localConfig, model: loadedModel }, localStorage);
+        const localClient = window.LocalAI.createClient({ ...localConfig, model: loadedModel });
+        const safeMaxTokens = contextLength > 0
+          ? Math.max(512, Math.min(localConfig.maxTokens || 8192, Math.floor(contextLength * 0.25)))
+          : Math.min(localConfig.maxTokens || 8192, 2048);
+        const localResult = await localClient.complete({
+          prompt,
+          systemInstruction: systemInstruction + (useSearch ? '\n실시간 Google 검색은 사용할 수 없습니다. 확인되지 않은 출처나 인용을 만들지 마세요.' : ''),
+          model: loadedModel,
+          maxTokens: safeMaxTokens,
+          signal: _abortController.signal
+        });
+        if (typeof showToast === 'function') showToast('🖥 AI Studio 키 없음 · LM Studio 사용: ' + loadedModel);
+        return { text: localResult.text || '', sources: [], provider: 'lmstudio', model: loadedModel };
+      } catch (localError) {
+        if (localError && localError.name === 'AbortError') throw localError;
+        if (typeof showToast === 'function') showToast('⚠️ AI Studio 키가 없고 LM Studio를 사용할 수 없습니다.');
+        if (typeof openSettingsPanel === 'function') openSettingsPanel('api', 'lmstudio');
+        throw new Error('AI Studio API 키가 없으며 LM Studio 연결에도 실패했습니다: ' + (localError.message || localError));
+      }
+    }
+    if (typeof showToast === 'function') showToast('⚠️ API 키를 먼저 설정하세요');
+    openApiModal();
+    throw new Error('No API key');
+  }
   if (typeof window !== 'undefined' && window._aiTaskCancelled) throw new DOMException('Aborted', 'AbortError');
   _abortController = new AbortController();
   const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } };
@@ -2326,6 +2384,20 @@ function openSummaryOptionsModal() {
   if (slideCountInput && mainSlideCount && mainSlideCount.value) slideCountInput.value = mainSlideCount.value;
   if (customInModal) customInModal.value = (customInPanel && customInPanel.value) ? customInPanel.value : '';
   if (writingStyleModal) writingStyleModal.value = (writingStylePanel && writingStylePanel.value) ? writingStylePanel.value : (typeof window.getWritingStyle === 'function' ? window.getWritingStyle() : 'academic-da');
+  var splitMode = document.getElementById('summary-options-split-mode');
+  var splitInfo = document.getElementById('summary-options-split-info');
+  if (splitMode) splitMode.value = localStorage.getItem('ss_lm_split_mode') || 'auto';
+  function updateSummarySplitInfo() {
+    if (!splitInfo) return;
+    var context = Number(localStorage.getItem('ss_lm_context_length')) || 0;
+    var sourceTokens = typeof window.estimateAITokens === 'function' ? window.estimateAITokens(_rt) : Math.ceil(_rt.length / 2);
+    var safeTokens = context ? Math.max(768, Math.floor(context * 0.65)) : 3000;
+    var minimum = splitMode && splitMode.value !== 'auto' ? Number(splitMode.value) : 1;
+    var requestedParts = Math.max(1, minimum, Math.ceil(sourceTokens / safeTokens));
+    var required = Math.min(40, requestedParts);
+    splitInfo.textContent = '원문 ' + _rt.length.toLocaleString('ko-KR') + '자 ≈ ' + sourceTokens.toLocaleString('ko-KR') + ' tokens · 모델 컨텍스트 대비 ' + (context ? (sourceTokens / context).toFixed(sourceTokens / context >= 10 ? 0 : 1) + '배' : '확인 필요') + ' · 예상 ' + required + '개 부분 요약 후 최종 통합' + (requestedParts > 40 ? ' (전체 위치 균등 반영)' : '');
+  }
+  if (splitMode) { splitMode.onchange = updateSummarySplitInfo; updateSummarySplitInfo(); }
   function updateSlideCountVisibility() {
     var styleRadios = document.querySelectorAll('input[name="summary-style"]');
     var styleId = 'research';
@@ -2369,6 +2441,8 @@ function confirmSummaryOptions() {
   if (customInPanel) customInPanel.value = customInstruction;
   var writingStyleModal = document.getElementById('summary-options-writing-style');
   var writingStyleVal = (writingStyleModal && writingStyleModal.value) ? writingStyleModal.value : 'academic-da';
+  var splitMode = document.getElementById('summary-options-split-mode');
+  if (splitMode) localStorage.setItem('ss_lm_split_mode', splitMode.value || 'auto');
   if (typeof window.setWritingStyle === 'function') window.setWritingStyle(writingStyleVal);
   var writingStylePanel = document.getElementById('writing-style-val');
   if (writingStylePanel) writingStylePanel.value = writingStyleVal;
@@ -2655,6 +2729,9 @@ let _pdfPendingPage = null;
 let _pdfThumbsRendered = false;
 let _pdfFileName = '';
 let _pdfPan = { x: 0, y: 0, active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0 };
+let _pdfWheelAccum = 0;
+let _pdfWheelLocked = false;
+let _pdfWheelDirection = 0;
 const PDF_RENDER_QUALITY_BOOST = 2;
 const PDF_RENDER_MAX_SCALE = 6;
 const PDF_RENDER_MAX_PIXELS = 16000000;
@@ -2741,7 +2818,7 @@ function initPdfPanelDrag() {
   if (!panel || !header) return;
   initPdfPanelResize();
   header.addEventListener('mousedown', function (e) {
-    if (e.button !== 0 || e.target.closest('.pdf-nav-btn')) return;
+    if (e.button !== 0 || e.target.closest('.pdf-nav-btn') || panel.classList.contains('pdf-preview-fullscreen')) return;
     e.preventDefault();
     var rect = panel.getBoundingClientRect();
     panel.style.right = 'auto';
@@ -2797,7 +2874,23 @@ function openPdfPreview() {
 
 function closePdfPreview() {
   const panel = document.getElementById('pdf-preview-panel');
-  if (panel) panel.classList.remove('open');
+  if (panel) {
+    panel.classList.remove('open', 'pdf-preview-fullscreen');
+    const btn = document.getElementById('pdf-fullscreen-btn');
+    if (btn) btn.textContent = '⛶ 전체화면';
+  }
+}
+
+function togglePdfPreviewFullscreen() {
+  const panel = document.getElementById('pdf-preview-panel');
+  const btn = document.getElementById('pdf-fullscreen-btn');
+  if (!panel) return;
+  const fullscreen = panel.classList.toggle('pdf-preview-fullscreen');
+  if (btn) {
+    btn.textContent = fullscreen ? '⊟ 축소' : '⛶ 전체화면';
+    btn.title = fullscreen ? '전체화면 해제' : 'PDF 미리보기 전체화면';
+  }
+  setTimeout(function () { if (_pdfDoc) pdfFitPage(); }, 60);
 }
 
 function togglePdfPreview() {
@@ -2845,6 +2938,49 @@ function initPdfPan() {
       wrap.classList.remove('pdf-panning');
     }
   });
+  wrap.addEventListener('wheel', function onPdfWheel(e) {
+    if (!_pdfDoc || _pdfRendering || _pdfWheelLocked) { e.preventDefault(); return; }
+    if (e.ctrlKey) return;
+    e.preventDefault();
+    if (e.altKey) {
+      _pdfWheelAccum = 0;
+      _pdfWheelDirection = 0;
+      pdfZoom(e.deltaY < 0 ? 0.1 : -0.1);
+      return;
+    }
+    const innerH = inner.offsetHeight;
+    const wrapH = wrap.clientHeight;
+    const direction = e.deltaY > 0 ? 1 : -1;
+    const hasVerticalOverflow = innerH > wrapH + 2;
+    const minY = Math.min(0, wrapH - innerH);
+    if (_pdfWheelDirection !== direction) {
+      _pdfWheelDirection = direction;
+      _pdfWheelAccum = 0;
+    }
+
+    if (hasVerticalOverflow) {
+      const nextY = Math.max(minY, Math.min(0, _pdfPan.y - e.deltaY));
+      const moved = Math.abs(nextY - _pdfPan.y) > 0.5;
+      _pdfPan.y = nextY;
+      inner.style.transform = 'translate(' + _pdfPan.x + 'px, ' + _pdfPan.y + 'px)';
+      if (moved) { _pdfWheelAccum = 0; return; }
+    }
+
+    _pdfWheelAccum += Math.abs(e.deltaY);
+    if (_pdfWheelAccum < 70) return;
+    _pdfWheelAccum = 0;
+    const target = _pdfCurrentPage + direction;
+    if (target < 1 || target > _pdfTotalPages) return;
+    _pdfWheelLocked = true;
+    Promise.resolve(pdfRenderPage(target)).then(function () {
+      const newMinY = Math.min(0, wrap.clientHeight - inner.offsetHeight);
+      _pdfPan.y = direction < 0 ? newMinY : Math.min(0, _pdfPan.y);
+      if (inner.offsetHeight <= wrap.clientHeight) _pdfPan.y = (wrap.clientHeight - inner.offsetHeight) / 2;
+      inner.style.transform = 'translate(' + _pdfPan.x + 'px, ' + _pdfPan.y + 'px)';
+    }).finally(function () {
+      setTimeout(function () { _pdfWheelLocked = false; }, 180);
+    });
+  }, { passive: false });
 }
 
 function downloadPdfPreview() {
@@ -3033,8 +3169,8 @@ async function pdfRenderAllThumbs() {
 // ── Navigation ───────────────────────────────────────────
 function pdfNavPage(dir) {
   const target = _pdfCurrentPage + dir;
-  if (target < 1 || target > _pdfTotalPages) return;
-  pdfRenderPage(target);
+  if (target < 1 || target > _pdfTotalPages) return Promise.resolve();
+  return pdfRenderPage(target);
 }
 
 // ── Zoom ─────────────────────────────────────────────────
@@ -3076,6 +3212,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); pdfNavPage(-1); }
   else if (e.key === '+' || e.key === '=') pdfZoom(0.2);
   else if (e.key === '-') pdfZoom(-0.2);
+  else if (e.key === 'Escape' && panel.classList.contains('pdf-preview-fullscreen')) { e.preventDefault(); togglePdfPreviewFullscreen(); }
 });
 
 // ── Extract text from current page for copy ──────────────

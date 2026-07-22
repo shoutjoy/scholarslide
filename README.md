@@ -85,3 +85,15 @@ Gemini API로 요약, 슬라이드 생성, 발표 원고, 참고문헌 검색, A
 
 - AI 생성 결과의 정확성은 보장되지 않습니다. 학술·공식 용도로 사용할 때는 반드시 사람이 검토하세요.
 - API 키는 사용자 책임 하에 [Google AI Studio](https://aistudio.google.com) 이용 약관을 준수해 사용해 주세요.
+# LM Studio 로컬 AI 사용
+
+ScholarAI와 플로팅 AI Chat은 Google AI Studio와 LM Studio를 선택해서 사용할 수 있다.
+
+1. LM Studio에서 채팅 모델을 내려받아 Load한다.
+2. **Developer / Local Server**에서 서버를 시작한다.
+3. ScholarSlide의 **설정 → API 키 설정 → 텍스트 AI 공급자**에서 `LM Studio만 사용` 또는 `자동`을 선택한다.
+4. Base URL을 입력한다. 기본값은 `http://127.0.0.1:5678/v1`이다. LM Studio에서 인증을 켠 경우에만 API Key를 입력한다.
+5. **저장 및 연결 테스트**를 눌러 현재 로드 모델과 연결 상태를 확인한다.
+6. 플로팅 채팅을 쓰려면 같은 곳의 **AI Chat 사용**을 켠다. 우측 하단 버튼을 드래그해 옮길 수 있고, 채팅 헤더를 드래그해 팝업 위치를 정할 수 있다. **배치** 메뉴에서 팝업·우측 Dock·전체화면도 선택할 수 있다.
+
+`자동` 모드는 LM Studio가 설정되어 있으면 로컬 모델을 먼저 호출하고, 연결 실패 시 저장된 AI Studio API 키로 재시도한다. 이미지 생성 기능은 LM Studio 선택과 관계없이 기존 AI Studio 설정을 사용한다. 브라우저에서 LM Studio 연결이 차단되면 Local Server 실행 여부, 포트와 CORS 허용 설정을 확인한다.

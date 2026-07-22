@@ -14,7 +14,8 @@ let leftTab = 'summary', rightTab = 'design', summaryText = '', presentationScri
 let slideStyle = 'light', presIndex = 0, presNotesVisible = false;
 let _presFromCurrent = false;
 let writingStyle = 'academic-da';
-let summarySubTab = 'current'; // 'current' | 'history'
+let summarySubTab = 'current'; // 'current' | 'split' | 'history'
+let rawSubTab = 'source'; // 'source' | 'translation'
 let summaryHistory = [];
 let manuscriptHistory = []; // 발표 원고 전용 (script 타입만)
 let slideHistory = []; // 슬라이드 생성 전용 (slides 타입)
@@ -132,6 +133,8 @@ function _exposeSlideGenGlobals() {
   window._setWritingStyleState = function (s) { writingStyle = s || 'academic-da'; };
   window.getSummarySubTab = function () { return summarySubTab; };
   window.setSummarySubTab = function (t) { summarySubTab = t; };
+  window.getRawSubTab = function () { return rawSubTab; };
+  window.setRawSubTab = function (t) { rawSubTab = t; };
   window.getSummaryHistory = function () { return summaryHistory.slice(); };
   window.addSummaryToHistory = function (entry) {
     entry.id = 'sh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);

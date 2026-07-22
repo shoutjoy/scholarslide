@@ -588,13 +588,17 @@
     var passage = (sel && sel.value) ? sel.value.trim() : '';
     var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : '';
     if (!passage) { alert('문서에서 텍스트를 선택한 뒤 실행하세요.'); return; }
-    if (!window.opener || typeof window.opener.callGemini !== 'function') { alert('메인 창을 찾을 수 없거나 API를 사용할 수 없습니다.'); return; }
+    if (!window.opener || (typeof window.opener.callGemini !== 'function' && !window.opener.__scholarAIProvider)) { alert('메인 창을 찾을 수 없거나 AI 공급자를 사용할 수 없습니다.'); return; }
     if (resultEl) resultEl.value = '처리 중...';
     try {
       var fullPrompt = passage + '\n\n사용자 질문 또는 지시: ' + (userQ || '위 지문을 요약하거나 핵심을 설명해 주세요.');
       var sys = (window.opener.getScholarAISystemInstruction && window.opener.getScholarAISystemInstruction()) || 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage. 인용정보는 연구자의 연구의 인용정보, 연구자(연도)를 표시해주고 APA형식의 reference를 줘';
       var modelId = (window.opener.getScholarAIModelId && window.opener.getScholarAIModelId()) || null;
-      var res = await window.opener.callGemini(fullPrompt, sys, false, modelId);
+      var adapter = window.opener.__scholarAIProvider;
+      var selectedProvider = window.opener.localStorage.getItem('ss_scholar_ai_provider') || 'auto';
+      var res = adapter
+        ? await adapter.complete({ provider: selectedProvider, prompt: fullPrompt, systemInstruction: sys, model: modelId })
+        : await window.opener.callGemini(fullPrompt, sys, false, modelId);
       var text = res && res.text ? res.text : (res || '');
       if (resultEl) resultEl.value = typeof text === 'string' ? text : JSON.stringify(text);
       scholarAIHistoryAdd(userQ || passage.substring(0, 80), resultEl ? resultEl.value : '');

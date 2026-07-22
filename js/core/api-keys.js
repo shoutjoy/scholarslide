@@ -22,7 +22,10 @@ function initApiKey() {
   if (saved) { _activeApiKey = saved; updateHeaderKeyStatus(); }
   /* API 키 모달 자동 오픈 제거: 사용자가 상단 🔑 또는 설정에서 직접 입력 */
 }
-function openApiModal() { openModal('api-modal'); const f = document.getElementById('api-key-field'); f.value = _activeApiKey || ''; f.type = 'password'; const btn = document.getElementById('key-toggle'); if (btn) btn.innerHTML = '&#128065;'; updateApiKeyStrength(f.value); renderSavedKeysList(); }
+function openApiModal() {
+  if (typeof openSettingsPanel === 'function') { openSettingsPanel('api', 'aistudio'); return; }
+  openModal('api-modal');
+}
 function openModal(id) { document.getElementById(id).classList.add('open'); if (id === 'img-modal') setTimeout(setupCropEvents, 100); }
 function resetModalBoxPosition(id) {
   const modal = document.getElementById(id);

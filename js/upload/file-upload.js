@@ -325,11 +325,16 @@
     try {
       ensurePDFWorker();
       var text = '';
-      if (file.type === 'application/pdf') {
-        var buf = await file.arrayBuffer();
-        window._pdfArrayBuffer = buf.slice(0);
-        if (typeof loadPdfPreview === 'function') loadPdfPreview(buf.slice(0), file.name);
-        var pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      var pdfBufferForSlot = null;
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '')) {
+        var originalBuf = await file.arrayBuffer();
+        var pdfBytes = new Uint8Array(originalBuf);
+        pdfBufferForSlot = pdfBytes.slice().buffer;
+        window._pdfArrayBuffer = pdfBytes.slice().buffer;
+        // Use an independent copy for text extraction. PDF.js may transfer and
+        // detach the supplied buffer, so preview rendering is started only
+        // after extraction completes with another intact copy.
+        var pdf = await window.pdfjsLib.getDocument({ data: pdfBytes.slice() }).promise;
         for (var i = 1; i <= pdf.numPages; i++) {
           var page = await pdf.getPage(i);
           var content = await page.getTextContent();
@@ -339,6 +344,7 @@
         }
         text = text.replace(/^\n+/, '').trim();
         text = await applyExtractReflowPipeline(text, file.name, true, shouldRunAiOnUpload());
+        if (typeof loadPdfPreview === 'function') await loadPdfPreview(pdfBufferForSlot.slice(0), file.name);
       } else if (file.name.endsWith('.docx')) {
         var bufDoc = await file.arrayBuffer();
         var result = await window.mammoth.extractRawText({ arrayBuffer: bufDoc });
@@ -353,7 +359,7 @@
         if (text) text = heuristicReflowExtractedText(text);
       }
       if (typeof window.addFileToSlot === 'function') {
-        window.addFileToSlot({ fileName: file.name, rawText: text, checked: true });
+        window.addFileToSlot({ fileName: file.name, rawText: text, checked: true, pdfData: pdfBufferForSlot });
       } else {
         if (typeof rawText !== 'undefined') rawText = text;
         window.rawText = text;
@@ -405,15 +411,30 @@
     });
   }
 
+  async function openPdfPreviewForSlot(id) {
+    var slots = typeof window.getFileSlots === 'function' ? window.getFileSlots() : [];
+    var slot = slots.find(function (item) { return item.id === id; });
+    if (slot && slot.pdfData && slot.pdfData.byteLength) {
+      var copy = slot.pdfData.slice(0);
+      window._pdfArrayBuffer = copy.slice(0);
+      await loadPdfPreview(copy, slot.fileName || 'document.pdf');
+      return;
+    }
+    if (typeof openPdfPreview === 'function' && window._pdfArrayBuffer) openPdfPreview();
+    else if (typeof showToast === 'function') showToast('⚠️ 이 파일의 PDF 미리보기 데이터가 없습니다. 파일을 다시 업로드해 주세요.');
+  }
+
   function extractReferencesSectionFromRawText(sourceText) {
     var raw = (typeof sourceText !== 'undefined' && sourceText != null) ? String(sourceText) : (typeof rawText !== 'undefined' ? rawText : (window.rawText || '')) || '';
     if (!raw.trim()) return { text: '', count: 0, source: 'none' };
     var section = '';
+    var heading = '';
     var blockMarkers = [/---\s*참고문헌\s*---\s*\n?/gi, /---\s*References?\s*---\s*\n?/gi, /---\s*Bibliography\s*---\s*\n?/gi];
     for (var i = 0; i < blockMarkers.length; i++) {
       var m = raw.match(blockMarkers[i]);
       if (m) {
         section = raw.substring(m.index + m[0].length).trim();
+        heading = m[0].trim();
         break;
       }
     }
@@ -425,12 +446,20 @@
         /^\s*Reference\s+List\s*$/im, /^\s*Works?\s+Cited\s*$/im,
         /^\s*References?\s+and\s+Notes\s*$/im
       ];
+      var headingMatches = [];
       for (var ii = 0; ii < refSectionHeads.length; ii++) {
-        var mm = raw.match(refSectionHeads[ii]);
-        if (mm) {
-          section = raw.substring(mm.index + mm[0].length).trim();
-          break;
-        }
+        var flags = refSectionHeads[ii].flags.indexOf('g') >= 0 ? refSectionHeads[ii].flags : refSectionHeads[ii].flags + 'g';
+        var finder = new RegExp(refSectionHeads[ii].source, flags);
+        var mm;
+        while ((mm = finder.exec(raw)) !== null) headingMatches.push({ index: mm.index, length: mm[0].length, text: mm[0] });
+      }
+      // A table of contents may contain “References”; the last standalone
+      // heading is normally the actual bibliography section.
+      headingMatches.sort(function (a, b) { return a.index - b.index; });
+      if (headingMatches.length) {
+        var chosen = headingMatches[headingMatches.length - 1];
+        section = raw.substring(chosen.index + chosen.length).trim();
+        heading = chosen.text.trim();
       }
     }
     if (!section) {
@@ -442,7 +471,7 @@
         if (/^References?\s*$/i.test(trimmed) || /^참고\s*문헌\s*$/i.test(trimmed) || /^Bibliography\s*$/i.test(trimmed) ||
             /^Reference\s+List\s*$/i.test(trimmed) || /^Works?\s+Cited\s*$/i.test(trimmed)) {
           startIdx = L + 1;
-          break;
+          heading = trimmed;
         }
       }
       if (startIdx >= 0) section = lines.slice(startIdx).join('\n').trim();
@@ -454,7 +483,18 @@
         section = after.replace(/^\s*(?:References?|REFERENCES?|참고\s*문헌|Bibliography|BIBLIOGRAPHY)\s*\n?/i, '').trim();
       }
     }
-    if (!section || section.length < 20) return { text: '', count: 0, source: 'none' };
+    // Handle PDF extraction that joins the heading and first entry on one line.
+    if (!section) {
+      var inlineHead = /(?:^|\n)\s*(?:#{1,6}\s*)?(References?|Bibliography|Works?\s+Cited|참고\s*문헌)\s*[:.]?\s+(?=[A-Z가-힣][A-Za-z가-힣'’.,&\-\s]{2,80}(?:\(|\b(?:18|19|20)\d{2}\b))/gi;
+      var inlineMatches = [], im;
+      while ((im = inlineHead.exec(raw)) !== null) inlineMatches.push({ index: im.index, length: im[0].length, heading: im[1] });
+      if (inlineMatches.length) {
+        var lastInline = inlineMatches[inlineMatches.length - 1];
+        section = raw.substring(lastInline.index + lastInline.length).trim();
+        heading = lastInline.heading;
+      }
+    }
+    if (!section || section.length < 20) return { text: '', count: 0, source: 'none', heading: '' };
     var reRefStart = /\n\s*(?=[A-Z][A-Za-z\-',\s&.]{2,120}\(\d{4}[a-z]?\)\s*\.)/g;
     var parts = section.split(reRefStart);
     var entries = [];
@@ -472,14 +512,17 @@
         if (e.length > 20 && /\(\d{4}[a-z]?\)/.test(e)) entries.push(e);
       }
     }
-    var text = entries.length ? entries.join('\n\n') : '';
-    return { text: text, count: entries.length, source: entries.length ? 'document' : 'none' };
+    // REF EXP must preserve everything after the actual References heading.
+    // Parsing into structured records is a separate concern and must not make
+    // valid PDF bibliography text disappear because its line breaks differ.
+    var yearCount = (section.match(/(?:\(|\b)(?:18|19|20)\d{2}[a-z]?(?:\)|\b)/gi) || []).length;
+    return { text: section, count: entries.length || yearCount, source: 'document', heading: heading || 'References', entries: entries };
   }
 
   function getReferencesOnlyText() {
     var r = (typeof window.getRawText === 'function' ? window.getRawText() : (typeof rawText !== 'undefined' ? rawText : window.rawText || '')) || '';
     var extracted = extractReferencesSectionFromRawText(r);
-    if (extracted.source === 'document' && extracted.count > 0) return extracted.text;
+    if (extracted.source === 'document' && extracted.text) return extracted.text;
     if (typeof ReferenceStore === 'undefined' || !ReferenceStore.getAll) return '';
     var refs = ReferenceStore.getAll();
     if (!refs || !refs.length) return '';
@@ -492,7 +535,7 @@
   function getReferencesExpCount() {
     var r = (typeof window.getRawText === 'function' ? window.getRawText() : (typeof rawText !== 'undefined' ? rawText : window.rawText || '')) || '';
     var extracted = extractReferencesSectionFromRawText(r);
-    if (extracted.source === 'document' && extracted.count > 0)
+    if (extracted.source === 'document' && extracted.text)
       return { count: extracted.count, label: '문서에서 추출' };
     var refs = typeof ReferenceStore !== 'undefined' && ReferenceStore.getAll ? ReferenceStore.getAll() : [];
     return { count: refs.length, label: '저장된 참고문헌' };
@@ -589,6 +632,7 @@
   window._rawAiReflowRunning = false;
   window.loadFromTextInput = loadFromTextInput;
   window.enableMainBtns = enableMainBtns;
+  window.openPdfPreviewForSlot = openPdfPreviewForSlot;
   window.extractReferencesSectionFromRawText = extractReferencesSectionFromRawText;
   window.getReferencesOnlyText = getReferencesOnlyText;
   window.getReferencesExpCount = getReferencesExpCount;

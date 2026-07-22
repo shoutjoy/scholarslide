@@ -96,17 +96,34 @@ async function extractReferencesWithAI(doneCallback, options) {
   var defaults = (typeof window.getDefaultPrompts === 'function' && window.getDefaultPrompts()) || {};
   var promptTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_prompt')) || (defaults.ref_extract_prompt && defaults.ref_extract_prompt.value) || 'Extract every reference from the following document in APA 7th edition format. Focus on the END of the document where reference sections typically appear (Reference, References, 참고문헌, 참고, Bibliography). Return ONLY a JSON array of objects with keys: authors, year, title, journal, volume, issue, pages, doi.\n\nDocument text:\n{{TEXT}}';
   var systemTpl = (typeof window.getPromptOverride === 'function' && window.getPromptOverride('ref_extract_system')) || (defaults.ref_extract_system && defaults.ref_extract_system.value) || 'You are an expert in APA 7th edition. Return ONLY a valid JSON array of reference objects. No markdown.';
-  var textSnippet = raw.length > 50000 ? raw.substring(0, 50000) + '\n\n[... 이하 생략 ...]' : raw;
-  var prompt = promptTpl.replace(/\{\{TEXT\}\}/g, textSnippet);
+  var extractedSection = typeof window.extractReferencesSectionFromRawText === 'function'
+    ? window.extractReferencesSectionFromRawText(raw) : null;
+  // References live at the end of papers. Never send only the beginning of a
+  // long PDF; prefer the complete detected section, or at least the tail.
+  var referenceSource = extractedSection && extractedSection.text
+    ? extractedSection.text
+    : (raw.length > 60000 ? raw.slice(-60000) : raw);
+  var contextLength = Number(localStorage.getItem('ss_lm_context_length')) || 0;
+  var chunkChars = contextLength ? Math.max(5000, Math.min(30000, Math.floor(contextLength * 0.8))) : 12000;
+  var sourceChunks = [];
+  for (var cp = 0; cp < referenceSource.length; cp += chunkChars) sourceChunks.push(referenceSource.slice(cp, cp + chunkChars));
+  if (!sourceChunks.length) sourceChunks.push(referenceSource);
   var autoApply = options && options.autoApply === true;
   if (typeof showToast === 'function') showToast('참고문헌 AI 추출 중... (백그라운드)');
   try {
-    var res = await window.callGemini(prompt, systemTpl);
-    var text = res && res.text ? res.text : (res || '');
-    var clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-    var match = clean.match(/\[[\s\S]*\]/);
-    if (!match) { showToast('❌ AI 응답에서 JSON 배열을 찾을 수 없습니다'); if (doneCallback) doneCallback(); return; }
-    var arr = JSON.parse(match[0]);
+    var arr = [];
+    for (var ci = 0; ci < sourceChunks.length; ci++) {
+      var chunkPrompt = promptTpl.replace(/\{\{TEXT\}\}/g,
+        '[References section part ' + (ci + 1) + '/' + sourceChunks.length + ']\n' + sourceChunks[ci]);
+      var res = await window.callGemini(chunkPrompt, systemTpl);
+      var text = res && res.text ? res.text : (res || '');
+      var clean = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
+      var match = clean.match(/\[[\s\S]*\]/);
+      if (!match) continue;
+      var partial = JSON.parse(match[0]);
+      if (Array.isArray(partial)) arr = arr.concat(partial);
+      if (typeof showToast === 'function' && sourceChunks.length > 1) showToast('참고문헌 분할 추출 ' + (ci + 1) + '/' + sourceChunks.length);
+    }
     if (!Array.isArray(arr) || arr.length === 0) { showToast('⚠️ 추출된 참고문헌이 없습니다'); if (doneCallback) doneCallback(); return; }
     var refs = arr.map(function (item) {
       return {
@@ -120,6 +137,13 @@ async function extractReferencesWithAI(doneCallback, options) {
         doi: (item.doi || '').toString().trim().replace(/^https?:\/\/doi\.org\//i, '')
       };
     }).filter(function (r) { return r.authors && r.year && r.title; });
+    var seenRefs = {};
+    refs = refs.filter(function (r) {
+      var key = (r.doi || (r.authors + '|' + r.year + '|' + r.title)).toLowerCase().replace(/\s+/g, ' ').trim();
+      if (seenRefs[key]) return false;
+      seenRefs[key] = true;
+      return true;
+    });
     if (refs.length === 0) { showToast('⚠️ 저자·연도·제목이 있는 항목이 없습니다'); if (doneCallback) doneCallback(); return; }
     if (!autoApply && !confirm('AI가 ' + refs.length + '개 참고문헌을 추출했습니다. 기존 목록을 이 목록으로 대체하시겠습니까?')) { if (doneCallback) doneCallback(); return; }
     ReferenceStore.clear();

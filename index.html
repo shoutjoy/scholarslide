@@ -625,7 +625,7 @@
     </span>
     <button class="btn btn-ghost btn-sm" id="help-btn" onclick="openHelpModal()" title="단축키 및 도움말">❓ Help</button>
     <button class="btn btn-ghost btn-sm" id="settings-btn" onclick="openSettingsPanel()" title="API 키·프롬프트 등 설정">⚙️ 설정</button>
-    <button class="btn btn-ghost btn-sm" id="api-key-btn" onclick="openApiModal()">
+    <button class="btn btn-ghost btn-sm" id="api-key-btn" onclick="openSettingsPanel('api','aistudio')" title="설정에서 AI Studio API 키 관리">
       <span id="api-key-status-icon">🔑</span>
       <span id="api-key-status-text">API 키 설정</span>
     </button>
@@ -882,6 +882,12 @@
 <script src="js/prompts/prompt_summary.js"></script>
 <script src="js/slide-gen/slide-gen.js"></script>
 <script src="js/ui/settings-window.js"></script>
+<link rel="stylesheet" href="AI_App/aiChat/ai-chat.css">
+<script src="AI_App/ai_local/local-ai.js"></script>
+<script src="AI_App/ai_local/scholar-ai-provider.js"></script>
+<script src="AI_App/aiChat/academic-search.js"></script>
+<script src="AI_App/aiChat/ai-chat-bridge.js"></script>
+<script src="AI_App/aiChat/ai-chat.js"></script>
 
 <!-- ── AI SLIDE ADD MODAL ── -->
 <div id="ai-slide-add-modal" class="modal-backdrop" onclick="handleModalBackdropClick(event,'ai-slide-add-modal')">
@@ -966,6 +972,15 @@
       <div id="summary-slide-count-row" style="display:none">
         <label class="label">슬라이드 수</label>
         <input type="number" class="control" id="summary-options-slide-count" value="12" min="5" max="30" style="width:80px;text-align:center"/>
+      </div>
+      <div>
+        <label class="label">대용량 원문 분할 처리</label>
+        <select class="control" id="summary-options-split-mode" style="font-size:12px;width:100%;max-width:280px">
+          <option value="auto">자동 — AI 컨텍스트에 맞춤</option>
+          <option value="2">최소 2개로 분할</option><option value="3">최소 3개로 분할</option>
+          <option value="4">최소 4개로 분할</option><option value="6">최소 6개로 분할</option><option value="8">최소 8개로 분할</option>
+        </select>
+        <p id="summary-options-split-info" style="font-size:10px;color:var(--text3);margin-top:5px">각 부분을 순서대로 요약한 뒤 하나의 최종 요약으로 통합합니다.</p>
       </div>
       <div>
         <label class="label">문체 설정</label>
@@ -1055,6 +1070,7 @@
       </div>
       <button class="pdf-nav-btn" onclick="downloadPdfPreview()" title="PDF 다운로드" style="width:auto;padding:0 8px;font-size:11px">⬇ 다운로드</button>
       <button class="pdf-nav-btn" onclick="openPdfNewWindow()" title="새창으로 보기" style="width:auto;padding:0 8px;font-size:11px">↗ 새창</button>
+      <button class="pdf-nav-btn" id="pdf-fullscreen-btn" onclick="togglePdfPreviewFullscreen()" title="PDF 미리보기 전체화면" style="width:auto;padding:0 8px;font-size:11px">⛶ 전체화면</button>
       <button class="pdf-nav-btn" onclick="closePdfPreview()" title="닫기" style="width:auto;padding:0 8px;font-size:12px">✕</button>
     </div>
   </div>
