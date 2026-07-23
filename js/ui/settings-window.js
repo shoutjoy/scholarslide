@@ -121,7 +121,7 @@
       '<p style="font-size:10px;color:var(--text3);margin:6px 0 12px">ScholarAI와 일반 AI Chat에서 사용할 공급자입니다. AI Studio는 <b>이미지 생성 + AI 텍스트 동작</b>에 사용되며, LM Studio는 로컬 AI 텍스트 동작에 사용됩니다. <b>AI Studio API 키가 없으면 요약·번역·슬라이드 생성 등 텍스트 AI 기능은 현재 로드된 LM Studio 모델로 자동 전환됩니다.</b></p>' +
       '<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(150px,1fr);gap:10px"><div><label>LM Studio Base URL</label><input id="sw-lm-base-url" type="url" value="http://127.0.0.1:5678/v1" placeholder="http://127.0.0.1:5678/v1"></div><div><label>API Key (선택)</label><input id="sw-lm-api-key" type="password" autocomplete="off" placeholder="인증 사용 시 입력"></div></div>' +
       '<div id="sw-lm-connection-card" style="margin-top:12px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2)"><div style="display:flex;align-items:center;gap:8px"><span id="sw-lm-dot" style="width:10px;height:10px;border-radius:50%;background:var(--text3);display:inline-block"></span><b id="sw-lm-connection-label" style="font-size:12px">연결 확인 전</b></div><div style="margin-top:10px;font-size:11px;color:var(--text3)">LM Studio 현재 로드 모델</div><div id="sw-lm-model" style="margin-top:5px;padding:10px;border:1px solid var(--border);border-radius:6px;font-weight:700;color:var(--text2)">확인되지 않음</div><div style="display:flex;justify-content:space-between;gap:12px;margin-top:9px;padding-top:9px;border-top:1px solid var(--border)"><span style="font-size:11px;color:var(--text3)">최대 컨텍스트 길이</span><b id="sw-lm-context-length" style="font-size:11px;color:var(--accent)">확인되지 않음</b></div><div id="sw-lm-context-guide" style="font-size:10px;color:var(--text3);margin-top:5px">연결 후 문서 분할 크기를 자동 계산합니다.</div><div id="sw-lm-latency" style="font-size:10px;color:var(--text3);margin-top:6px">모델은 LM Studio에서 Load/Eject 합니다.</div></div>' +
-      '<div style="display:grid;grid-template-columns:repeat(4,minmax(75px,1fr));gap:8px;margin-top:12px"><div><label>Temperature</label><input id="sw-lm-temperature" type="number" min="0" max="2" step="0.1"></div><div><label>Max tokens</label><input id="sw-lm-max-tokens" type="number" min="1" step="128"></div><div><label>Timeout (초)</label><input id="sw-lm-timeout" type="number" min="1"></div><div><label>Top P</label><input id="sw-lm-top-p" type="number" min="0" max="1" step="0.05" placeholder="기본"></div></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:12px"><div><label>Temperature</label><input id="sw-lm-temperature" type="number" min="0" max="2" step="0.1"></div><div><label>전체 출력 상한</label><input id="sw-lm-max-tokens" type="number" min="1" step="128"></div><div><label>즉시응답 출력</label><input id="sw-lm-quick-max-tokens" type="number" min="1" step="128"></div><div><label>추론 출력</label><input id="sw-lm-reasoning-max-tokens" type="number" min="1" step="128"></div><div><label>추론 수준</label><select id="sw-lm-reasoning-level"><option value="auto">자동</option><option value="on">켜기</option><option value="low">낮음</option><option value="medium">중간</option><option value="high">높음</option></select></div><div><label>Timeout (초)</label><input id="sw-lm-timeout" type="number" min="1"></div><div><label>Top P</label><input id="sw-lm-top-p" type="number" min="0" max="1" step="0.05" placeholder="기본"></div></div>' +
       '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px"><button type="button" class="btn btn-primary" id="sw-lm-save">LM 설정 저장</button><button type="button" class="btn btn-ghost" id="sw-lm-model-check">현재 로드 모델 확인</button><button type="button" class="btn btn-ghost" id="sw-lm-test">LM 연결 테스트</button></div>' +
       '<div id="sw-lm-status" style="font-size:11px;color:var(--text3);margin-top:10px"></div>' +
       '<div style="margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2)"><div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:9px">📚 문서 컨텍스트 처리 계획</div><label>최소 분할 단계</label><select id="sw-lm-split-mode"><option value="auto">자동 — 모델 용량에 맞춤</option><option value="2">최소 2개로 분할</option><option value="3">최소 3개로 분할</option><option value="4">최소 4개로 분할</option><option value="6">최소 6개로 분할</option><option value="8">최소 8개로 분할</option></select><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px;font-size:11px"><div>현재 선택 문서</div><b id="sw-lm-input-size" style="text-align:right">0자</b><div>원문 추정 토큰</div><b id="sw-lm-input-tokens" style="text-align:right">0 tokens</b><div>모델 대비 크기</div><b id="sw-lm-context-ratio" style="text-align:right">확인 필요</b><div>안전 입력량/회</div><b id="sw-lm-safe-input" style="text-align:right">3,000 tokens</b><div>안전 출력 한도</div><b id="sw-lm-safe-output" style="text-align:right">2,048 tokens</b><div>예상 처리 단계</div><b id="sw-lm-estimated-parts" style="text-align:right;color:var(--accent)">1개</b></div><div id="sw-lm-processing-note" style="margin-top:9px;padding:8px;border-radius:6px;background:var(--surface);font-size:10px;color:var(--text3);line-height:1.5">입력 문서를 확인하는 중입니다.</div></div>' +
@@ -433,6 +433,9 @@
     if ($('sw-lm-api-key')) $('sw-lm-api-key').value = localConfig.apiKey || '';
     if ($('sw-lm-temperature')) $('sw-lm-temperature').value = localConfig.temperature == null ? '0.4' : localConfig.temperature;
     if ($('sw-lm-max-tokens')) $('sw-lm-max-tokens').value = localConfig.maxTokens || 8192;
+    if ($('sw-lm-quick-max-tokens')) $('sw-lm-quick-max-tokens').value = localConfig.quickMaxTokens || 4096;
+    if ($('sw-lm-reasoning-max-tokens')) $('sw-lm-reasoning-max-tokens').value = localConfig.reasoningMaxTokens || 8192;
+    if ($('sw-lm-reasoning-level')) $('sw-lm-reasoning-level').value = localConfig.reasoningLevel || 'auto';
     if ($('sw-lm-timeout')) $('sw-lm-timeout').value = Math.round((localConfig.timeoutMs || 90000) / 1000);
     if ($('sw-lm-top-p')) $('sw-lm-top-p').value = localConfig.topP == null ? '' : localConfig.topP;
     if ($('sw-lm-split-mode')) $('sw-lm-split-mode').value = localStorage.getItem('ss_lm_split_mode') || 'auto';
@@ -482,6 +485,9 @@
         baseUrl: $('sw-lm-base-url').value.trim(), apiKey: $('sw-lm-api-key').value.trim(),
         temperature: Number($('sw-lm-temperature').value || 0.4),
         maxTokens: Number($('sw-lm-max-tokens').value || 8192),
+        quickMaxTokens: Number($('sw-lm-quick-max-tokens').value || 4096),
+        reasoningMaxTokens: Number($('sw-lm-reasoning-max-tokens').value || 8192),
+        reasoningLevel: $('sw-lm-reasoning-level').value || 'auto',
         timeoutMs: Math.max(1, Number($('sw-lm-timeout').value || 90)) * 1000,
         topP: $('sw-lm-top-p').value === '' ? null : Number($('sw-lm-top-p').value)
       };
@@ -512,7 +518,9 @@
         status.textContent = '연결 확인 중…'; status.style.color = 'var(--warning)';
         var checked = await lmAdapter().testLMStudio(readLmForm());
         if (!checked.ok) throw new Error(checked.error);
-        setLmState(true, checked.model, '현재 로드 모델 자동 사용 · 응답 ' + checked.latencyMs + 'ms', checked.contextLength, checked.maxContextLength);
+        var checkedModel = checked.models && checked.models[0];
+        var checkedInstance = checkedModel && checkedModel.instances && checkedModel.instances[0];
+        setLmState(true, checked.model, '현재 로드 모델 자동 사용 · 응답 ' + checked.latencyMs + 'ms', checked.contextLength || (checkedInstance && checkedInstance.contextLength), checked.maxContextLength || (checkedModel && checkedModel.maxContextLength));
       } catch (error) {
         setLmState(false, '', error.message || String(error));
       }

@@ -1,6 +1,6 @@
 /*
  * ScholarAIProvider - AI Studio / LM Studio text provider adapter.
- * Requires ai_local/local-ai.js when LM Studio is used.
+ * Requires AI_App/ai_local/local-ai.js when LM Studio is used.
  */
 (function (root, factory) {
   var api = factory(root);
@@ -31,7 +31,7 @@
   function requireLocalAI() {
     var localAI = root && root.LocalAI;
     if (!localAI || typeof localAI.createClient !== 'function') {
-      throw new Error('LocalAI가 로드되지 않았습니다. ai_local/local-ai.js를 먼저 불러오세요.');
+      throw new Error('LocalAI가 로드되지 않았습니다. AI_App/ai_local/local-ai.js를 먼저 불러오세요.');
     }
     return localAI;
   }
@@ -147,18 +147,15 @@
       }
       var model = String(loaded[0].id || '').trim();
       if (!model) throw new Error('LM Studio에서 로드된 모델 ID를 확인할 수 없습니다.');
-      var contextLength = Number(loaded[0].instances && loaded[0].instances[0] && loaded[0].instances[0].contextLength) || 0;
-      var maxContextLength = Number(loaded[0].maxContextLength) || 0;
       saveLMStudioConfig({ model: model });
-      if (contextLength > 0 || maxContextLength > 0) storage.setItem('ss_lm_context_length', String(contextLength || maxContextLength));
-      return { model: model, models: loaded, contextLength: contextLength || null, maxContextLength: maxContextLength || null };
+      return { model: model, models: loaded };
     }
 
     async function testLMStudio(configPatch) {
       var startedAt = Date.now();
       try {
         var synced = await syncLMStudioLoadedModel(configPatch);
-        return { ok: true, model: synced.model, models: synced.models, contextLength: synced.contextLength, maxContextLength: synced.maxContextLength, latencyMs: Date.now() - startedAt };
+        return { ok: true, model: synced.model, models: synced.models, latencyMs: Date.now() - startedAt };
       } catch (error) {
         return { ok: false, models: [], latencyMs: Date.now() - startedAt, error: error.message };
       }
@@ -174,15 +171,10 @@
         async function runLMStudio() {
           var synced = await syncLMStudioLoadedModel();
           var model = synced.model;
-          var configuredMax = Number(getLMStudioConfig().maxTokens) || 8192;
-          var safeMaxTokens = synced.contextLength
-            ? Math.max(512, Math.min(configuredMax, Math.floor(synced.contextLength * 0.25)))
-            : Math.min(configuredMax, 2048);
           var localResult = await makeLMStudioClient({ model: model }).complete({
             prompt: request.prompt,
             systemInstruction: request.systemInstruction,
             model: model,
-            maxTokens: safeMaxTokens,
             signal: controller.signal
           });
           return { provider: 'lmstudio', model: localResult.model || model, text: localResult.text || '' };
