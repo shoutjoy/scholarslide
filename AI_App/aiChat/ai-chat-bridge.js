@@ -153,7 +153,7 @@
     var requestedOutputTokens = splitAcademic
       ? Math.min(2200, configuredMaxTokens)
       : continuation
-      ? Math.min(3000, configuredMaxTokens)
+      ? configuredMaxTokens
       : academic
       ? Math.min(2048, configuredMaxTokens)
       : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
@@ -193,11 +193,17 @@
     var maxTokens = splitAcademic
       ? Math.min(2200, normalOutputBudget)
       : continuation
-      ? Math.min(3000, normalOutputBudget)
+      ? normalOutputBudget
       : academic
       ? Math.min(2048, normalOutputBudget)
       : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, normalOutputBudget);
-    var timeoutMs = reasoningMode
+    var timeoutMs = continuation
+      ? Math.max(
+          600000,
+          Number(config.timeoutMs) || 0,
+          Math.ceil((maxTokens / 8) * 1000 + 120000)
+        )
+      : reasoningMode
       ? Math.max(300000, Number(config.timeoutMs) || 0)
       : (academic ? Math.max(240000, Number(config.timeoutMs) || 0) : Math.max(60000, Number(config.timeoutMs) || 0));
     var client = root.LocalAI.createClient(Object.assign({}, config, {
