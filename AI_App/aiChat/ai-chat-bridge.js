@@ -64,6 +64,83 @@
     return Math.max(0, Number(instances[0] && instances[0].contextLength) || 0);
   }
 
+  function getHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode) {
+    if (!contextLength) return requestedOutputTokens;
+    var minimumUsefulOutput = reasoningMode ? 1024 : 768;
+    var contextShare = Math.floor(contextLength * (reasoningMode ? 0.4 : 0.32));
+    return Math.min(requestedOutputTokens, Math.max(minimumUsefulOutput, contextShare));
+  }
+
+  function clipHistoryMessage(message, tokenBudget) {
+    var original = String(message && message.content || '').trim();
+    var label = message && message.role === 'assistant' ? 'AI: ' : 'User: ';
+    if (!original || tokenBudget < 48) return null;
+    if (estimateTokens(label + original) <= tokenBudget) {
+      return { role: message.role, content: original };
+    }
+    var suffix = '\n\n[Earlier message truncated to fit the context window]';
+    var low = 1;
+    var high = original.length;
+    var best = '';
+    while (low <= high) {
+      var middle = Math.floor((low + high) / 2);
+      var candidate = original.slice(0, middle).replace(/\s+$/, '') + suffix;
+      if (estimateTokens(label + candidate) <= tokenBudget) {
+        best = candidate;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return best ? { role: message.role, content: best } : null;
+  }
+
+  function retainHistory(messages, tokenBudget) {
+    if (!Number.isFinite(tokenBudget)) return messages.slice();
+    if (tokenBudget < 96 || !messages.length) return [];
+    var turns = [];
+    var currentTurn = [];
+    messages.forEach(function (message) {
+      if (message.role === 'user') {
+        if (currentTurn.length) turns.push(currentTurn);
+        currentTurn = [message];
+      } else if (currentTurn.length) {
+        currentTurn.push(message);
+      }
+    });
+    if (currentTurn.length) turns.push(currentTurn);
+
+    var retainedTurns = [];
+    var retainedTokens = 0;
+    for (var turnIndex = turns.length - 1; turnIndex >= 0; turnIndex--) {
+      var turn = turns[turnIndex];
+      var turnTokens = turn.reduce(function (sum, message) {
+        return sum + estimateTokens((message.role === 'assistant' ? 'AI' : 'User') + ': ' + message.content);
+      }, 0);
+      if (retainedTokens + turnTokens <= tokenBudget) {
+        retainedTurns.unshift(turn);
+        retainedTokens += turnTokens;
+        continue;
+      }
+      if (retainedTurns.length) break;
+
+      var clippedTurn = [];
+      var remaining = tokenBudget;
+      for (var messageIndex = 0; messageIndex < turn.length && remaining >= 48; messageIndex++) {
+        var messagesLeft = turn.length - messageIndex;
+        var messageBudget = messagesLeft > 1
+          ? Math.max(48, Math.floor(remaining / messagesLeft))
+          : remaining;
+        var clipped = clipHistoryMessage(turn[messageIndex], messageBudget);
+        if (!clipped) continue;
+        clippedTurn.push(clipped);
+        remaining -= estimateTokens((clipped.role === 'assistant' ? 'AI' : 'User') + ': ' + clipped.content);
+      }
+      if (clippedTurn.length) retainedTurns.unshift(clippedTurn);
+      break;
+    }
+    return retainedTurns.reduce(function (all, turn) { return all.concat(turn); }, []);
+  }
   function isAbortError(error) {
     return !!(error && error.name === 'AbortError') || /abort|중지/i.test(String(error && error.message || error || ''));
   }
@@ -149,13 +226,14 @@
     var reasoningMaxTokens = Math.max(1, Number(config.reasoningMaxTokens) || 8192);
     var configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
     if (['auto', 'on', 'low', 'medium', 'high'].indexOf(configuredReasoning) < 0) configuredReasoning = 'auto';
+    var academicMaxTokens = Math.min(Number(request.academicEvidenceCount) > 20 ? 4096 : 3072, configuredMaxTokens);
 
     var requestedOutputTokens = splitAcademic
       ? Math.min(2200, configuredMaxTokens)
       : continuation
       ? configuredMaxTokens
       : academic
-      ? Math.min(2048, configuredMaxTokens)
+      ? academicMaxTokens
       : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
     var modeInstruction = academic
       ? ''
@@ -168,22 +246,16 @@
       : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.';
     var baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
     var fixedInputTokens = estimateTokens(baseSystemPrompt) + estimateTokens(messages[lastUserIndex].content);
+    var historyOutputReserve = getHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode);
     var historyTokenBudget = contextLength
-      ? Math.max(0, contextLength - fixedInputTokens - requestedOutputTokens - 512)
+      ? Math.max(0, contextLength - fixedInputTokens - historyOutputReserve - 256)
       : Number.POSITIVE_INFINITY;
     var historyCandidates = academic ? [] : messages.slice(0, lastUserIndex);
-    var historyMessages = [];
-    var retainedHistoryTokens = 0;
-    for (var historyIndex = historyCandidates.length - 1; historyIndex >= 0; historyIndex--) {
-      var candidate = historyCandidates[historyIndex];
-      var candidateTokens = estimateTokens((candidate.role === 'assistant' ? 'AI' : '사용자') + ': ' + candidate.content);
-      if (retainedHistoryTokens + candidateTokens > historyTokenBudget) break;
-      historyMessages.unshift(candidate);
-      retainedHistoryTokens += candidateTokens;
-    }
+    var historyMessages = retainHistory(historyCandidates, historyTokenBudget);
     var history = historyMessages.map(function (message) {
-      return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
+      return (message.role === 'assistant' ? 'AI' : 'User') + ': ' + message.content;
     }).join('\n\n');
+    var retainedHistoryTokens = history ? estimateTokens(history) : 0;
     var systemPrompt = [baseSystemPrompt, history ? '이전 대화:\n' + history : ''].filter(Boolean).join('\n\n');
     var estimatedInputTokens = estimateTokens(systemPrompt) + estimateTokens(messages[lastUserIndex].content);
     var contextOutputBudget = contextLength
@@ -195,7 +267,7 @@
       : continuation
       ? normalOutputBudget
       : academic
-      ? Math.min(2048, normalOutputBudget)
+      ? Math.min(academicMaxTokens, normalOutputBudget)
       : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, normalOutputBudget);
     var timeoutMs = continuation
       ? Math.max(
